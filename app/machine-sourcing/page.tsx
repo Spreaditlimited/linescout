@@ -492,19 +492,16 @@ export default function MachineSourcingPage() {
     </div>
 
     <nav className="hidden items-center gap-6 lg:flex">
-      <a href="/machine-sourcing" className="text-sm font-medium text-slate-300 hover:text-white">
-        How it works
-      </a>
-      <a href="/machine-sourcing" className="text-sm font-medium text-slate-300 hover:text-white">
-        Modes
-      </a>
-      <a href="/machine-sourcing" className="text-sm font-medium text-slate-300 hover:text-white">
-        Examples
-      </a>
-      <a href="/machine-sourcing" className="text-sm font-medium text-slate-300 hover:text-white">
-        Tokens
-      </a>
-    </nav>
+  <Link href="/#how" className="text-sm font-medium text-slate-300 hover:text-white">
+    How it works
+  </Link>
+  <Link href="/#products" className="text-sm font-medium text-slate-300 hover:text-white">
+    Modes
+  </Link>
+  <Link href="/#prompts" className="text-sm font-medium text-slate-300 hover:text-white">
+    Examples
+  </Link>
+</nav>
 
     <div className="flex items-center gap-2">
       <Link

@@ -125,10 +125,9 @@ function Header() {
         </div>
 
         <nav className="hidden items-center gap-6 lg:flex">
-          <NavLink href="/machine-sourcing">How it works</NavLink>
-          <NavLink href="/machine-sourcing">Modes</NavLink>
-          <NavLink href="/machine-sourcing">Examples</NavLink>
-          <NavLink href="/machine-sourcing">Tokens</NavLink>
+          <NavLink href="#how">How it works</NavLink>
+          <NavLink href="#products">Modes</NavLink>
+          <NavLink href="#prompts">Examples</NavLink>
         </nav>
 
         <div className="flex items-center gap-2">
@@ -215,7 +214,7 @@ function HeroPanel() {
           action="Open"
         />
       </div>
-
+      
       <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
         <div className="text-sm font-semibold text-white">How tokens work</div>
         <ul className="mt-3 space-y-2 text-sm text-slate-300">
