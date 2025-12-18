@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import mysql from "mysql2/promise";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -78,6 +79,47 @@ function extractReply(data: any): string {
   return "";
 }
 
+async function saveDraftToDb(sessionId: string, messages: any[]) {
+  const host = process.env.DB_HOST;
+  const user = process.env.DB_USER;
+  const password = process.env.DB_PASSWORD;
+  const database = process.env.DB_NAME;
+
+  if (!host || !user || !password || !database) {
+    // If env vars are missing, do not break chat
+    console.warn("DB env vars missing. Skipping draft save.");
+    return;
+  }
+
+  const pool = mysql.createPool({
+    host,
+    user,
+    password,
+    database,
+    waitForConnections: true,
+    connectionLimit: 5,
+    queueLimit: 0,
+  });
+
+  const intake = {
+    source: "linescout_chat",
+    sessionId,
+    messages,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const sql = `
+    INSERT INTO linescout_business_plan_drafts (session_id, intake_json)
+    VALUES (?, ?)
+    ON DUPLICATE KEY UPDATE
+      intake_json = VALUES(intake_json),
+      updated_at = CURRENT_TIMESTAMP
+  `;
+
+  await pool.execute(sql, [sessionId, JSON.stringify(intake)]);
+  await pool.end();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(async () => {
@@ -85,7 +127,17 @@ export async function POST(req: NextRequest) {
       return { _rawBody: raw };
     });
 
-    const baseUrl = process.env.N8N_BASE_URL || process.env.NEXT_PUBLIC_N8N_BASE_URL;
+    const { sessionId, messages } = body;
+
+    // ✅ THIS IS THE PREFILL SAVE (the missing piece)
+    if (isNonEmptyString(sessionId) && Array.isArray(messages)) {
+      saveDraftToDb(sessionId, messages).catch((e) => {
+        console.warn("Failed to save business plan draft:", e?.message || e);
+      });
+    }
+
+    const baseUrl =
+      process.env.N8N_BASE_URL || process.env.NEXT_PUBLIC_N8N_BASE_URL;
 
     if (!baseUrl) {
       return NextResponse.json(
@@ -108,7 +160,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error: data?.error || data?.message || `n8n responded with HTTP ${res.status}`,
+          error:
+            data?.error ||
+            data?.message ||
+            `n8n responded with HTTP ${res.status}`,
           debug: data,
         },
         { status: res.status || 500 }
@@ -117,11 +172,12 @@ export async function POST(req: NextRequest) {
 
     let replyText = extractReply(data);
 
-    // If extractReply returned JSON-as-text, unwrap it again (double safety)
-    const unwrapped = isNonEmptyString(replyText) ? tryUnwrapReplyTextFromString(replyText) : "";
+    const unwrapped = isNonEmptyString(replyText)
+      ? tryUnwrapReplyTextFromString(replyText)
+      : "";
+
     if (unwrapped) replyText = unwrapped;
 
-    // Final safety: remove any leading "="
     replyText = stripLeadingEquals(replyText || "");
 
     if (!replyText) {
@@ -135,7 +191,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Stream plain text
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {

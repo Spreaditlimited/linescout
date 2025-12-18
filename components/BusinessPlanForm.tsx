@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { callN8nWebhook } from "@/lib/n8n";
 
 type Intake = {
@@ -40,12 +40,109 @@ type ResultState = {
   planText?: string;
 };
 
-type Purpose =
-  | "loan"
-  | "investor"
-  | "internal"
-  | "grant"
-  | "other";
+type Purpose = "loan" | "investor" | "internal" | "grant" | "other";
+
+function isBlank(v: string) {
+  return !v || v.trim().length === 0;
+}
+
+function toNumberOrEmpty(v: unknown): number | "" {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const trimmed = v.trim();
+    if (!trimmed) return "";
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : "";
+  }
+  return "";
+}
+
+// Prefill rules:
+// - only fill empty strings
+// - only fill number fields if current is ""
+// - only set equityPartners if current is false and incoming is true
+function mergeIntakePrefill(current: Intake, incoming: Partial<Intake>): Intake {
+  const next: Intake = { ...current };
+
+  // string fields
+  if (isBlank(next.businessName) && typeof incoming.businessName === "string" && incoming.businessName.trim()) {
+    next.businessName = incoming.businessName;
+  }
+  if (isBlank(next.country) && typeof incoming.country === "string" && incoming.country.trim()) {
+    next.country = incoming.country;
+  }
+  if (isBlank(next.city) && typeof incoming.city === "string" && incoming.city.trim()) {
+    next.city = incoming.city;
+  }
+  if (isBlank(next.productLine) && typeof incoming.productLine === "string" && incoming.productLine.trim()) {
+    next.productLine = incoming.productLine;
+  }
+  if (isBlank(next.capacity) && typeof incoming.capacity === "string" && incoming.capacity.trim()) {
+    next.capacity = incoming.capacity;
+  }
+  if (isBlank(next.targetCustomers) && typeof incoming.targetCustomers === "string" && incoming.targetCustomers.trim()) {
+    next.targetCustomers = incoming.targetCustomers;
+  }
+  if (
+    isBlank(next.existingExperience) &&
+    typeof incoming.existingExperience === "string" &&
+    incoming.existingExperience.trim()
+  ) {
+    next.existingExperience = incoming.existingExperience;
+  }
+  if (
+    isBlank(next.distributionChannels) &&
+    typeof incoming.distributionChannels === "string" &&
+    incoming.distributionChannels.trim()
+  ) {
+    next.distributionChannels = incoming.distributionChannels;
+  }
+  if (isBlank(next.pricingApproach) && typeof incoming.pricingApproach === "string" && incoming.pricingApproach.trim()) {
+    next.pricingApproach = incoming.pricingApproach;
+  }
+  if (isBlank(next.uniqueAngle) && typeof incoming.uniqueAngle === "string" && incoming.uniqueAngle.trim()) {
+    next.uniqueAngle = incoming.uniqueAngle;
+  }
+  if (isBlank(next.extraNotes) && typeof incoming.extraNotes === "string" && incoming.extraNotes.trim()) {
+    next.extraNotes = incoming.extraNotes;
+  }
+
+  // number | "" fields
+  if (next.startupCapital === "" && incoming.startupCapital !== undefined) {
+    next.startupCapital = toNumberOrEmpty(incoming.startupCapital);
+  }
+  if (next.ownerContribution === "" && incoming.ownerContribution !== undefined) {
+    next.ownerContribution = toNumberOrEmpty(incoming.ownerContribution);
+  }
+  if (next.loanAmount === "" && incoming.loanAmount !== undefined) {
+    next.loanAmount = toNumberOrEmpty(incoming.loanAmount);
+  }
+  if (next.loanTenorYears === "" && incoming.loanTenorYears !== undefined) {
+    next.loanTenorYears = toNumberOrEmpty(incoming.loanTenorYears);
+  }
+
+  // boolean field
+  if (next.equityPartners === false && incoming.equityPartners === true) {
+    next.equityPartners = true;
+  }
+
+  return next;
+}
+
+function getLineScoutSessionId(): string {
+  const key = "linescout_session_id";
+  let id = "";
+  try {
+    id = localStorage.getItem(key) || "";
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(key, id);
+    }
+  } catch {
+    // ignore
+  }
+  return id;
+}
 
 export default function BusinessPlanForm() {
   const [token, setToken] = useState("");
@@ -78,11 +175,52 @@ export default function BusinessPlanForm() {
   const [error, setError] = useState<string | null>(null);
   const [tokenUsed, setTokenUsed] = useState(false);
 
+  // Prefill UI state
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const [prefillNote, setPrefillNote] = useState<string | null>(null);
+
+  const showLoanFields = useMemo(() => purpose === "loan" || purpose === "investor", [purpose]);
+
   function updateField<K extends keyof Intake>(key: K, value: Intake[K]) {
-    setIntake((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
+    setIntake((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handlePrefillFromChat() {
+    setPrefillNote(null);
+
+    const sessionId = getLineScoutSessionId();
+    if (!sessionId) {
+      setPrefillNote("No chat session found yet. Start the chat first, then come back here.");
+      return;
+    }
+
+    setPrefillLoading(true);
+    try {
+      const res = await fetch("/api/linescout-business-plan/prefill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+
+      if (!res.ok || !data?.ok) {
+        const msg = String(data?.error || data?.message || "Could not prefill from chat.");
+        setPrefillNote(msg);
+        return;
+      }
+
+      const draft = (data?.draft || data?.intake || {}) as Partial<Intake>;
+
+      // Merge safely: only fill empty fields
+      setIntake((prev) => mergeIntakePrefill(prev, draft));
+
+      setPrefillNote("Done. We pulled what we could from your recent chat. Please review and complete the remaining fields.");
+    } catch {
+      setPrefillNote("Could not reach the server. Please try again.");
+    } finally {
+      setPrefillLoading(false);
+    }
   }
 
   async function handleDownload(format: "pdf" | "docx") {
@@ -92,17 +230,12 @@ export default function BusinessPlanForm() {
         return;
       }
 
-      const fileName =
-        intake.businessName.trim() || "linescout-business-plan";
+      const fileName = intake.businessName.trim() || "linescout-business-plan";
 
       const response = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planText: result.planText,
-          format,
-          fileName,
-        }),
+        body: JSON.stringify({ planText: result.planText, format, fileName }),
       });
 
       if (!response.ok) {
@@ -116,8 +249,7 @@ export default function BusinessPlanForm() {
       const link = document.createElement("a");
 
       link.href = url;
-      link.download =
-        format === "pdf" ? `${fileName}.pdf` : `${fileName}.docx`;
+      link.download = format === "pdf" ? `${fileName}.pdf` : `${fileName}.docx`;
 
       document.body.appendChild(link);
       link.click();
@@ -128,186 +260,171 @@ export default function BusinessPlanForm() {
       alert("Something went wrong while downloading the file.");
     }
   }
+
   async function handleSubmit(e: React.FormEvent) {
-  e.preventDefault();
-  setError(null);
-  setResult(null);
-  setProgress(0);
+    e.preventDefault();
+    setError(null);
+    setResult(null);
+    setProgress(0);
 
-  // Basic front-end validation
-  if (!token.trim()) {
-    setError("Please paste your valid business plan token.");
-    return;
-  }
-
-  if (!intake.businessName || !intake.productLine) {
-    setError("Please fill in at least the business name and project / product line.");
-    return;
-  }
-
-  try {
-    setLoading(true);
-    setProgress(20);
-
-    const payload = {
-      token: token.trim(),
-      type: "business_plan",
-      currency,
-      exchangeRate: currency === "NGN" ? exchangeRate : undefined,
-      purpose,
-      format: "both",
-      intake: {
-        ...intake,
-        startupCapital:
-          intake.startupCapital === "" ? 0 : Number(intake.startupCapital),
-        ownerContribution:
-          intake.ownerContribution === "" ? 0 : Number(intake.ownerContribution),
-        loanAmount:
-          intake.loanAmount === "" ? 0 : Number(intake.loanAmount),
-        loanTenorYears:
-          intake.loanTenorYears === "" ? 0 : Number(intake.loanTenorYears),
-      },
-    };
-
-    const response = await callN8nWebhook(
-      "/webhook/linescout_business_plan",
-      payload
-    );
-
-    setProgress(60);
-
-    const next: ResultState = {
-      ok: Boolean(response.ok),
-      canGenerate: response.canGenerate,
-      consumed: response.consumed,
-      message: response.message,
-      error: response.error,
-      code: response.code,
-      token: response.token,
-      type: response.type,
-      currency: response.currency,
-      exchangeRate: response.exchangeRate,
-      intake: response.intake,
-      planText: response.planText,
-    };
-
-       // Handle failure / invalid token / already-used token
-    if (!next.ok || !next.planText) {
-      const rawMsg =
-        (typeof next.error === "string" && next.error) ||
-        (typeof next.message === "string" && next.message) ||
-        "";
-
-      const lc = rawMsg.toLowerCase();
-      let friendlyError = "";
-
-      // Invalid / expired token
-      if (
-        lc.includes("invalid or expired") ||      // matches "Invalid or expired token."
-        lc.includes("invalid token") ||
-        lc.includes("token not found") ||
-        lc.includes("token not valid") ||
-        lc.includes("token invalid")
-      ) {
-        friendlyError =
-          "This business plan token is not valid or has expired. Please double-check it or get a new token.";
-      }
-      // Already-used token
-      else if (
-        lc.includes("already used") ||
-        lc.includes("already been used")
-      ) {
-        friendlyError =
-          "This business plan token has already been used to generate a plan. Each LineScout token is single-use. Please purchase a new token to generate another business plan.";
-      }
-      // Generic failure
-      else {
-        friendlyError =
-          rawMsg ||
-          "LineScout could not generate a plan. Please check your token and details, then try again.";
-      }
-
-      setError(friendlyError);
-      setResult(next);
-      setProgress(0);
+    if (!token.trim()) {
+      setError("Please paste your valid business plan token.");
       return;
     }
 
-    // ✅ Success – we have a plan
-    setResult(next);
-    setError(null);
-    setProgress(100);
-    setTokenUsed(true);
-  } catch (err: any) {
-    console.error("Business plan error:", err);
-    setError("Something went wrong while talking to LineScout backend.");
-    setProgress(0);
-  } finally {
-    setLoading(false);
-  }
-}
+    if (!intake.businessName || !intake.productLine) {
+      setError("Please fill in at least the business name and project / product line.");
+      return;
+    }
 
-  const showLoanFields = purpose === "loan" || purpose === "investor";
+    try {
+      setLoading(true);
+      setProgress(20);
+
+      const payload = {
+        token: token.trim(),
+        type: "business_plan",
+        currency,
+        exchangeRate: currency === "NGN" ? exchangeRate : undefined,
+        purpose,
+        format: "both",
+        intake: {
+          ...intake,
+          startupCapital: intake.startupCapital === "" ? 0 : Number(intake.startupCapital),
+          ownerContribution: intake.ownerContribution === "" ? 0 : Number(intake.ownerContribution),
+          loanAmount: intake.loanAmount === "" ? 0 : Number(intake.loanAmount),
+          loanTenorYears: intake.loanTenorYears === "" ? 0 : Number(intake.loanTenorYears),
+        },
+      };
+
+      const response = await callN8nWebhook("/webhook/linescout_business_plan", payload);
+      setProgress(60);
+
+      const next: ResultState = {
+        ok: Boolean((response as any).ok),
+        canGenerate: (response as any).canGenerate,
+        consumed: (response as any).consumed,
+        message: (response as any).message,
+        error: (response as any).error,
+        code: (response as any).code,
+        token: (response as any).token,
+        type: (response as any).type,
+        currency: (response as any).currency,
+        exchangeRate: (response as any).exchangeRate,
+        intake: (response as any).intake,
+        planText: (response as any).planText,
+      };
+
+      if (!next.ok || !next.planText) {
+        const rawMsg =
+          (typeof next.error === "string" && next.error) ||
+          (typeof next.message === "string" && next.message) ||
+          "";
+
+        const lc = rawMsg.toLowerCase();
+        let friendlyError = "";
+
+        if (
+          lc.includes("invalid or expired") ||
+          lc.includes("invalid token") ||
+          lc.includes("token not found") ||
+          lc.includes("token not valid") ||
+          lc.includes("token invalid")
+        ) {
+          friendlyError =
+            "This business plan token is not valid or has expired. Please double-check it or get a new token.";
+        } else if (lc.includes("already used") || lc.includes("already been used")) {
+          friendlyError =
+            "This business plan token has already been used to generate a plan. Each LineScout token is single-use. Please purchase a new token to generate another business plan.";
+        } else {
+          friendlyError =
+            rawMsg ||
+            "LineScout could not generate a plan. Please check your token and details, then try again.";
+        }
+
+        setError(friendlyError);
+        setResult(next);
+        setProgress(0);
+        return;
+      }
+
+      setResult(next);
+      setError(null);
+      setProgress(100);
+      setTokenUsed(true);
+    } catch (err: any) {
+      console.error("Business plan error:", err);
+      setError("Something went wrong while talking to LineScout backend.");
+      setProgress(0);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="w-full max-w-3xl mx-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-6 sm:p-8 shadow-xl shadow-black/40">
-      <h2 className="text-2xl font-semibold text-slate-50 mb-2">
-        LineScout Business Plan Writer
-      </h2>
-      <p className="text-sm text-slate-300 mb-6">
-        Paste your LineScout business plan token, fill in your project details,
-        and let LineScout draft a full, bank-ready business plan tailored to
-        Nigeria.
-      </p>
+      {/* Header + compact actions */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-semibold text-slate-50">Business Plan Writer</h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Paste your token. Complete the form. Generate a plan.
+          </p>
 
-      {/* Get token helper */}
-    
-<div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-200">
-  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    
-    {/* Text section */}
-    <div className="space-y-1">
-      <p className="font-semibold text-slate-50">
-        Don’t have a token yet?
-      </p>
-      <p className="text-slate-300 text-sm leading-relaxed">
-        To generate your business plan, click the button below to pay 
-        <span className="font-semibold text-slate-50"> ₦20,000</span> via Paystack.
-        You will receive a unique business plan token in the email address you provide.
-        Then come back here and paste the token to continue.
-      </p>
-    </div>
+          <div className="mt-2 text-xs text-slate-400">
+            Don’t have a token?{" "}
+            <a
+              href="https://paystack.shop/pay/linescoutbusinessplan"
+              target="_blank"
+              rel="noreferrer"
+              className="text-emerald-400 hover:underline"
+            >
+              Get one here (₦20,000)
+            </a>
+            . You’ll receive your token by email.
+          </div>
+        </div>
 
-    {/* Button section */}
-    <a
-  href="https://paystack.shop/pay/linescoutbusinessplan"
-  target="_blank"
-  rel="noreferrer"
-  className="
-    inline-flex items-center justify-center
-    rounded-xl
-    bg-emerald-500/15
-    px-5 py-2.5
-    text-sm font-semibold
-    text-emerald-100
-    ring-1 ring-emerald-400/35
-    hover:bg-emerald-500/20
-    transition-colors
-    whitespace-nowrap
-  "
->
-  Get your token
-</a>
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <button
+            type="button"
+            onClick={handlePrefillFromChat}
+            disabled={prefillLoading}
+            className="
+              inline-flex items-center justify-center
+              rounded-lg
+              border border-slate-700
+              bg-slate-900
+              px-3 py-2
+              text-sm font-medium
+              text-slate-200
+              hover:border-emerald-500 hover:text-emerald-300
+              transition-colors
+              whitespace-nowrap
+              disabled:opacity-60
+              disabled:cursor-not-allowed
+            "
+          >
+            {prefillLoading ? "Prefilling..." : "Prefill from chat"}
+          </button>
 
-  </div>
-</div>
+          <div className="text-xs text-slate-500">
+            Pulls from your recent chat. Fills empty fields only.
+          </div>
+        </div>
+      </div>
+
+      {/* Prefill feedback (only appears when there is feedback) */}
+      {prefillNote ? (
+        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
+          {prefillNote}
+        </div>
+      ) : null}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Token */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">
-            Business plan token
-          </label>
+          <label className="block text-sm font-medium text-slate-200">Business plan token</label>
           <input
             type="text"
             value={token}
@@ -320,90 +437,74 @@ export default function BusinessPlanForm() {
         {/* Purpose & currency */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Purpose of business plan
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Purpose of business plan</label>
             <select
-  value={purpose}
-  onChange={(e) => setPurpose(e.target.value as Purpose)}
-  className="
-    w-full
-    h-10                /* ⬅ ensures same height as currency select */
-    rounded-lg
-    border border-slate-700
-    bg-slate-900
-    px-3
-    text-sm text-slate-50
-    focus:outline-none
-    focus:ring-2 focus:ring-emerald-500
-    focus:border-emerald-500
-  "
->
-  <option value="loan">Bank loan / financing</option>
-  <option value="investor">Investor funding</option>
-  <option value="internal">Internal planning</option>
-  <option value="grant">Grant / donor funding</option>
-  <option value="other">Other purpose</option>
-</select>
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value as Purpose)}
+              className="
+                w-full h-10
+                rounded-lg
+                border border-slate-700
+                bg-slate-900
+                px-3
+                text-sm text-slate-50
+                focus:outline-none
+                focus:ring-2 focus:ring-emerald-500
+                focus:border-emerald-500
+              "
+            >
+              <option value="loan">Bank loan / financing</option>
+              <option value="investor">Investor funding</option>
+              <option value="internal">Internal planning</option>
+              <option value="grant">Grant / donor funding</option>
+              <option value="other">Other purpose</option>
+            </select>
           </div>
 
           <div className="space-y-2">
-            
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-  {/* Currency */}
-  <div className="space-y-2">
-    <label className="block text-sm font-medium text-slate-200">
-      Currency
-    </label>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-200">Currency</label>
+                <select
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}
+                  className="
+                    w-full h-11 rounded-lg border border-slate-700
+                    bg-slate-900 px-3 text-sm text-slate-50
+                    focus:outline-none focus:ring-2 focus:ring-emerald-500
+                    focus:border-emerald-500
+                  "
+                >
+                  <option value="NGN">NGN</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
 
-    <select
-      value={currency}
-      onChange={(e) =>
-        setCurrency(e.target.value as "NGN" | "USD")
-      }
-      className="
-        w-full h-11 rounded-lg border border-slate-700
-        bg-slate-900 px-3 text-sm text-slate-50
-        focus:outline-none focus:ring-2 focus:ring-emerald-500
-        focus:border-emerald-500
-      "
-    >
-      <option value="NGN">NGN</option>
-      <option value="USD">USD</option>
-    </select>
-  </div>
-
-  {/* Exchange Rate - only show if NGN */}
-  {currency === "NGN" && (
-    <div className="space-y-2 sm:col-span-2">
-      <label className="block text-sm font-medium text-slate-200">
-        Exchange rate (₦ per $1)
-      </label>
-
-      <input
-        type="number"
-        value={exchangeRate}
-        onChange={(e) => setExchangeRate(e.target.value)}
-        placeholder="1500"
-        className="
-          w-full h-11 rounded-lg border border-slate-700
-          bg-slate-900 px-3 text-sm text-slate-50
-          focus:outline-none focus:ring-2 focus:ring-emerald-500
-          focus:border-emerald-500
-        "
-      />
-    </div>
-  )}
-</div>
+              {currency === "NGN" && (
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="block text-sm font-medium text-slate-200">Exchange rate (₦ per $1)</label>
+                  <input
+                    type="number"
+                    value={exchangeRate}
+                    onChange={(e) => setExchangeRate(e.target.value)}
+                    placeholder="1500"
+                    className="
+                      w-full h-11 rounded-lg border border-slate-700
+                      bg-slate-900 px-3 text-sm text-slate-50
+                      focus:outline-none focus:ring-2 focus:ring-emerald-500
+                      focus:border-emerald-500
+                    "
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Basic info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Business name
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Business name</label>
             <input
               type="text"
               value={intake.businessName}
@@ -414,9 +515,7 @@ export default function BusinessPlanForm() {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              City & country
-            </label>
+            <label className="block text-sm font-medium text-slate-200">City & country</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -439,9 +538,7 @@ export default function BusinessPlanForm() {
         {/* Line & capacity */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Product line / project
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Product line / project</label>
             <input
               type="text"
               value={intake.productLine}
@@ -452,9 +549,7 @@ export default function BusinessPlanForm() {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Planned capacity
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Planned capacity</label>
             <input
               type="text"
               value={intake.capacity}
@@ -467,9 +562,7 @@ export default function BusinessPlanForm() {
 
         {/* Customers & channels */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">
-            Target customers
-          </label>
+          <label className="block text-sm font-medium text-slate-200">Target customers</label>
           <input
             type="text"
             value={intake.targetCustomers}
@@ -480,9 +573,7 @@ export default function BusinessPlanForm() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">
-            Distribution channels
-          </label>
+          <label className="block text-sm font-medium text-slate-200">Distribution channels</label>
           <input
             type="text"
             value={intake.distributionChannels}
@@ -495,9 +586,7 @@ export default function BusinessPlanForm() {
         {/* Pricing & unique angle */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Pricing approach
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Pricing approach</label>
             <input
               type="text"
               value={intake.pricingApproach}
@@ -508,9 +597,7 @@ export default function BusinessPlanForm() {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">
-              Unique angle
-            </label>
+            <label className="block text-sm font-medium text-slate-200">Unique angle</label>
             <input
               type="text"
               value={intake.uniqueAngle}
@@ -521,7 +608,7 @@ export default function BusinessPlanForm() {
           </div>
         </div>
 
-        {/* Money section – shown only when relevant */}
+        {/* Money section */}
         {showLoanFields && (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="space-y-2 sm:col-span-2">
@@ -531,48 +618,29 @@ export default function BusinessPlanForm() {
               <input
                 type="number"
                 value={intake.startupCapital}
-                onChange={(e) =>
-                  updateField(
-                    "startupCapital",
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
-                }
+                onChange={(e) => updateField("startupCapital", e.target.value === "" ? "" : Number(e.target.value))}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="150000000"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">
-                Owner contribution ({currency})
-              </label>
+              <label className="block text-sm font-medium text-slate-200">Owner contribution ({currency})</label>
               <input
                 type="number"
                 value={intake.ownerContribution}
-                onChange={(e) =>
-                  updateField(
-                    "ownerContribution",
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
-                }
+                onChange={(e) => updateField("ownerContribution", e.target.value === "" ? "" : Number(e.target.value))}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="30000000"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">
-                Loan amount ({currency})
-              </label>
+              <label className="block text-sm font-medium text-slate-200">Loan amount ({currency})</label>
               <input
                 type="number"
                 value={intake.loanAmount}
-                onChange={(e) =>
-                  updateField(
-                    "loanAmount",
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
-                }
+                onChange={(e) => updateField("loanAmount", e.target.value === "" ? "" : Number(e.target.value))}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="120000000"
               />
@@ -583,58 +651,44 @@ export default function BusinessPlanForm() {
         {showLoanFields && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">
-                Loan tenor (years)
-              </label>
+              <label className="block text-sm font-medium text-slate-200">Loan tenor (years)</label>
               <input
                 type="number"
                 value={intake.loanTenorYears}
-                onChange={(e) =>
-                  updateField(
-                    "loanTenorYears",
-                    e.target.value === "" ? "" : Number(e.target.value)
-                  )
-                }
+                onChange={(e) => updateField("loanTenorYears", e.target.value === "" ? "" : Number(e.target.value))}
                 className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="5"
               />
             </div>
 
             <div className="space-y-2">
-  <label className="block text-sm font-medium text-slate-200">
-    Equity partners involved?
-  </label>
-
-  <select
-    value={intake.equityPartners ? "yes" : "no"}
-    onChange={(e) =>
-      updateField("equityPartners", e.target.value === "yes")
-    }
-    className="
-      w-full
-      h-9                  /* ⬅ Ensures same height as Purpose dropdown */
-      rounded-lg
-      border border-slate-700
-      bg-slate-900
-      px-3
-      text-sm text-slate-50
-      focus:outline-none
-      focus:ring-2 focus:ring-emerald-500
-      focus:border-emerald-500
-    "
-  >
-    <option value="no">No</option>
-    <option value="yes">Yes</option>
-  </select>
-</div>
+              <label className="block text-sm font-medium text-slate-200">Equity partners involved?</label>
+              <select
+                value={intake.equityPartners ? "yes" : "no"}
+                onChange={(e) => updateField("equityPartners", e.target.value === "yes")}
+                className="
+                  w-full
+                  h-9
+                  rounded-lg
+                  border border-slate-700
+                  bg-slate-900
+                  px-3
+                  text-sm text-slate-50
+                  focus:outline-none
+                  focus:ring-2 focus:ring-emerald-500
+                  focus:border-emerald-500
+                "
+              >
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
           </div>
         )}
 
         {/* Experience & notes */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">
-            Existing experience
-          </label>
+          <label className="block text-sm font-medium text-slate-200">Existing experience</label>
           <textarea
             value={intake.existingExperience}
             onChange={(e) => updateField("existingExperience", e.target.value)}
@@ -645,9 +699,7 @@ export default function BusinessPlanForm() {
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">
-            Extra notes
-          </label>
+          <label className="block text-sm font-medium text-slate-200">Extra notes</label>
           <textarea
             value={intake.extraNotes}
             onChange={(e) => updateField("extraNotes", e.target.value)}
@@ -659,121 +711,110 @@ export default function BusinessPlanForm() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">
-            {error}
-          </div>
+          <div className="rounded-lg border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</div>
         )}
 
         {/* Progress bar */}
         {loading && (
           <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div
-              className="h-full bg-emerald-500 transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
         )}
 
         {tokenUsed ? (
-  <div
-    className="
-      w-full
-      rounded-xl
-      border border-emerald-600
-      bg-emerald-500/5
-      px-4 py-3
-      sm:px-5 sm:py-4
-      flex flex-col sm:flex-row
-      sm:items-center sm:justify-between
-      gap-3
-    "
-  >
-    <div className="flex items-start gap-2">
-      <div className="mt-0.5 h-6 w-6 flex items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 text-sm">
-        ✓
-      </div>
-      <div>
-        <p className="text-sm sm:text-base font-semibold text-emerald-200">
-          Your business plan is ready.
-        </p>
-        <p className="mt-1 text-xs sm:text-sm text-emerald-100/80">
-          This token has now been used. To write another plan, please get a new token.
-        </p>
-      </div>
-    </div>
+          <div
+            className="
+              w-full
+              rounded-xl
+              border border-emerald-600
+              bg-emerald-500/5
+              px-4 py-3
+              sm:px-5 sm:py-4
+              flex flex-col sm:flex-row
+              sm:items-center sm:justify-between
+              gap-3
+            "
+          >
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-6 w-6 flex items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 text-sm">
+                ✓
+              </div>
+              <div>
+                <p className="text-sm sm:text-base font-semibold text-emerald-200">Your business plan is ready.</p>
+                <p className="mt-1 text-xs sm:text-sm text-emerald-100/80">
+                  This token has now been used. To write another plan, please get a new token.
+                </p>
+              </div>
+            </div>
 
-    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-      <a
-        href="https://paystack.shop/pay/linescoutbusinessplan"
-        target="_blank"
-        rel="noreferrer"
-        className="
-          inline-flex items-center justify-center
-          rounded-xl
-          bg-emerald-500/15
-          px-4 py-2
-          text-sm font-semibold
-          text-emerald-100
-          ring-1 ring-emerald-400/35
-          hover:bg-emerald-500/20
-          transition-colors
-        "
-      >
-        Get new token
-      </a>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <a
+                href="https://paystack.shop/pay/linescoutbusinessplan"
+                target="_blank"
+                rel="noreferrer"
+                className="
+                  inline-flex items-center justify-center
+                  rounded-xl
+                  bg-emerald-500/15
+                  px-4 py-2
+                  text-sm font-semibold
+                  text-emerald-100
+                  ring-1 ring-emerald-400/35
+                  hover:bg-emerald-500/20
+                  transition-colors
+                "
+              >
+                Get new token
+              </a>
 
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="
-          inline-flex items-center justify-center
-          rounded-xl
-          bg-emerald-500/15
-          px-4 py-2
-          text-sm font-semibold
-          text-emerald-100
-          ring-1 ring-emerald-400/35
-          hover:bg-emerald-500/20
-          transition-colors
-        "
-      >
-        Start another plan
-      </button>
-    </div>
-  </div>
-) : (
-  <button
-    type="submit"
-    disabled={loading || tokenUsed}
-    className="
-      w-full sm:w-auto
-      inline-flex items-center justify-center
-      rounded-xl
-      bg-emerald-500/15
-      px-4 py-2
-      text-sm font-semibold
-      text-emerald-100
-      ring-1 ring-emerald-400/35
-      hover:bg-emerald-500/20
-      disabled:opacity-60 disabled:cursor-not-allowed
-      transition-colors
-    "
-  >
-    {loading ? "Writing plan..." : "Write business plan"}
-  </button>
-)}
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="
+                  inline-flex items-center justify-center
+                  rounded-xl
+                  bg-emerald-500/15
+                  px-4 py-2
+                  text-sm font-semibold
+                  text-emerald-100
+                  ring-1 ring-emerald-400/35
+                  hover:bg-emerald-500/20
+                  transition-colors
+                "
+              >
+                Start another plan
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="submit"
+            disabled={loading || tokenUsed}
+            className="
+              w-full sm:w-auto
+              inline-flex items-center justify-center
+              rounded-xl
+              bg-emerald-500/15
+              px-4 py-2
+              text-sm font-semibold
+              text-emerald-100
+              ring-1 ring-emerald-400/35
+              hover:bg-emerald-500/20
+              disabled:opacity-60 disabled:cursor-not-allowed
+              transition-colors
+            "
+          >
+            {loading ? "Writing plan..." : "Write business plan"}
+          </button>
+        )}
       </form>
 
       {/* Result */}
       {result && result.ok && result.planText && (
         <div className="mt-8 space-y-4">
           <div className="rounded-lg border border-emerald-600 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            <p className="font-semibold">
-              Your business plan is ready.
-            </p>
-            <p className="text-emerald-100/80">
-              You can review the preview below or download it as DOCX.
-            </p>
+            <p className="font-semibold">Your business plan is ready.</p>
+            <p className="text-emerald-100/80">You can review the preview below or download it as DOCX.</p>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -784,24 +825,11 @@ export default function BusinessPlanForm() {
             >
               Download DOCX
             </button>
-                {/*
-                <button
-                type="button"
-                onClick={() => handleDownload("pdf")}
-                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-50 hover:border-emerald-500 hover:text-emerald-300"
-                >
-                Download PDF
-                </button>
-                */}
           </div>
 
           <div className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 max-h-[480px] overflow-y-auto">
-            <h3 className="text-base font-semibold text-slate-50 mb-3">
-              Plan preview
-            </h3>
-            <pre className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
-              {result.planText}
-            </pre>
+            <h3 className="text-base font-semibold text-slate-50 mb-3">Plan preview</h3>
+            <pre className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">{result.planText}</pre>
           </div>
         </div>
       )}

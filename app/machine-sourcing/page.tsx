@@ -224,11 +224,7 @@ export default function MachineSourcingPage() {
 
     // No token typed, treat button as "Get your token"
     if (!t) {
-      window.open(
-        "https://paystack.shop/pay/sourcing",
-        "_blank",
-        "noopener,noreferrer"
-      );
+      window.open("https://paystack.shop/pay/sourcing", "_blank", "noopener,noreferrer");
       return;
     }
 
@@ -248,10 +244,7 @@ export default function MachineSourcingPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
-        showUiAlert(
-          "Token not valid",
-          String(data?.message || data?.error || "Token is invalid or expired.")
-        );
+        showUiAlert("Token not valid", String(data?.message || data?.error || "Token is invalid or expired."));
         setIsVerified(false);
         return;
       }
@@ -263,8 +256,7 @@ export default function MachineSourcingPage() {
       if (data.email) setHandoffEmail(String(data.email));
 
       // Prefill whatsapp from lead if available
-      const storedWhatsapp =
-        localStorage.getItem("linescout_lead_whatsapp") || "";
+      const storedWhatsapp = localStorage.getItem("linescout_lead_whatsapp") || "";
       if (storedWhatsapp && !handoffWhatsapp) setHandoffWhatsapp(storedWhatsapp);
 
       setShowHandoffModal(true);
@@ -317,18 +309,13 @@ export default function MachineSourcingPage() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
-        throw new Error(
-          data?.error || data?.message || "Could not submit handoff"
-        );
+        throw new Error(data?.error || data?.message || "Could not submit handoff");
       }
 
       setShowHandoffModal(false);
       setHandoffContext("");
 
-      showUiAlert(
-        "We have received your details.",
-        "You will receive a WhatsApp message shortly."
-      );
+      showUiAlert("We have received your details.", "You will receive a WhatsApp message shortly.");
     } catch (e: any) {
       alert(e?.message || "Could not submit handoff. Please try again.");
     } finally {
@@ -355,10 +342,7 @@ export default function MachineSourcingPage() {
 
     // Create one assistant message we will "stream into"
     const assistantId = makeId();
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantId, role: "assistant", content: "" },
-    ]);
+    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
 
     try {
       const payloadMessages = [...messagesRef.current, userMsg];
@@ -381,9 +365,7 @@ export default function MachineSourcingPage() {
             m.id === assistantId
               ? {
                   ...m,
-                  content:
-                    errText ||
-                    `LineScout could not reply right now (status ${res.status}). Please try again.`,
+                  content: errText || `LineScout could not reply right now (status ${res.status}). Please try again.`,
                 }
               : m
           )
@@ -394,11 +376,7 @@ export default function MachineSourcingPage() {
       const reader = res.body?.getReader();
       if (!reader) {
         const fullText = await res.text();
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: fullText } : m
-          )
-        );
+        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: fullText } : m)));
         return;
       }
 
@@ -412,18 +390,12 @@ export default function MachineSourcingPage() {
         const chunk = decoder.decode(value, { stream: true });
         full += chunk;
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: full } : m))
-        );
+        setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: full } : m)));
       }
 
       if (!full.trim()) {
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: "LineScout returned no reply text." }
-              : m
-          )
+          prev.map((m) => (m.id === assistantId ? { ...m, content: "LineScout returned no reply text." } : m))
         );
       }
     } catch (err) {
@@ -468,116 +440,99 @@ export default function MachineSourcingPage() {
     <div className="min-h-screen bg-slate-950 text-slate-50 text-sm sm:text-base">
       {/* Top bar */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
-  <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-    <div className="flex items-center gap-3">
-      <Link href="/" className="flex items-center" aria-label="LineScout home">
-        <Image
-          src="/linescout-logo.png"
-          alt="LineScout"
-          width={120}
-          height={28}
-          priority
-          className="h-[26px] w-auto"
-        />
-      </Link>
-    </div>
+        <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center" aria-label="LineScout home">
+              <Image
+                src="/linescout-logo.png"
+                alt="LineScout"
+                width={120}
+                height={28}
+                priority
+                className="h-[26px] w-auto"
+              />
+            </Link>
+          </div>
 
-    <div className="hidden items-center gap-3 md:flex">
-      <div className="text-sm text-slate-300">
-        Your co-pilot for machine sourcing
-      </div>
-      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold tracking-wide text-emerald-200">
-        BETA
-      </span>
-    </div>
+          <div className="hidden items-center gap-3 md:flex">
+            <div className="text-sm text-slate-300">Your co-pilot for machine sourcing</div>
+            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold tracking-wide text-emerald-200">
+              BETA
+            </span>
+          </div>
 
-    <nav className="hidden items-center gap-6 lg:flex">
-  <Link href="/#how" className="text-sm font-medium text-slate-300 hover:text-white">
-    How it works
-  </Link>
-  <Link href="/#products" className="text-sm font-medium text-slate-300 hover:text-white">
-    Modes
-  </Link>
-  <Link href="/#prompts" className="text-sm font-medium text-slate-300 hover:text-white">
-    Examples
-  </Link>
-</nav>
+          <nav className="hidden items-center gap-6 lg:flex">
+            <Link href="/#how" className="text-sm font-medium text-slate-300 hover:text-white">
+              How it works
+            </Link>
+            <Link href="/#products" className="text-sm font-medium text-slate-300 hover:text-white">
+              Modes
+            </Link>
+            <Link href="/#prompts" className="text-sm font-medium text-slate-300 hover:text-white">
+              Examples
+            </Link>
+          </nav>
 
-    <div className="flex items-center gap-2">
-      <Link
-        href="/machine-sourcing"
-        className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-white/10 sm:inline-flex"
-      >
-        Business plan
-      </Link>
-      <Link
-        href="/machine-sourcing"
-        className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
-      >
-        Start chat
-      </Link>
-    </div>
-  </div>
-</header>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/machine-sourcing"
+              className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-white/10 sm:inline-flex"
+            >
+              Business plan
+            </Link>
+            <Link
+              href="/machine-sourcing"
+              className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+            >
+              Start chat
+            </Link>
+          </div>
+        </div>
+      </header>
 
       {/* Main layout */}
       <main className="mx-auto flex max-w-6xl gap-4 px-4 py-3 md:py-5">
         {/* Sidebar */}
         <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 md:flex">
-          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Modes
-          </div>
+          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Modes</div>
 
           <button
-  type="button"
-  onClick={() => setMode("chat")}
-  className={`
-    flex flex-col items-start rounded-xl px-4 py-3 text-left transition
-    ring-1
-    ${
-      mode === "chat"
-        ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-        : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
-    }
-  `}
->
-  <span className="font-semibold">Machine Sourcing Chat</span>
-  <span className="mt-0.5 text-sm text-slate-400">
-    Ask about production lines, capacity, suppliers and budgets.
-  </span>
-</button>
+            type="button"
+            onClick={() => setMode("chat")}
+            className={`
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition
+              ring-1
+              ${
+                mode === "chat"
+                  ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
+                  : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
+              }
+            `}
+          >
+            <span className="font-semibold">Machine Sourcing Chat</span>
+            <span className="mt-0.5 text-sm text-slate-400">
+              Ask about production lines, capacity, suppliers and budgets.
+            </span>
+          </button>
 
-<button
-  type="button"
-  onClick={() => setMode("businessPlan")}
-  className={`
-    flex flex-col items-start rounded-xl px-4 py-3 text-left transition
-    ring-1
-    ${
-      mode === "businessPlan"
-        ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-        : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
-    }
-  `}
->
-  <span className="font-semibold">Business Plan Writer</span>
-  <span className="mt-0.5 text-sm text-slate-400">
-    Use your paid token to generate a full plan.
-  </span>
-</button>
+          <button
+            type="button"
+            onClick={() => setMode("businessPlan")}
+            className={`
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition
+              ring-1
+              ${
+                mode === "businessPlan"
+                  ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
+                  : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
+              }
+            `}
+          >
+            <span className="font-semibold">Business Plan Writer</span>
+            <span className="mt-0.5 text-sm text-slate-400">Use your paid token to generate a full plan.</span>
+          </button>
 
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm text-slate-400">
-            <div className="mb-1 font-semibold text-slate-200">
-              How tokens work
-            </div>
-            <p>
-              • Sourcing tokens unlock human-agent sourcing (exact quotation).
-              <br />
-              • Business plan tokens generate a full DOCX business plan.
-              <br />
-              • Each token is single use.
-            </p>
-          </div>
+          <TokensHelpCard />
         </aside>
 
         {/* Content */}
@@ -589,36 +544,36 @@ export default function MachineSourcingPage() {
           {/* Mobile mode switcher */}
           <div className="mb-3 flex gap-2 md:hidden">
             <button
-  type="button"
-  onClick={() => setMode("chat")}
-  className={`
-    flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
-    ring-1
-    ${
-      mode === "chat"
-        ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-        : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
-    }
-  `}
->
-  Chat
-</button>
+              type="button"
+              onClick={() => setMode("chat")}
+              className={`
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
+                ring-1
+                ${
+                  mode === "chat"
+                    ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
+                    : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
+                }
+              `}
+            >
+              Chat
+            </button>
 
-<button
-  type="button"
-  onClick={() => setMode("businessPlan")}
-  className={`
-    flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
-    ring-1
-    ${
-      mode === "businessPlan"
-        ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-        : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
-    }
-  `}
->
-  Business Plan
-</button>
+            <button
+              type="button"
+              onClick={() => setMode("businessPlan")}
+              className={`
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
+                ring-1
+                ${
+                  mode === "businessPlan"
+                    ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
+                    : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
+                }
+              `}
+            >
+              Business Plan
+            </button>
           </div>
 
           {mode === "chat" ? (
@@ -631,13 +586,7 @@ export default function MachineSourcingPage() {
               sourcingToken={sourcingToken}
               onChangeSourcingToken={setSourcingToken}
               onVerifyOrGetToken={handleVerifyOrGetToken}
-              verifyLabel={
-                sourcingToken.trim()
-                  ? verifying
-                    ? "Verifying…"
-                    : "Verify token"
-                  : "Get your token"
-              }
+              verifyLabel={sourcingToken.trim() ? (verifying ? "Verifying…" : "Verify token") : "Get your token"}
               verifyDisabled={verifying}
               verified={isVerified}
             />
@@ -655,9 +604,7 @@ export default function MachineSourcingPage() {
       {showLeadModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">
-              Let’s continue properly
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-100 mb-1">Let’s continue properly</h2>
             <p className="text-sm text-slate-400 mb-4">
               Please share your details so our team can support you better.
             </p>
@@ -672,9 +619,7 @@ export default function MachineSourcingPage() {
 
               <input
                 value={leadWhatsapp}
-                onChange={(e) =>
-                  setLeadWhatsapp(e.target.value.replace(/\D/g, ""))
-                }
+                onChange={(e) => setLeadWhatsapp(e.target.value.replace(/\D/g, ""))}
                 inputMode="numeric"
                 maxLength={13}
                 placeholder="WhatsApp number (e.g. 8037649956)"
@@ -704,9 +649,7 @@ export default function MachineSourcingPage() {
               {leadSubmitting ? "Saving…" : "Continue with LineScout"}
             </button>
 
-            <p className="mt-3 text-xs text-slate-500">
-              All fields are required to continue.
-            </p>
+            <p className="mt-3 text-xs text-slate-500">All fields are required to continue.</p>
           </div>
         </div>
       )}
@@ -715,9 +658,7 @@ export default function MachineSourcingPage() {
       {showHandoffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">
-              Ready for human agents
-            </h2>
+            <h2 className="text-lg font-semibold text-slate-100 mb-1">Ready for human agents</h2>
             <p className="text-sm text-slate-400 mb-4">
               Confirm your details and tell us briefly what you want to source.
             </p>
@@ -732,9 +673,7 @@ export default function MachineSourcingPage() {
 
               <input
                 value={handoffWhatsapp}
-                onChange={(e) =>
-                  setHandoffWhatsapp(e.target.value.replace(/\D/g, ""))
-                }
+                onChange={(e) => setHandoffWhatsapp(e.target.value.replace(/\D/g, ""))}
                 inputMode="numeric"
                 maxLength={13}
                 placeholder="WhatsApp number (e.g. 8037649956)"
@@ -772,12 +711,8 @@ export default function MachineSourcingPage() {
       {uiAlertOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">
-              {uiAlertTitle}
-            </h2>
-            <p className="text-sm text-slate-300 whitespace-pre-line">
-              {uiAlertMessage}
-            </p>
+            <h2 className="text-lg font-semibold text-slate-100 mb-1">{uiAlertTitle}</h2>
+            <p className="text-sm text-slate-300 whitespace-pre-line">{uiAlertMessage}</p>
 
             <button
               type="button"
@@ -787,6 +722,36 @@ export default function MachineSourcingPage() {
               OK
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TokensHelpCard() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full px-3 py-3 flex items-center justify-between"
+        aria-expanded={open}
+      >
+        <div className="text-sm font-semibold text-slate-200">How tokens work</div>
+        <div className="text-sm text-slate-500">{open ? "▾" : "▸"}</div>
+      </button>
+
+      {open && (
+        <div className="px-3 pb-3 text-sm text-slate-400 border-t border-slate-800">
+          <p className="pt-3">
+            • Sourcing tokens unlock human-agent sourcing (exact quotation).
+            <br />
+            • Business plan tokens generate a full DOCX business plan.
+            <br />
+            • Each token is single use.
+          </p>
         </div>
       )}
     </div>
@@ -830,72 +795,19 @@ function ChatMode({
 
   return (
     <div className="flex h-[calc(100vh-170px)] flex-col sm:h-[calc(100vh-160px)]">
-      {/* Sourcing token bar */}
-      <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-900/50 p-3 sm:p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="text-base sm:text-lg font-semibold text-slate-100">
-              Have your token?
-            </div>
-            <div className="mt-1 text-sm sm:text-base text-slate-400 leading-relaxed">
-              Paste your sourcing token to move to human agents for exact
-              quotation and landing cost. Meanwhile, you can start chatting with
-              LineScout.
-            </div>
+      {/* Token strip (less intrusive) */}
+      <TokenStrip
+        sourcingToken={sourcingToken}
+        onChangeSourcingToken={onChangeSourcingToken}
+        onVerifyOrGetToken={onVerifyOrGetToken}
+        verifyLabel={verifyLabel}
+        verifyDisabled={verifyDisabled}
+        verified={verified}
+      />
 
-            {verified && (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-3 py-1 text-xs sm:text-sm text-emerald-200">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Token verified
-              </div>
-            )}
-          </div>
-
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
-            <input
-              value={sourcingToken}
-              onChange={(e) => onChangeSourcingToken(e.target.value)}
-              placeholder="Paste sourcing token"
-              className="w-full sm:w-[340px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
-            />
-
-            <button
-  type="button"
-  onClick={onVerifyOrGetToken}
-  disabled={verifyDisabled}
-  className="
-    w-full sm:w-auto
-    inline-flex items-center justify-center
-    rounded-xl
-    bg-emerald-500/15
-    px-4 py-2
-    text-sm sm:text-base
-    font-semibold
-    text-emerald-100
-    ring-1 ring-emerald-400/35
-    hover:bg-emerald-500/20
-    whitespace-nowrap
-    disabled:opacity-60
-    disabled:cursor-not-allowed
-  "
->
-  {verifyLabel}
-</button>
-          </div>
-        </div>
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="flex-1 space-y-3 overflow-y-auto py-2 pr-1"
-      >
+      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto py-2 pr-1">
         {messages.map((m) => (
-          <div
-            key={m.id}
-            className={`flex ${
-              m.role === "user" ? "justify-end" : "justify-start"
-            }`}
-          >
+          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base ${
                 m.role === "user"
@@ -918,10 +830,7 @@ function ChatMode({
         )}
       </div>
 
-      <form
-        onSubmit={onSend}
-        className="mt-2 border-t border-slate-800 bg-slate-950/95 pt-2"
-      >
+      <form onSubmit={onSend} className="mt-2 border-t border-slate-800 bg-slate-950/95 pt-2">
         <div className="flex flex-col gap-2">
           <textarea
             className="min-h-[70px] w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-emerald-500"
@@ -930,34 +839,149 @@ function ChatMode({
             onChange={(e) => onChangeInput(e.target.value)}
           />
           <div className="flex items-center justify-end gap-2 text-sm text-slate-500">
-  <span className="hidden sm:inline mr-auto">
-    LineScout is advisory. Human agents at Sure Imports handle actual
-    product sourcing in China.
-  </span>
+            <span className="hidden sm:inline mr-auto">
+              LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
+            </span>
 
-  <button
-    type="submit"
-    disabled={sending || !input.trim()}
-    className="
-      inline-flex items-center justify-center
-      rounded-xl
-      bg-emerald-500/15
-      px-5 py-2.5
-      text-sm sm:text-base
-      font-semibold
-      text-emerald-100
-      ring-1 ring-emerald-400/35
-      hover:bg-emerald-500/20
-      whitespace-nowrap
-      disabled:opacity-60
-      disabled:cursor-not-allowed
-    "
-  >
-    {sending ? "Sending…" : "Send to LineScout"}
-  </button>
-</div>
+            <button
+              type="submit"
+              disabled={sending || !input.trim()}
+              className="
+                inline-flex items-center justify-center
+                rounded-xl
+                bg-emerald-500/15
+                px-5 py-2.5
+                text-sm sm:text-base
+                font-semibold
+                text-emerald-100
+                ring-1 ring-emerald-400/35
+                hover:bg-emerald-500/20
+                whitespace-nowrap
+                disabled:opacity-60
+                disabled:cursor-not-allowed
+              "
+            >
+              {sending ? "Sending…" : "Send to LineScout"}
+            </button>
+          </div>
         </div>
       </form>
     </div>
   );
+}
+
+function TokenStrip({
+  sourcingToken,
+  onChangeSourcingToken,
+  onVerifyOrGetToken,
+  verifyLabel,
+  verifyDisabled,
+  verified,
+}: {
+  sourcingToken: string;
+  onChangeSourcingToken: (v: string) => void;
+  onVerifyOrGetToken: () => void;
+  verifyLabel: string;
+  verifyDisabled: boolean;
+  verified: boolean;
+}) {
+  const hasToken = Boolean(sourcingToken.trim());
+  const [open, setOpen] = useState<boolean>(hasToken || verified);
+
+  useEffect(() => {
+    if (verified) setOpen(true);
+  }, [verified]);
+
+  useEffect(() => {
+    if (hasToken) setOpen(true);
+  }, [hasToken]);
+
+  return (
+  <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950/60">
+    {/* Header row (clickable) */}
+<div
+  role="button"
+  tabIndex={0}
+  onClick={() => setOpen((v) => !v)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setOpen((v) => !v);
+    }
+  }}
+  className="w-full px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-3 cursor-pointer select-none"
+  aria-expanded={open}
+>
+  <div className="min-w-0 flex items-center gap-2">
+    <span className="text-sm sm:text-base font-semibold text-slate-100">
+      Sourcing token
+    </span>
+
+    {verified ? (
+      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2.5 py-1 text-xs text-emerald-200">
+        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+        Verified
+      </span>
+    ) : hasToken ? (
+      <span className="text-xs text-slate-400">Token pasted (not verified)</span>
+    ) : (
+      <span className="text-xs text-slate-400">Optional: unlock human agents</span>
+    )}
+  </div>
+
+  <span className="text-slate-500 text-sm">{open ? "▾" : "▸"}</span>
+</div>
+
+    {open && (
+      <div className="px-3 pb-3 sm:px-4 sm:pb-4 border-t border-slate-800">
+        <div className="pt-3 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2 lg:items-center">
+          <div className="min-w-0">
+            <div className="text-sm text-slate-400 leading-relaxed">
+              Paste your{" "}
+              <span className="text-slate-200 font-semibold">sourcing token</span>{" "}
+              to move to human agents for exact quotation and landing cost. You
+              can still chat without it.
+            </div>
+          </div>
+
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
+            <input
+              value={sourcingToken}
+              onChange={(e) => onChangeSourcingToken(e.target.value)}
+              placeholder="Paste sourcing token"
+              className="w-full sm:w-[340px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
+            />
+
+            <button
+              type="button"
+              onClick={onVerifyOrGetToken}
+              disabled={verifyDisabled}
+              className="
+                w-full sm:w-auto
+                inline-flex items-center justify-center
+                rounded-xl
+                bg-emerald-500/15
+                px-4 py-2
+                text-sm sm:text-base
+                font-semibold
+                text-emerald-100
+                ring-1 ring-emerald-400/35
+                hover:bg-emerald-500/20
+                whitespace-nowrap
+                disabled:opacity-60
+                disabled:cursor-not-allowed
+              "
+            >
+              {verifyLabel}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-2 text-xs text-slate-500">
+          Tip: If you already paid, paste the token and click verify.
+        </div>
+      </div>
+    )}
+  </div>
+);
 }
