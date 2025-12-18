@@ -117,23 +117,17 @@ export default function MachineSourcingPage() {
     const digits = raw.replace(/\D/g, "");
 
     if (digits.startsWith("234")) {
-      if (digits.length !== 13) {
-        throw new Error("Invalid Nigerian WhatsApp number.");
-      }
+      if (digits.length !== 13) throw new Error("Invalid Nigerian WhatsApp number.");
       return digits;
     }
 
     if (digits.startsWith("0")) {
       const trimmed = digits.slice(1);
-      if (trimmed.length !== 10) {
-        throw new Error("Invalid Nigerian WhatsApp number.");
-      }
+      if (trimmed.length !== 10) throw new Error("Invalid Nigerian WhatsApp number.");
       return "234" + trimmed;
     }
 
-    if (digits.length === 10) {
-      return "234" + digits;
-    }
+    if (digits.length === 10) return "234" + digits;
 
     throw new Error("Please enter a valid Nigerian WhatsApp number.");
   }
@@ -169,17 +163,13 @@ export default function MachineSourcingPage() {
           whatsapp,
           email,
           sourcingRequest: intent,
-          meta: {
-            source: "linescout-chat",
-          },
+          meta: { source: "linescout-chat" },
         }),
       });
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || !data.ok) {
-        throw new Error(data?.error || "Failed to save lead");
-      }
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to save lead");
 
       // Persist for follow ups and future flows
       localStorage.setItem("linescout_lead_captured", "true");
@@ -194,7 +184,7 @@ export default function MachineSourcingPage() {
       // Prefill handoff fields too
       setHandoffEmail(email);
       setHandoffWhatsapp(whatsapp);
-    } catch (err) {
+    } catch {
       alert("Could not save your details. Please try again.");
     } finally {
       setLeadSubmitting(false);
@@ -235,10 +225,7 @@ export default function MachineSourcingPage() {
       const res = await fetch("/api/verify-sourcing-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: t,
-          type: "sourcing",
-        }),
+        body: JSON.stringify({ token: t, type: "sourcing" }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -249,7 +236,6 @@ export default function MachineSourcingPage() {
         return;
       }
 
-      // Verified
       setIsVerified(true);
 
       // Prefill email from token record (you said you store only email)
@@ -260,7 +246,7 @@ export default function MachineSourcingPage() {
       if (storedWhatsapp && !handoffWhatsapp) setHandoffWhatsapp(storedWhatsapp);
 
       setShowHandoffModal(true);
-    } catch (e) {
+    } catch {
       alert("Could not verify token. Please try again.");
       setIsVerified(false);
     } finally {
@@ -308,9 +294,7 @@ export default function MachineSourcingPage() {
 
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || !data.ok) {
-        throw new Error(data?.error || data?.message || "Could not submit handoff");
-      }
+      if (!res.ok || !data.ok) throw new Error(data?.error || data?.message || "Could not submit handoff");
 
       setShowHandoffModal(false);
       setHandoffContext("");
@@ -437,7 +421,8 @@ export default function MachineSourcingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 text-sm sm:text-base">
+    // Key fix for mobile: use 100dvh and a flex column shell so the composer is always visible
+    <div className="h-[100dvh] min-h-[100dvh] bg-slate-950 text-slate-50 text-sm sm:text-base flex flex-col">
       {/* Top bar */}
       <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
@@ -491,7 +476,7 @@ export default function MachineSourcingPage() {
       </header>
 
       {/* Main layout */}
-      <main className="mx-auto flex max-w-6xl gap-4 px-4 py-3 md:py-5">
+      <main className="mx-auto w-full flex-1 min-h-0 max-w-6xl gap-4 px-4 py-3 md:py-5 flex">
         {/* Sidebar */}
         <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 md:flex">
           <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Modes</div>
@@ -500,8 +485,7 @@ export default function MachineSourcingPage() {
             type="button"
             onClick={() => setMode("chat")}
             className={`
-              flex flex-col items-start rounded-xl px-4 py-3 text-left transition
-              ring-1
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition ring-1
               ${
                 mode === "chat"
                   ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
@@ -519,8 +503,7 @@ export default function MachineSourcingPage() {
             type="button"
             onClick={() => setMode("businessPlan")}
             className={`
-              flex flex-col items-start rounded-xl px-4 py-3 text-left transition
-              ring-1
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition ring-1
               ${
                 mode === "businessPlan"
                   ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
@@ -532,12 +515,21 @@ export default function MachineSourcingPage() {
             <span className="mt-0.5 text-sm text-slate-400">Use your paid token to generate a full plan.</span>
           </button>
 
-          <TokensHelpCard />
+          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm text-slate-400">
+            <div className="mb-1 font-semibold text-slate-200">How tokens work</div>
+            <p>
+              • Sourcing tokens unlock human-agent sourcing (exact quotation).
+              <br />
+              • Business plan tokens generate a full DOCX business plan.
+              <br />
+              • Each token is single use.
+            </p>
+          </div>
         </aside>
 
         {/* Content */}
         <section
-          className="flex-1 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4"
+          className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4 flex flex-col"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -547,8 +539,7 @@ export default function MachineSourcingPage() {
               type="button"
               onClick={() => setMode("chat")}
               className={`
-                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
-                ring-1
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ring-1
                 ${
                   mode === "chat"
                     ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
@@ -563,8 +554,7 @@ export default function MachineSourcingPage() {
               type="button"
               onClick={() => setMode("businessPlan")}
               className={`
-                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition
-                ring-1
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ring-1
                 ${
                   mode === "businessPlan"
                     ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
@@ -576,27 +566,32 @@ export default function MachineSourcingPage() {
             </button>
           </div>
 
-          {mode === "chat" ? (
-            <ChatMode
-              messages={messages}
-              input={input}
-              sending={sending}
-              onChangeInput={setInput}
-              onSend={handleSendMessage}
-              sourcingToken={sourcingToken}
-              onChangeSourcingToken={setSourcingToken}
-              onVerifyOrGetToken={handleVerifyOrGetToken}
-              verifyLabel={sourcingToken.trim() ? (verifying ? "Verifying…" : "Verify token") : "Get your token"}
-              verifyDisabled={verifying}
-              verified={isVerified}
-            />
-          ) : (
-            <div className="flex h-[calc(100vh-170px)] flex-col sm:h-[calc(100vh-160px)]">
-              <div className="flex-1 overflow-y-auto pr-1 pb-2">
-                <BusinessPlanForm />
+          {/* Important: make inner content min-h-0 so scroll areas behave and the send button stays visible */}
+          <div className="flex-1 min-h-0">
+            {mode === "chat" ? (
+              <ChatMode
+                messages={messages}
+                input={input}
+                sending={sending}
+                onChangeInput={setInput}
+                onSend={handleSendMessage}
+                sourcingToken={sourcingToken}
+                onChangeSourcingToken={setSourcingToken}
+                onVerifyOrGetToken={handleVerifyOrGetToken}
+                verifyLabel={
+                  sourcingToken.trim() ? (verifying ? "Verifying…" : "Verify token") : "Get your token"
+                }
+                verifyDisabled={verifying}
+                verified={isVerified}
+              />
+            ) : (
+              <div className="h-full min-h-0 flex flex-col">
+                <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+                  <BusinessPlanForm />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       </main>
 
@@ -605,9 +600,7 @@ export default function MachineSourcingPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
             <h2 className="text-lg font-semibold text-slate-100 mb-1">Let’s continue properly</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Please share your details so our team can support you better.
-            </p>
+            <p className="text-sm text-slate-400 mb-4">Please share your details so our team can support you better.</p>
 
             <div className="space-y-3">
               <input
@@ -659,9 +652,7 @@ export default function MachineSourcingPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
             <h2 className="text-lg font-semibold text-slate-100 mb-1">Ready for human agents</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Confirm your details and tell us briefly what you want to source.
-            </p>
+            <p className="text-sm text-slate-400 mb-4">Confirm your details and tell us briefly what you want to source.</p>
 
             <div className="space-y-3">
               <input
@@ -728,36 +719,6 @@ export default function MachineSourcingPage() {
   );
 }
 
-function TokensHelpCard() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full px-3 py-3 flex items-center justify-between"
-        aria-expanded={open}
-      >
-        <div className="text-sm font-semibold text-slate-200">How tokens work</div>
-        <div className="text-sm text-slate-500">{open ? "▾" : "▸"}</div>
-      </button>
-
-      {open && (
-        <div className="px-3 pb-3 text-sm text-slate-400 border-t border-slate-800">
-          <p className="pt-3">
-            • Sourcing tokens unlock human-agent sourcing (exact quotation).
-            <br />
-            • Business plan tokens generate a full DOCX business plan.
-            <br />
-            • Each token is single use.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 type ChatModeProps = {
   messages: ChatMessage[];
   input: string;
@@ -794,8 +755,9 @@ function ChatMode({
   }, [messages]);
 
   return (
-    <div className="flex h-[calc(100vh-170px)] flex-col sm:h-[calc(100vh-160px)]">
-      {/* Token strip (less intrusive) */}
+    // Key fix: full height from parent, and min-h-0 so the composer is always visible on mobile
+    <div className="h-full min-h-0 flex flex-col">
+      {/* Token strip */}
       <TokenStrip
         sourcingToken={sourcingToken}
         onChangeSourcingToken={onChangeSourcingToken}
@@ -805,14 +767,13 @@ function ChatMode({
         verified={verified}
       />
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto py-2 pr-1">
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 min-h-0 space-y-3 overflow-y-auto py-2 pr-1">
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base ${
-                m.role === "user"
-                  ? "rounded-br-sm bg-[#12356b] text-slate-50"
-                  : "rounded-bl-sm bg-slate-800 text-slate-100"
+                m.role === "user" ? "rounded-br-sm bg-[#12356b] text-slate-50" : "rounded-bl-sm bg-slate-800 text-slate-100"
               }`}
             >
               {m.content}
@@ -830,7 +791,11 @@ function ChatMode({
         )}
       </div>
 
-      <form onSubmit={onSend} className="mt-2 border-t border-slate-800 bg-slate-950/95 pt-2">
+      {/* Composer (always visible on mobile) */}
+      <form
+        onSubmit={onSend}
+        className="sticky bottom-0 border-t border-slate-800 bg-slate-950/95 pt-2 pb-[calc(env(safe-area-inset-bottom)+10px)]"
+      >
         <div className="flex flex-col gap-2">
           <textarea
             className="min-h-[70px] w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-emerald-500"
@@ -838,8 +803,9 @@ function ChatMode({
             value={input}
             onChange={(e) => onChangeInput(e.target.value)}
           />
+
           <div className="flex items-center justify-end gap-2 text-sm text-slate-500">
-            <span className="hidden sm:inline mr-auto">
+            <span className="hidden sm:inline">
               LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
             </span>
 
@@ -847,7 +813,8 @@ function ChatMode({
               type="submit"
               disabled={sending || !input.trim()}
               className="
-                inline-flex items-center justify-center
+                touch-manipulation
+                inline-flex items-center justify-end
                 rounded-xl
                 bg-emerald-500/15
                 px-5 py-2.5
@@ -870,6 +837,15 @@ function ChatMode({
   );
 }
 
+type TokenStripProps = {
+  sourcingToken: string;
+  onChangeSourcingToken: (v: string) => void;
+  onVerifyOrGetToken: () => void;
+  verifyLabel: string;
+  verifyDisabled: boolean;
+  verified: boolean;
+};
+
 function TokenStrip({
   sourcingToken,
   onChangeSourcingToken,
@@ -877,111 +853,94 @@ function TokenStrip({
   verifyLabel,
   verifyDisabled,
   verified,
-}: {
-  sourcingToken: string;
-  onChangeSourcingToken: (v: string) => void;
-  onVerifyOrGetToken: () => void;
-  verifyLabel: string;
-  verifyDisabled: boolean;
-  verified: boolean;
-}) {
+}: TokenStripProps) {
+  const [open, setOpen] = useState(false);
   const hasToken = Boolean(sourcingToken.trim());
-  const [open, setOpen] = useState<boolean>(hasToken || verified);
 
-  useEffect(() => {
-    if (verified) setOpen(true);
-  }, [verified]);
-
-  useEffect(() => {
-    if (hasToken) setOpen(true);
-  }, [hasToken]);
+  function onToggle() {
+    setOpen((v) => !v);
+  }
 
   return (
-  <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950/60">
-    {/* Header row (clickable) */}
-<div
-  role="button"
-  tabIndex={0}
-  onClick={() => setOpen((v) => !v)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      setOpen((v) => !v);
-    }
-  }}
-  className="w-full px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-3 cursor-pointer select-none"
-  aria-expanded={open}
->
-  <div className="min-w-0 flex items-center gap-2">
-    <span className="text-sm sm:text-base font-semibold text-slate-100">
-      Sourcing token
-    </span>
+    <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+      {/* Header (toggle only, no nested buttons) */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="w-full px-3 py-2 sm:px-4 sm:py-3 flex items-center justify-between gap-3 cursor-pointer select-none"
+        aria-expanded={open}
+      >
+        <div className="min-w-0 flex items-center gap-2">
+          <span className="text-sm sm:text-base font-semibold text-slate-100">Sourcing token</span>
 
-    {verified ? (
-      <span className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2.5 py-1 text-xs text-emerald-200">
-        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        Verified
-      </span>
-    ) : hasToken ? (
-      <span className="text-xs text-slate-400">Token pasted (not verified)</span>
-    ) : (
-      <span className="text-xs text-slate-400">Optional: unlock human agents</span>
-    )}
-  </div>
+          {verified ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2.5 py-1 text-xs text-emerald-200">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Verified
+            </span>
+          ) : hasToken ? (
+            <span className="text-xs text-slate-400">Token pasted</span>
+          ) : (
+            <span className="text-xs text-slate-400">Optional</span>
+          )}
+        </div>
 
-  <span className="text-slate-500 text-sm">{open ? "▾" : "▸"}</span>
-</div>
+        <span className="text-slate-500 text-sm">{open ? "▾" : "▸"}</span>
+      </div>
 
-    {open && (
-      <div className="px-3 pb-3 sm:px-4 sm:pb-4 border-t border-slate-800">
-        <div className="pt-3 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2 lg:items-center">
-          <div className="min-w-0">
-            <div className="text-sm text-slate-400 leading-relaxed">
-              Paste your{" "}
-              <span className="text-slate-200 font-semibold">sourcing token</span>{" "}
-              to move to human agents for exact quotation and landing cost. You
-              can still chat without it.
+      {open && (
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-slate-800">
+          <div className="pt-3 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2 lg:items-center">
+            <div className="min-w-0">
+              <div className="text-sm text-slate-400 leading-relaxed">
+                Paste your <span className="text-slate-200 font-semibold">sourcing token</span> to move to human agents for
+                exact quotation and landing cost. You can still chat without it.
+              </div>
+              <div className="mt-2 text-xs text-slate-500">Tip: If you already paid, paste the token and click verify.</div>
+            </div>
+
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
+              <input
+                value={sourcingToken}
+                onChange={(e) => onChangeSourcingToken(e.target.value)}
+                placeholder="Paste sourcing token"
+                className="touch-manipulation w-full sm:w-[340px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
+              />
+
+              <button
+                type="button"
+                onClick={onVerifyOrGetToken}
+                disabled={verifyDisabled}
+                className="
+                  touch-manipulation
+                  w-full sm:w-auto
+                  inline-flex items-center justify-center
+                  rounded-xl
+                  bg-emerald-500/15
+                  px-4 py-2
+                  text-sm sm:text-base
+                  font-semibold
+                  text-emerald-100
+                  ring-1 ring-emerald-400/35
+                  hover:bg-emerald-500/20
+                  whitespace-nowrap
+                  disabled:opacity-60
+                  disabled:cursor-not-allowed
+                "
+              >
+                {verifyLabel}
+              </button>
             </div>
           </div>
-
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
-            <input
-              value={sourcingToken}
-              onChange={(e) => onChangeSourcingToken(e.target.value)}
-              placeholder="Paste sourcing token"
-              className="w-full sm:w-[340px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
-            />
-
-            <button
-              type="button"
-              onClick={onVerifyOrGetToken}
-              disabled={verifyDisabled}
-              className="
-                w-full sm:w-auto
-                inline-flex items-center justify-center
-                rounded-xl
-                bg-emerald-500/15
-                px-4 py-2
-                text-sm sm:text-base
-                font-semibold
-                text-emerald-100
-                ring-1 ring-emerald-400/35
-                hover:bg-emerald-500/20
-                whitespace-nowrap
-                disabled:opacity-60
-                disabled:cursor-not-allowed
-              "
-            >
-              {verifyLabel}
-            </button>
-          </div>
         </div>
-
-        <div className="mt-2 text-xs text-slate-500">
-          Tip: If you already paid, paste the token and click verify.
-        </div>
-      </div>
-    )}
-  </div>
-);
+      )}
+    </div>
+  );
 }
