@@ -15,14 +15,29 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  applicationName: "LineScout",
   title: "LineScout – Machine Sourcing Intelligence by Sure Imports",
   description:
     "LineScout helps entrepreneurs design production lines, estimate realistic machine and landing costs, and generate full business plans powered by Sure Imports’ expertise.",
+  manifest: "/manifest.webmanifest",
+  themeColor: "#0B0B0E",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "LineScout",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {/* Meta Pixel Base */}
         <Script

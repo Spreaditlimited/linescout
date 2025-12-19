@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start"
   },
   "dependencies": {
     "docx": "^9.5.1",
@@ -14,6 +13,7 @@
     "dotenv": "^17.2.3",
     "mysql2": "^3.15.3",
     "next": "16.0.7",
+    "next-pwa": "^5.6.0",
     "pdf-lib": "^1.17.1",
     "pizzip": "^3.2.0",
     "react": "19.2.0",

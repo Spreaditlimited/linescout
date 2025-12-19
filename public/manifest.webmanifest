@@ -1,0 +1,33 @@
+{
+  "name": "LineScout",
+  "short_name": "LineScout",
+  "description": "AI-powered machine sourcing and business plan writer for Nigerian entrepreneurs.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2D3461",
+  "theme_color": "#1F9117",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
