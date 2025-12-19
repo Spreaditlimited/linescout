@@ -754,10 +754,11 @@ function ChatMode({
     }
   }, [messages]);
 
-  return (
-    // Key fix: full height from parent, and min-h-0 so the composer is always visible on mobile
-    <div className="h-full min-h-0 flex flex-col">
-      {/* Token strip */}
+return (
+  // ChatMode root must be a bounded height container from parent.
+  <div className="h-full min-h-0 flex flex-col">
+    {/* Token strip: pin it like WhatsApp header */}
+    <div className="sticky top-0 z-20">
       <TokenStrip
         sourcingToken={sourcingToken}
         onChangeSourcingToken={onChangeSourcingToken}
@@ -766,75 +767,85 @@ function ChatMode({
         verifyDisabled={verifyDisabled}
         verified={verified}
       />
+    </div>
 
-      {/* Messages */}
-      <div ref={scrollRef} className="flex-1 min-h-0 space-y-3 overflow-y-auto py-2 pr-1">
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base ${
-                m.role === "user" ? "rounded-br-sm bg-[#12356b] text-slate-50" : "rounded-bl-sm bg-slate-800 text-slate-100"
-              }`}
-            >
-              {m.content}
-            </div>
-          </div>
-        ))}
-
-        {sending && (
-          <div className="flex justify-start">
-            <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>LineScout is thinking…</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Composer (always visible on mobile) */}
-      <form
-        onSubmit={onSend}
-        className="sticky bottom-0 border-t border-slate-800 bg-slate-950/95 pt-2 pb-[calc(env(safe-area-inset-bottom)+10px)]"
-      >
-        <div className="flex flex-col gap-2">
-          <textarea
-            className="min-h-[70px] w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-emerald-500"
-            placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
-            value={input}
-            onChange={(e) => onChangeInput(e.target.value)}
-          />
-
-          <div className="flex items-center justify-end gap-2 text-sm text-slate-500">
-            <span className="hidden sm:inline">
-              LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
-            </span>
-
-            <button
-              type="submit"
-              disabled={sending || !input.trim()}
-              className="
-                touch-manipulation
-                inline-flex items-center justify-end
-                rounded-xl
-                bg-emerald-500/15
-                px-5 py-2.5
-                text-sm sm:text-base
-                font-semibold
-                text-emerald-100
-                ring-1 ring-emerald-400/35
-                hover:bg-emerald-500/20
-                whitespace-nowrap
-                disabled:opacity-60
-                disabled:cursor-not-allowed
-              "
-            >
-              {sending ? "Sending…" : "Send to LineScout"}
-            </button>
+    {/* Messages: the ONLY scroll area */}
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 space-y-3 overflow-y-auto py-2 pr-1"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
+      {messages.map((m) => (
+        <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base ${
+              m.role === "user"
+                ? "rounded-br-sm bg-[#12356b] text-slate-50"
+                : "rounded-bl-sm bg-slate-800 text-slate-100"
+            }`}
+          >
+            {m.content}
           </div>
         </div>
-      </form>
+      ))}
+
+      {sending && (
+        <div className="flex justify-start">
+          <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>LineScout is thinking…</span>
+          </div>
+        </div>
+      )}
     </div>
-  );
+
+    {/* Composer: pinned bottom, not affecting message scroll */}
+    <form
+      onSubmit={onSend}
+      className="sticky bottom-0 z-20 border-t border-slate-800 bg-slate-950/95"
+      style={{
+        paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
+      }}
+    >
+      <div className="flex flex-col gap-2 px-0 pt-2">
+        <textarea
+          className="min-h-[70px] w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-emerald-500"
+          placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
+          value={input}
+          onChange={(e) => onChangeInput(e.target.value)}
+        />
+
+        <div className="flex items-center justify-end gap-2 text-sm text-slate-500">
+          <span className="hidden sm:inline mr-auto">
+            LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
+          </span>
+
+          <button
+            type="submit"
+            disabled={sending || !input.trim()}
+            className="
+              touch-manipulation
+              inline-flex items-center justify-center
+              rounded-xl
+              bg-emerald-500/15
+              px-5 py-2.5
+              text-sm sm:text-base
+              font-semibold
+              text-emerald-100
+              ring-1 ring-emerald-400/35
+              hover:bg-emerald-500/20
+              whitespace-nowrap
+              disabled:opacity-60
+              disabled:cursor-not-allowed
+            "
+          >
+            {sending ? "Sending…" : "Send to LineScout"}
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+);
 }
 
 type TokenStripProps = {
