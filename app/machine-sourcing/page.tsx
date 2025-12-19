@@ -749,22 +749,21 @@ function ChatMode({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [composerH, setComposerH] = useState(120);
 
-  // Auto-resize textarea as user types
+  const [composerH, setComposerH] = useState(120);
+  const [kbOffset, setKbOffset] = useState(0);
+
+  // Auto-resize textarea as user types (WhatsApp-like, capped)
   useEffect(() => {
     if (!textareaRef.current) return;
     const textarea = textareaRef.current;
-    
-    // Reset height to measure scrollHeight properly
-    textarea.style.height = '70px';
-    
-    // Set new height (max 200px like WhatsApp)
+
+    textarea.style.height = "auto";
     const newHeight = Math.min(textarea.scrollHeight, 200);
-    textarea.style.height = `${newHeight}px`;
+    textarea.style.height = `${Math.max(newHeight, 70)}px`;
   }, [input]);
 
-  // Track composer height changes
+  // Track composer height changes (so we can pad the message list correctly)
   useEffect(() => {
     if (!composerRef.current) return;
 
@@ -784,7 +783,31 @@ function ChatMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-scroll on new messages
+  // Keyboard / viewport handling (mobile WhatsApp feel)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const update = () => {
+      // iOS Safari/Chrome: when keyboard opens, vv.height shrinks.
+      // offsetTop can be non-zero when zoomed/scrolling; include it.
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbOffset(offset);
+    };
+
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Auto-scroll on new messages (after layout settles)
   useEffect(() => {
     if (!scrollRef.current) return;
     requestAnimationFrame(() => {
@@ -793,18 +816,18 @@ function ChatMode({
     });
   }, [messages, sending]);
 
-  // Handle Enter key (send on Enter, new line on Shift+Enter)
+  // Enter sends, Shift+Enter creates a new line
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (input.trim() && !sending) {
-        onSend(e as any);
+        composerRef.current?.requestSubmit();
       }
     }
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col relative">
+    <div className="h-full min-h-0 flex flex-col">
       {/* Token strip */}
       <div className="sticky top-0 z-20 flex-shrink-0">
         <TokenStrip
@@ -826,10 +849,11 @@ function ChatMode({
           overscrollBehavior: "contain",
         }}
       >
-        <div 
+        <div
           className="space-y-3 py-2 pr-1"
           style={{
-            paddingBottom: composerH + 12,
+            // Make room for composer + keyboard so the last message is never hidden
+            paddingBottom: composerH + kbOffset + 12,
           }}
         >
           {messages.map((m) => (
@@ -857,16 +881,18 @@ function ChatMode({
         </div>
       </div>
 
-      {/* Composer - fixed at bottom */}
+      {/* Composer - pinned bottom, lifted above keyboard on mobile */}
       <form
         ref={composerRef}
         onSubmit={onSend}
-        className="flex-shrink-0 border-t border-slate-800 bg-slate-950"
+        className="flex-shrink-0 z-20 border-t border-slate-800 bg-slate-950"
         style={{
-          position: 'sticky',
+          position: "sticky",
           bottom: 0,
-          paddingTop: '8px',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 10px)',
+          transform: kbOffset ? `translateY(-${kbOffset}px)` : undefined,
+          paddingTop: "8px",
+          paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
+          willChange: kbOffset ? "transform" : undefined,
         }}
       >
         <div className="flex flex-col gap-2 px-2 sm:px-0">
@@ -880,8 +906,8 @@ function ChatMode({
             rows={1}
           />
 
-          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm text-slate-500 pb-1">
-            <span className="hidden sm:inline text-[10px] sm:text-xs leading-tight flex-1">
+          <div className="flex items-center justify-end gap-2 text-xs sm:text-sm text-slate-500 pb-1">
+            <span className="hidden sm:inline text-[10px] sm:text-xs leading-tight mr-auto">
               LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
             </span>
 
@@ -893,7 +919,7 @@ function ChatMode({
                 inline-flex items-center justify-center
                 rounded-xl
                 bg-emerald-500/15
-                px-4 sm:px-5 
+                px-4 sm:px-5
                 py-2 sm:py-2.5
                 text-sm sm:text-base
                 font-semibold
@@ -908,7 +934,7 @@ function ChatMode({
                 flex-shrink-0
               "
             >
-              {sending ? "Sending…" : "Send"}
+              {sending ? "Sending…" : "Send to LineScout"}
             </button>
           </div>
         </div>
@@ -916,7 +942,6 @@ function ChatMode({
     </div>
   );
 }
-
 
 type TokenStripProps = {
   sourcingToken: string;
