@@ -64,6 +64,21 @@ export default function MachineSourcingPage() {
     messagesRef.current = messages;
   }, [messages]);
 
+  // Lock document scroll for true mobile app feel (ChatGPT/WhatsApp style)
+  // This is layout-only, it does not touch business logic.
+  useEffect(() => {
+    const prevDocOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.documentElement.style.overflow = prevDocOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+    };
+  }, []);
+
   const makeId = () => Math.random().toString(36).slice(2);
 
   // Persistent sessionId (stored once per browser)
@@ -421,10 +436,10 @@ export default function MachineSourcingPage() {
   }
 
   return (
-    // Key fix for mobile: use 100dvh and a flex column shell so the composer is always visible
-    <div className="h-[100dvh] min-h-[100dvh] bg-slate-950 text-slate-50 text-sm sm:text-base flex flex-col">
+    // App shell: fixed-height, no page scroll, mobile app feel
+    <div className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-slate-950 text-slate-50 text-sm sm:text-base flex flex-col">
       {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
+      <header className="flex-shrink-0 sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center" aria-label="LineScout home">
@@ -475,10 +490,10 @@ export default function MachineSourcingPage() {
         </div>
       </header>
 
-      {/* Main layout */}
-      <main className="mx-auto w-full flex-1 min-h-0 max-w-6xl gap-4 px-4 py-3 md:py-5 flex">
+      {/* Main layout: contained, no outer scroll */}
+      <main className="mx-auto w-full flex-1 min-h-0 overflow-hidden max-w-6xl gap-4 px-4 py-3 md:py-5 flex">
         {/* Sidebar */}
-        <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 md:flex">
+        <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 md:flex overflow-hidden">
           <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Modes</div>
 
           <button
@@ -529,12 +544,12 @@ export default function MachineSourcingPage() {
 
         {/* Content */}
         <section
-          className="flex-1 min-h-0 rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4 flex flex-col"
+          className="flex-1 min-h-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4 flex flex-col"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
           {/* Mobile mode switcher */}
-          <div className="mb-3 flex gap-2 md:hidden">
+          <div className="mb-3 flex gap-2 md:hidden flex-shrink-0">
             <button
               type="button"
               onClick={() => setMode("chat")}
@@ -566,8 +581,8 @@ export default function MachineSourcingPage() {
             </button>
           </div>
 
-          {/* Important: make inner content min-h-0 so scroll areas behave and the send button stays visible */}
-          <div className="flex-1 min-h-0">
+          {/* Inner content must be bounded and non-scrolling so ChatMode owns scroll */}
+          <div className="flex-1 min-h-0 overflow-hidden">
             {mode === "chat" ? (
               <ChatMode
                 messages={messages}
@@ -578,14 +593,12 @@ export default function MachineSourcingPage() {
                 sourcingToken={sourcingToken}
                 onChangeSourcingToken={setSourcingToken}
                 onVerifyOrGetToken={handleVerifyOrGetToken}
-                verifyLabel={
-                  sourcingToken.trim() ? (verifying ? "Verifying…" : "Verify token") : "Get your token"
-                }
+                verifyLabel={sourcingToken.trim() ? (verifying ? "Verifying…" : "Verify token") : "Get your token"}
                 verifyDisabled={verifying}
                 verified={isVerified}
               />
             ) : (
-              <div className="h-full min-h-0 flex flex-col">
+              <div className="h-full min-h-0 flex flex-col overflow-hidden">
                 <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-[calc(env(safe-area-inset-bottom)+12px)]">
                   <BusinessPlanForm />
                 </div>
@@ -783,7 +796,7 @@ function ChatMode({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keyboard / viewport handling (mobile WhatsApp feel)
+  // Keyboard / viewport handling (mobile chat feel)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -791,8 +804,6 @@ function ChatMode({
     if (!vv) return;
 
     const update = () => {
-      // iOS Safari/Chrome: when keyboard opens, vv.height shrinks.
-      // offsetTop can be non-zero when zoomed/scrolling; include it.
       const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
       setKbOffset(offset);
     };
@@ -827,7 +838,7 @@ function ChatMode({
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
+    <div className="h-full min-h-0 flex flex-col overflow-hidden">
       {/* Token strip */}
       <div className="sticky top-0 z-20 flex-shrink-0">
         <TokenStrip
@@ -840,7 +851,7 @@ function ChatMode({
         />
       </div>
 
-      {/* Messages - scrollable area */}
+      {/* Messages */}
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
@@ -852,7 +863,6 @@ function ChatMode({
         <div
           className="space-y-3 py-2 pr-1"
           style={{
-            // Make room for composer + keyboard so the last message is never hidden
             paddingBottom: composerH + kbOffset + 12,
           }}
         >
@@ -881,7 +891,7 @@ function ChatMode({
         </div>
       </div>
 
-      {/* Composer - pinned bottom, lifted above keyboard on mobile */}
+      {/* Composer */}
       <form
         ref={composerRef}
         onSubmit={onSend}
@@ -969,7 +979,6 @@ function TokenStrip({
 
   return (
     <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
-      {/* Header (toggle only, no nested buttons) */}
       <div
         role="button"
         tabIndex={0}
