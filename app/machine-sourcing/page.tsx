@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import BusinessPlanForm from "@/components/BusinessPlanForm";
+ import { track } from "@/lib/metaPixel";
 
 type Mode = "chat" | "businessPlan";
 
@@ -194,6 +195,11 @@ export default function MachineSourcingPage() {
       localStorage.setItem("linescout_lead_intent", intent);
 
       setLeadCaptured(true);
+      // Track lead capture
+      track("LeadCaptured", {
+      source: "linescout-chat",
+      });   
+      track("Lead", { content_name: "LineScout Lead Capture" });
       setShowLeadModal(false);
 
       // Prefill handoff fields too
@@ -252,6 +258,7 @@ export default function MachineSourcingPage() {
       }
 
       setIsVerified(true);
+      track("CompleteRegistration", { content_name: "Sourcing Token Verified" });
 
       // Prefill email from token record (you said you store only email)
       if (data.email) setHandoffEmail(String(data.email));
@@ -315,6 +322,7 @@ export default function MachineSourcingPage() {
       setHandoffContext("");
 
       showUiAlert("We have received your details.", "You will receive a WhatsApp message shortly.");
+      track("Contact", { content_name: "Human Agent Handoff" });
     } catch (e: any) {
       alert(e?.message || "Could not submit handoff. Please try again.");
     } finally {

@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { callN8nWebhook } from "@/lib/n8n";
+import { track } from "@/lib/metaPixel";
 
 type Intake = {
   businessName: string;
@@ -352,6 +353,7 @@ export default function BusinessPlanForm() {
       setError(null);
       setProgress(100);
       setTokenUsed(true);
+      track("Purchase", { content_name: "Business Plan Generated" });
     } catch (err: any) {
       console.error("Business plan error:", err);
       setError("Something went wrong while talking to LineScout backend.");
