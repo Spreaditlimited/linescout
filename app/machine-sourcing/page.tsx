@@ -747,106 +747,176 @@ function ChatMode({
   verified,
 }: ChatModeProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLFormElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [composerH, setComposerH] = useState(120);
 
+  // Auto-resize textarea as user types
   useEffect(() => {
-    if (scrollRef.current) {
+    if (!textareaRef.current) return;
+    const textarea = textareaRef.current;
+    
+    // Reset height to measure scrollHeight properly
+    textarea.style.height = '70px';
+    
+    // Set new height (max 200px like WhatsApp)
+    const newHeight = Math.min(textarea.scrollHeight, 200);
+    textarea.style.height = `${newHeight}px`;
+  }, [input]);
+
+  // Track composer height changes
+  useEffect(() => {
+    if (!composerRef.current) return;
+
+    const el = composerRef.current;
+
+    const update = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h && Math.abs(h - composerH) > 2) setComposerH(h);
+    };
+
+    update();
+
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-scroll on new messages
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    requestAnimationFrame(() => {
+      if (!scrollRef.current) return;
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    });
+  }, [messages, sending]);
+
+  // Handle Enter key (send on Enter, new line on Shift+Enter)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (input.trim() && !sending) {
+        onSend(e as any);
+      }
     }
-  }, [messages]);
+  };
 
-return (
-  // ChatMode root must be a bounded height container from parent.
-  <div className="h-full min-h-0 flex flex-col">
-    {/* Token strip: pin it like WhatsApp header */}
-    <div className="sticky top-0 z-20">
-      <TokenStrip
-        sourcingToken={sourcingToken}
-        onChangeSourcingToken={onChangeSourcingToken}
-        onVerifyOrGetToken={onVerifyOrGetToken}
-        verifyLabel={verifyLabel}
-        verifyDisabled={verifyDisabled}
-        verified={verified}
-      />
-    </div>
-
-    {/* Messages: the ONLY scroll area */}
-    <div
-      ref={scrollRef}
-      className="flex-1 min-h-0 space-y-3 overflow-y-auto py-2 pr-1"
-      style={{ WebkitOverflowScrolling: "touch" }}
-    >
-      {messages.map((m) => (
-        <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-          <div
-            className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base ${
-              m.role === "user"
-                ? "rounded-br-sm bg-[#12356b] text-slate-50"
-                : "rounded-bl-sm bg-slate-800 text-slate-100"
-            }`}
-          >
-            {m.content}
-          </div>
-        </div>
-      ))}
-
-      {sending && (
-        <div className="flex justify-start">
-          <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>LineScout is thinking…</span>
-          </div>
-        </div>
-      )}
-    </div>
-
-    {/* Composer: pinned bottom, not affecting message scroll */}
-    <form
-      onSubmit={onSend}
-      className="sticky bottom-0 z-20 border-t border-slate-800 bg-slate-950/95"
-      style={{
-        paddingBottom: "max(env(safe-area-inset-bottom), 10px)",
-      }}
-    >
-      <div className="flex flex-col gap-2 px-0 pt-2">
-        <textarea
-          className="min-h-[70px] w-full resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none ring-0 placeholder:text-slate-500 focus:border-emerald-500"
-          placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
-          value={input}
-          onChange={(e) => onChangeInput(e.target.value)}
+  return (
+    <div className="h-full min-h-0 flex flex-col relative">
+      {/* Token strip */}
+      <div className="sticky top-0 z-20 flex-shrink-0">
+        <TokenStrip
+          sourcingToken={sourcingToken}
+          onChangeSourcingToken={onChangeSourcingToken}
+          onVerifyOrGetToken={onVerifyOrGetToken}
+          verifyLabel={verifyLabel}
+          verifyDisabled={verifyDisabled}
+          verified={verified}
         />
+      </div>
 
-        <div className="flex items-center justify-end gap-2 text-sm text-slate-500">
-          <span className="hidden sm:inline mr-auto">
-            LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
-          </span>
+      {/* Messages - scrollable area */}
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
+        }}
+      >
+        <div 
+          className="space-y-3 py-2 pr-1"
+          style={{
+            paddingBottom: composerH + 12,
+          }}
+        >
+          {messages.map((m) => (
+            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[85%] sm:max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base break-words ${
+                  m.role === "user"
+                    ? "rounded-br-sm bg-[#12356b] text-slate-50"
+                    : "rounded-bl-sm bg-slate-800 text-slate-100"
+                }`}
+              >
+                {m.content}
+              </div>
+            </div>
+          ))}
 
-          <button
-            type="submit"
-            disabled={sending || !input.trim()}
-            className="
-              touch-manipulation
-              inline-flex items-center justify-center
-              rounded-xl
-              bg-emerald-500/15
-              px-5 py-2.5
-              text-sm sm:text-base
-              font-semibold
-              text-emerald-100
-              ring-1 ring-emerald-400/35
-              hover:bg-emerald-500/20
-              whitespace-nowrap
-              disabled:opacity-60
-              disabled:cursor-not-allowed
-            "
-          >
-            {sending ? "Sending…" : "Send to LineScout"}
-          </button>
+          {sending && (
+            <div className="flex justify-start">
+              <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>LineScout is thinking…</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </form>
-  </div>
-);
+
+      {/* Composer - fixed at bottom */}
+      <form
+        ref={composerRef}
+        onSubmit={onSend}
+        className="flex-shrink-0 border-t border-slate-800 bg-slate-950"
+        style={{
+          position: 'sticky',
+          bottom: 0,
+          paddingTop: '8px',
+          paddingBottom: 'max(env(safe-area-inset-bottom), 10px)',
+        }}
+      >
+        <div className="flex flex-col gap-2 px-2 sm:px-0">
+          <textarea
+            ref={textareaRef}
+            className="min-h-[70px] max-h-[200px] w-full resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500 focus:ring-0"
+            placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
+            value={input}
+            onChange={(e) => onChangeInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={1}
+          />
+
+          <div className="flex items-center justify-between gap-2 text-xs sm:text-sm text-slate-500 pb-1">
+            <span className="hidden sm:inline text-[10px] sm:text-xs leading-tight flex-1">
+              LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
+            </span>
+
+            <button
+              type="submit"
+              disabled={sending || !input.trim()}
+              className="
+                touch-manipulation
+                inline-flex items-center justify-center
+                rounded-xl
+                bg-emerald-500/15
+                px-4 sm:px-5 
+                py-2 sm:py-2.5
+                text-sm sm:text-base
+                font-semibold
+                text-emerald-100
+                ring-1 ring-emerald-400/35
+                hover:bg-emerald-500/20
+                active:bg-emerald-500/25
+                whitespace-nowrap
+                disabled:opacity-60
+                disabled:cursor-not-allowed
+                transition-colors
+                flex-shrink-0
+              "
+            >
+              {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
 }
+
 
 type TokenStripProps = {
   sourcingToken: string;
