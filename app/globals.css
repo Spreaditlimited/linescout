@@ -54,3 +54,20 @@ input, textarea {
 button {
   touch-action: manipulation;
 }
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+:root {
+  height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+* {
+  -webkit-overflow-scrolling: touch;
+}

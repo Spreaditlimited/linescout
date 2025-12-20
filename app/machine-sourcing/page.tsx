@@ -1,11 +1,12 @@
 // app/machine-sourcing/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+
 import Link from "next/link";
 import Image from "next/image";
 import BusinessPlanForm from "@/components/BusinessPlanForm";
  import { track } from "@/lib/metaPixel";
+import { useMemo, useState, useEffect, useRef } from "react"; // make sure useMemo is imported
 
 type Mode = "chat" | "businessPlan";
 
@@ -25,6 +26,15 @@ export default function MachineSourcingPage() {
         "Hi, I’m LineScout. Tell me the production line you’re considering and where you want to install it (for example 5T per day groundnut oil line in Lagos). I’ll help you think through capacity, budget and key machines.",
     },
   ]);
+
+  const derivedLeadIntent = useMemo(() => {
+  const userMsgs = messages
+    .filter((m) => m.role === "user" && m.content?.trim())
+    .slice(-4)
+    .map((m) => m.content.trim());
+
+  return userMsgs.join("\n\n").trim();
+}, [messages]);
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -120,14 +130,30 @@ export default function MachineSourcingPage() {
     setUiAlertOpen(true);
   }
 
-  // Trigger lead modal after 3 user messages (chat mode only)
-  useEffect(() => {
-    if (mode !== "chat") return;
-    if (leadCaptured) return;
+// Trigger lead modal after 3 user messages (chat mode only)
+// Prefill lead intent BEFORE opening the modal (reliable on all browsers/incognito)
+useEffect(() => {
+  if (mode !== "chat") return;
+  if (leadCaptured) return;
+  if (showLeadModal) return; // don’t keep re-opening
 
-    const userMessages = messages.filter((m) => m.role === "user").length;
-    if (userMessages >= 3) setShowLeadModal(true);
-  }, [messages, leadCaptured, mode]);
+  const userMsgs = messages.filter((m) => m.role === "user" && (m.content || "").trim());
+  if (userMsgs.length < 3) return;
+
+  // Prefill only if empty (functional update prevents stale state issues)
+  setLeadIntent((prev) => {
+    if (prev.trim()) return prev;
+
+    const lastFew = userMsgs
+      .slice(-4)
+      .map((m) => (m.content || "").trim())
+      .filter(Boolean);
+
+    return lastFew.join("\n\n");
+  });
+
+  setShowLeadModal(true);
+}, [messages, leadCaptured, mode, showLeadModal]);
 
   function normalizeWhatsAppUI(raw: string) {
     const digits = raw.replace(/\D/g, "");
@@ -160,7 +186,7 @@ export default function MachineSourcingPage() {
     }
 
     const email = leadEmail.trim();
-    const intent = leadIntent.trim();
+    const intent = (leadIntent.trim() || derivedLeadIntent.trim());
 
     if (!name || !whatsapp || !email || !intent) {
       alert("All fields are required.");
@@ -617,57 +643,57 @@ export default function MachineSourcingPage() {
       </main>
 
       {/* Lead Capture Modal */}
-      {showLeadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">Let’s continue properly</h2>
-            <p className="text-sm text-slate-400 mb-4">Please share your details so our team can support you better.</p>
+{showLeadModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+    <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
+      <h2 className="text-lg font-semibold text-slate-100 mb-1">Let’s continue properly</h2>
+      <p className="text-sm text-slate-400 mb-4">Please share your details so our team can support you better.</p>
 
-            <div className="space-y-3">
-              <input
-                value={leadName}
-                onChange={(e) => setLeadName(e.target.value)}
-                placeholder="Your full name"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+      <div className="space-y-3">
+        <input
+          value={leadName}
+          onChange={(e) => setLeadName(e.target.value)}
+          placeholder="Your full name"
+          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+        />
 
-              <input
-                value={leadWhatsapp}
-                onChange={(e) => setLeadWhatsapp(e.target.value.replace(/\D/g, ""))}
-                inputMode="numeric"
-                maxLength={13}
-                placeholder="WhatsApp number (e.g. 8037649956)"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+        <input
+          value={leadWhatsapp}
+          onChange={(e) => setLeadWhatsapp(e.target.value.replace(/\D/g, ""))}
+          inputMode="numeric"
+          maxLength={13}
+          placeholder="WhatsApp number (e.g. 8037649956)"
+          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+        />
 
-              <input
-                value={leadEmail}
-                onChange={(e) => setLeadEmail(e.target.value)}
-                placeholder="Email address"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-              />
+        <input
+          value={leadEmail}
+          onChange={(e) => setLeadEmail(e.target.value)}
+          placeholder="Email address"
+          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+        />
 
-              <textarea
-                value={leadIntent}
-                onChange={(e) => setLeadIntent(e.target.value)}
-                placeholder="What do you want to source from China?"
-                className="w-full min-h-[90px] resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+        <textarea
+          value={leadIntent.length > 0 ? leadIntent : derivedLeadIntent}
+          onChange={(e) => setLeadIntent(e.target.value)}
+          placeholder="What do you want to source from China?"
+          className="w-full min-h-[90px] resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+          rows={4}
+        />
+      </div>
 
-            <button
-              onClick={submitLead}
-              disabled={leadSubmitting}
-              className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {leadSubmitting ? "Saving…" : "Continue with LineScout"}
-            </button>
+      <button
+        onClick={submitLead}
+        disabled={leadSubmitting}
+        className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {leadSubmitting ? "Saving…" : "Continue with LineScout"}
+      </button>
 
-            <p className="mt-3 text-xs text-slate-500">All fields are required to continue.</p>
-          </div>
-        </div>
-      )}
-
+      <p className="mt-3 text-xs text-slate-500">All fields are required to continue.</p>
+    </div>
+  </div>
+)}
       {/* Handoff Modal */}
       {showHandoffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
