@@ -1,8 +1,8 @@
 // app/internal/leads/page.tsx
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 
 type Lead = {
   id: number;
@@ -18,37 +18,117 @@ type Lead = {
   call_summary: string | null;
 };
 
-type Agent = {
-  id: number;
-  name: string;
+type MeResponse =
+  | {
+      ok: true;
+      user: {
+        username: string;
+        role: string;
+        permissions: { can_view_leads: boolean; can_view_handoffs: boolean };
+      };
+    }
+  | { ok: false; error: string };
+
+type LeadAction = "" | "claim" | "mark_called";
+
+type RowState = {
+  open: boolean;
+  action: LeadAction;
+  summary: string;
 };
+
+const defaultRowState: RowState = { open: false, action: "", summary: "" };
 
 export default function InternalLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [me, setMe] = useState<MeResponse | null>(null);
+  const isAdmin = useMemo(() => !!(me && "ok" in me && me.ok && me.user.role === "admin"), [me]);
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const pageSize = 20;
 
-  const [selectedAgentId, setSelectedAgentId] = useState<number | "">(() => {
-    if (typeof window === "undefined") return "";
-    const saved = localStorage.getItem("linescout_agent_id");
-    return saved ? Number(saved) : "";
-  });
-
-  const [draftSummary, setDraftSummary] = useState<Record<number, string>>({});
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [row, setRow] = useState<Record<number, RowState>>({});
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const canPrev = page > 1 && !loading;
+  const canNext = page < totalPages && !loading;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMe() {
+      try {
+        const res = await fetch("/internal/auth/me", { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as MeResponse | null;
+        if (alive && data) setMe(data);
+      } catch {
+        if (alive) setMe({ ok: false, error: "Failed to load session" });
+      }
+    }
+
+    loadMe();
+    fetchLeads(1);
+
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function fmtDate(d: string) {
+    const date = new Date(d);
+    if (Number.isNaN(date.getTime())) return "N/A";
+    return date.toLocaleDateString();
+  }
+
+  function fmtDateTime(d?: string | null) {
+    if (!d) return "N/A";
+    const date = new Date(d);
+    if (Number.isNaN(date.getTime())) return "N/A";
+    return date.toLocaleString();
+  }
+
+  function statusBadge(status: string) {
+    const s = (status || "").toLowerCase();
+    const base =
+      "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize";
+
+    if (s === "new") return `${base} border-amber-700/60 bg-amber-500/10 text-amber-200`;
+    if (s === "claimed") return `${base} border-sky-700/60 bg-sky-500/10 text-sky-200`;
+    if (s === "called") return `${base} border-emerald-700/60 bg-emerald-500/10 text-emerald-200`;
+
+    return `${base} border-neutral-700 bg-neutral-900/60 text-neutral-200`;
+  }
+
+  const btnBase =
+    "inline-flex items-center justify-center rounded-xl px-3 py-2 text-xs font-semibold transition-colors border";
+
+  const btnPrimary = `${btnBase} bg-white text-neutral-950 border-white hover:bg-neutral-200`;
+  const btnSecondary = `${btnBase} border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700`;
+  const btnDanger = `${btnBase} border-red-700/60 bg-red-500/10 text-red-200 hover:bg-red-500/15`;
+
+  function getRowState(id: number): RowState {
+    return row[id] ?? defaultRowState;
+  }
+
+  function setRowState(id: number, patch: Partial<RowState>) {
+    setRow((prev) => ({
+      ...prev,
+      [id]: { ...(prev[id] ?? defaultRowState), ...patch },
+    }));
+  }
 
   async function fetchLeads(p: number) {
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`/api/linescout-leads?page=${p}`);
+      const res = await fetch(`/api/linescout-leads?page=${p}`, { cache: "no-store" });
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
@@ -65,37 +145,8 @@ export default function InternalLeadsPage() {
     }
   }
 
-  async function fetchAgents() {
-    try {
-      const res = await fetch("/api/internal/agents");
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.ok) {
-        throw new Error(data?.error || "Failed to load agents");
-      }
-
-      setAgents(data.items || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to load agents");
-    }
-  }
-
-  useEffect(() => {
-    fetchAgents();
-    fetchLeads(1);
-  }, []);
-
-  function saveAgent(id: number) {
-    setSelectedAgentId(id);
-    localStorage.setItem("linescout_agent_id", String(id));
-  }
-
   async function claimLead(leadId: number) {
-    if (!selectedAgentId) {
-      alert("Select your name first.");
-      return;
-    }
-
+    setBusyId(leadId);
     try {
       const res = await fetch("/api/linescout-leads", {
         method: "PATCH",
@@ -103,7 +154,9 @@ export default function InternalLeadsPage() {
         body: JSON.stringify({
           action: "claim",
           leadId,
-          agentId: selectedAgentId,
+          // existing endpoint expects agentId
+          // for now we keep the contract and pass 0 (server will be hardened next)
+          agentId: 0,
         }),
       });
 
@@ -111,23 +164,13 @@ export default function InternalLeadsPage() {
       if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to claim lead");
 
       await fetchLeads(page);
-    } catch (err: any) {
-      alert(err.message || "Could not claim lead");
+    } finally {
+      setBusyId(null);
     }
   }
 
-  async function markCalled(leadId: number) {
-    if (!selectedAgentId) {
-      alert("Select your name first.");
-      return;
-    }
-
-    const summary = (draftSummary[leadId] || "").trim();
-    if (!summary) {
-      alert("Please enter a brief call summary first.");
-      return;
-    }
-
+  async function markCalled(leadId: number, summary: string) {
+    setBusyId(leadId);
     try {
       const res = await fetch("/api/linescout-leads", {
         method: "PATCH",
@@ -135,7 +178,7 @@ export default function InternalLeadsPage() {
         body: JSON.stringify({
           action: "called",
           leadId,
-          agentId: selectedAgentId,
+          agentId: 0,
           callSummary: summary,
         }),
       });
@@ -143,205 +186,252 @@ export default function InternalLeadsPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to mark called");
 
-      setDraftSummary((prev) => {
-        const next = { ...prev };
-        delete next[leadId];
-        return next;
-      });
-
       await fetchLeads(page);
-    } catch (err: any) {
-      alert(err.message || "Could not update lead");
+    } finally {
+      setBusyId(null);
     }
   }
 
-  const canPrev = page > 1 && !loading;
-  const canNext = page < totalPages && !loading;
+  function allowedActions(lead: Lead): LeadAction[] {
+  const s = (lead.status || "").toLowerCase();
+  if (s === "new") return ["claim", "mark_called"];
+  if (s === "claimed") return ["mark_called"];
+  return [];
+}
+
+  async function submitRowAction(lead: Lead) {
+    const st = getRowState(lead.id);
+    if (!st.action) return;
+
+    if (!isAdmin) {
+      alert("Admins only.");
+      return;
+    }
+
+    if (st.action === "claim") {
+      await claimLead(lead.id);
+      setRowState(lead.id, { open: false, action: "" });
+      return;
+    }
+
+    if (st.action === "mark_called") {
+      const summary = (st.summary || "").trim();
+      if (!summary) {
+        alert("Please enter a brief call summary.");
+        return;
+      }
+      await markCalled(lead.id, summary);
+      setRowState(lead.id, { open: false, action: "", summary: "" });
+      return;
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50">
-      {/* Internal header + nav */}
-      <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold text-slate-100">
-            Internal
+    <div className="space-y-5">
+      
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-100">Leads</h2>
+            <p className="text-sm text-neutral-400">
+              Admin workflow: claim, call, and log the outcome. Agents do not operate here.
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Link
-              href="/internal/leads"
-              className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fetchLeads(page)}
+              className={btnSecondary}
             >
-              Leads
-            </Link>
+              Refresh
+            </button>
 
-            <Link
-              href="/internal/agent-handoffs"
-              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900"
-            >
-              Handoffs
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
-            <div>
-              <h1 className="text-lg font-semibold text-slate-100">Leads</h1>
-              <p className="text-sm text-slate-400">
-                Select your name, claim a lead, then mark as called with a summary.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedAgentId}
-                onChange={(e) => saveAgent(Number(e.target.value))}
-                className="w-60 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 outline-none"
-              >
-                <option value="">Select agent</option>
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-
+            <div className="ml-0 sm:ml-2 flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => fetchLeads(page)}
-                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900"
+                disabled={!canPrev}
+                onClick={() => fetchLeads(page - 1)}
+                className={`${btnSecondary} ${!canPrev ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                Refresh
+                Prev
               </button>
-
-              <div className="ml-0 sm:ml-2 flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!canPrev}
-                  onClick={() => fetchLeads(page - 1)}
-                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Prev
-                </button>
-                <div className="text-sm text-slate-400 whitespace-nowrap">
-                  Page {page} of {totalPages}
-                </div>
-                <button
-                  type="button"
-                  disabled={!canNext}
-                  onClick={() => fetchLeads(page + 1)}
-                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
+              <div className="text-sm text-neutral-400 whitespace-nowrap">
+                Page {page} of {totalPages}
               </div>
+              <button
+                type="button"
+                disabled={!canNext}
+                onClick={() => fetchLeads(page + 1)}
+                className={`${btnSecondary} ${!canNext ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                Next
+              </button>
             </div>
           </div>
-
-          {loading && <p className="text-sm text-slate-400">Loading leads…</p>}
-          {error && <p className="text-sm text-red-400">{error}</p>}
-
-          {!loading && !error && (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border border-slate-800 text-sm">
-                <thead className="bg-slate-900/70 text-slate-300">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Date</th>
-                    <th className="px-3 py-2 text-left">Name</th>
-                    <th className="px-3 py-2 text-left">WhatsApp</th>
-                    <th className="px-3 py-2 text-left">Email</th>
-                    <th className="px-3 py-2 text-left">Request</th>
-                    <th className="px-3 py-2 text-left">Status</th>
-                    <th className="px-3 py-2 text-left">Call summary</th>
-                    <th className="px-3 py-2 text-left">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {leads.map((lead) => {
-                    const isNew = lead.status === "new";
-                    const isClaimed = lead.status === "claimed";
-                    const isCalled = lead.status === "called";
-
-                    return (
-                      <tr
-                        key={lead.id}
-                        className="border-t border-slate-800 hover:bg-slate-900/50 align-top"
-                      >
-                        <td className="px-3 py-2 text-slate-400 whitespace-nowrap">
-                          {new Date(lead.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="px-3 py-2">{lead.name}</td>
-                        <td className="px-3 py-2">{lead.whatsapp}</td>
-                        <td className="px-3 py-2">{lead.email}</td>
-                        <td className="px-3 py-2 max-w-[260px]">
-                          <div className="truncate">{lead.sourcing_request}</div>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span className="capitalize">{lead.status}</span>
-                          {lead.claimed_by ? (
-                            <span className="text-slate-400">
-                              {" "}
-                              (Agent {lead.claimed_by})
-                            </span>
-                          ) : null}
-                        </td>
-
-                        <td className="px-3 py-2 min-w-[260px]">
-                          {isCalled ? (
-                            <div className="text-slate-300">
-                              {lead.call_summary || ""}
-                            </div>
-                          ) : (
-                            <textarea
-                              value={draftSummary[lead.id] ?? ""}
-                              onChange={(e) =>
-                                setDraftSummary((prev) => ({
-                                  ...prev,
-                                  [lead.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Brief call summary…"
-                              className="w-full min-h-[70px] resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
-                            />
-                          )}
-                        </td>
-
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <div className="flex flex-col gap-2">
-                            <button
-                              disabled={!isNew}
-                              onClick={() => claimLead(lead.id)}
-                              className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:bg-slate-700 disabled:cursor-not-allowed"
-                            >
-                              Claim
-                            </button>
-
-                            <button
-                              disabled={isCalled || (!isClaimed && !isNew)}
-                              onClick={() => markCalled(lead.id)}
-                              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              Mark called
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div className="mt-3 text-xs text-slate-500">
-                Showing {leads.length} of {total} leads.
-              </div>
-            </div>
-          )}
         </div>
-      </main>
+
+        {loading && <p className="mt-4 text-sm text-neutral-400">Loading leads...</p>}
+        {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+
+        {!loading && !error && (
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
+            <table className="min-w-full text-sm">
+              <thead className="bg-neutral-900/70 text-neutral-300">
+                <tr>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Date</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Lead</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Contact</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Request</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Status</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Call Log</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Update</th>
+                </tr>
+              </thead>
+
+              <tbody className="bg-neutral-950">
+                {leads.map((lead) => {
+                  const st = getRowState(lead.id);
+                  const disabled = busyId === lead.id;
+                  const allowed = allowedActions(lead);
+
+                  return (
+                    <tr
+                      key={lead.id}
+                      className="border-t border-neutral-800 hover:bg-neutral-900/40 align-top"
+                    >
+                      <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                        {fmtDate(lead.created_at)}
+                      </td>
+
+                      <td className="px-3 py-3">
+                        <div className="font-semibold text-neutral-100">{lead.name || "N/A"}</div>
+                        <div className="text-xs text-neutral-500">ID: {lead.id}</div>
+                      </td>
+
+                      <td className="px-3 py-3 text-xs text-neutral-300">
+                        <div>{lead.whatsapp || "N/A"}</div>
+                        <div className="text-neutral-500">{lead.email || "N/A"}</div>
+                      </td>
+
+                      <td className="px-3 py-3 max-w-[420px]">
+                        <div className="text-neutral-100 line-clamp-3">{lead.sourcing_request}</div>
+                      </td>
+
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <span className={statusBadge(lead.status)}>{lead.status}</span>
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          Claimed: {lead.claimed_by ? "Yes" : "No"}
+                        </div>
+                      </td>
+
+                      <td className="px-3 py-3 min-w-[280px]">
+                        {lead.status === "called" ? (
+                          <div className="text-sm text-neutral-200">
+                            <div className="text-xs text-neutral-500">
+                              Called at: {fmtDateTime(lead.called_at)}
+                            </div>
+                            <div className="mt-1 whitespace-pre-wrap">{lead.call_summary || ""}</div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-neutral-500">Not called yet</div>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-3 min-w-[320px]">
+                        {allowed.length === 0 ? (
+                          <div className="text-xs text-neutral-500">No actions</div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setRowState(lead.id, { open: !st.open })}
+                                disabled={disabled}
+                                className={`${btnSecondary} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                              >
+                                Update lead
+                              </button>
+
+                              {st.open ? (
+                                <button
+                                  onClick={() =>
+                                    setRowState(lead.id, { open: false, action: "", summary: "" })
+                                  }
+                                  disabled={disabled}
+                                  className={`${btnDanger} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  Close
+                                </button>
+                              ) : null}
+                            </div>
+
+                            {st.open ? (
+                              <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+                                <label className="text-xs text-neutral-400">Action</label>
+                                <select
+                                  value={st.action}
+                                  onChange={(e) =>
+                                    setRowState(lead.id, {
+                                      action: e.target.value as any,
+                                      summary: "",
+                                    })
+                                  }
+                                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                                >
+                                  <option value="">Select action</option>
+                                  {allowed.includes("claim") ? (
+                                    <option value="claim">Claim</option>
+                                  ) : null}
+                                  {allowed.includes("mark_called") ? (
+                                    <option value="mark_called">Mark called</option>
+                                  ) : null}
+                                </select>
+
+                                {st.action === "mark_called" ? (
+                                  <div className="mt-3">
+                                    <label className="text-xs text-neutral-400">Call summary</label>
+                                    <textarea
+                                      value={st.summary}
+                                      onChange={(e) => setRowState(lead.id, { summary: e.target.value })}
+                                      className="mt-1 w-full min-h-[80px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-neutral-600"
+                                      placeholder="Outcome, next steps, and notes..."
+                                    />
+                                  </div>
+                                ) : null}
+
+                                <div className="mt-3 flex items-center gap-2">
+                                  <button
+                                    onClick={() => submitRowAction(lead)}
+                                    disabled={disabled || !st.action}
+                                    className={`${btnPrimary} ${
+                                      disabled || !st.action ? "opacity-60 cursor-not-allowed" : ""
+                                    }`}
+                                  >
+                                    {disabled ? "Saving..." : "Save"}
+                                  </button>
+
+                                  <div className="text-[11px] text-neutral-500">
+                                    Admin only
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            <div className="px-3 py-3 text-xs text-neutral-500">
+              Showing {leads.length} of {total} leads.
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

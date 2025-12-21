@@ -1,44 +1,74 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
 
-function getDbConfig() {
-  return {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  };
-}
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
 
-export async function POST(req: Request) {
-  let conn: mysql.Connection | null = null;
+async function requireAdmin() {
+  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
+  if (!cookieName) {
+    return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
+  }
 
+  const cookieStore = await cookies();
+  const token = cookieStore.get(cookieName)?.value;
+
+  if (!token) {
+    return { ok: false as const, status: 401 as const, error: "Not signed in" };
+  }
+
+  const conn = await pool.getConnection();
   try {
-    const body = await req.json();
+    const [rows]: any = await conn.query(
+      `SELECT u.role
+       FROM internal_sessions s
+       JOIN internal_users u ON u.id = s.user_id
+       WHERE s.session_token = ?
+         AND s.revoked_at IS NULL
+         AND u.is_active = 1
+       LIMIT 1`,
+      [token]
+    );
 
-    const {
-      sessionId,
-      name,
-      whatsapp,
-      email,
-      sourcingRequest,
-      meta = {},
-    } = body || {};
-
-    if (!sessionId || !name || !whatsapp || !email || !sourcingRequest) {
-      return NextResponse.json(
-        { ok: false, error: "Missing required fields" },
-        { status: 400 }
-      );
+    if (!rows.length) {
+      return { ok: false as const, status: 401 as const, error: "Invalid session" };
     }
 
-    conn = await mysql.createConnection(getDbConfig());
+    if (rows[0].role !== "admin") {
+      return { ok: false as const, status: 403 as const, error: "Forbidden" };
+    }
+
+    return { ok: true as const };
+  } finally {
+    conn.release();
+  }
+}
+
+// Public: lead capture from website
+export async function POST(req: Request) {
+  const conn = await pool.getConnection();
+  try {
+    const body = await req.json().catch(() => ({}));
+
+    const { sessionId, name, whatsapp, email, sourcingRequest, meta = {} } = body || {};
+
+    if (!sessionId || !name || !whatsapp || !email || !sourcingRequest) {
+      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    }
 
     await conn.execute(
       `
@@ -78,35 +108,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error("linescout lead insert error:", err);
-    return NextResponse.json(
-      { ok: false, error: "Failed to save lead" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Failed to save lead" }, { status: 500 });
   } finally {
-    try {
-      if (conn) await conn.end();
-    } catch {}
+    conn.release();
   }
 }
 
+// Admin-only: list leads
 export async function GET(req: Request) {
-  let conn: mysql.Connection | null = null;
+  const auth = await requireAdmin();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
+  const conn = await pool.getConnection();
   try {
     const url = new URL(req.url);
     const pageRaw = url.searchParams.get("page") || "1";
     const page = Math.max(1, parseInt(pageRaw, 10) || 1);
     const offset = (page - 1) * PAGE_SIZE;
 
-    conn = await mysql.createConnection(getDbConfig());
-
-    // total count
-    const [countRows]: any = await conn.query(
-      `SELECT COUNT(*) AS total FROM linescout_leads`
-    );
+    const [countRows]: any = await conn.query(`SELECT COUNT(*) AS total FROM linescout_leads`);
     const total = Number(countRows?.[0]?.total || 0);
 
-    // items
     const [rows]: any = await conn.query(
       `
       SELECT
@@ -118,11 +140,14 @@ export async function GET(req: Request) {
         sourcing_request,
         status,
         claimed_by,
-        call_summary
+        call_summary,
+        called_at,
+        called_by
       FROM linescout_leads
       ORDER BY created_at DESC
-      LIMIT ${offset}, ${PAGE_SIZE}
-      `
+      LIMIT ?, ?
+      `,
+      [offset, PAGE_SIZE]
     );
 
     return NextResponse.json({
@@ -135,50 +160,40 @@ export async function GET(req: Request) {
   } catch (err: any) {
     console.error("GET /api/linescout-leads error:", err);
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Failed to fetch leads",
-        details: err?.message || String(err),
-      },
+      { ok: false, error: "Failed to fetch leads", details: err?.message || String(err) },
       { status: 500 }
     );
   } finally {
-    try {
-      if (conn) await conn.end();
-    } catch {}
+    conn.release();
   }
 }
 
+// Admin-only: update lead status
 export async function PATCH(req: Request) {
-  let conn: mysql.Connection | null = null;
+  const auth = await requireAdmin();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
+  const conn = await pool.getConnection();
   try {
     const body = await req.json().catch(() => ({}));
     const { action } = body || {};
 
-    conn = await mysql.createConnection(getDbConfig());
-
-    // --- CLAIM ---
+    // CLAIM
     if (action === "claim") {
-      const { leadId, agentId } = body || {};
-
-      if (!leadId || !agentId) {
-        return NextResponse.json(
-          { ok: false, error: "leadId and agentId are required" },
-          { status: 400 }
-        );
+      const { leadId } = body || {};
+      if (!leadId) {
+        return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
       }
 
       const [result]: any = await conn.query(
         `
         UPDATE linescout_leads
-        SET status = 'claimed',
-            claimed_by = ?
+        SET status = 'claimed'
         WHERE id = ?
           AND status = 'new'
           AND claimed_by IS NULL
         `,
-        [Number(agentId), Number(leadId)]
+        [Number(leadId)]
       );
 
       if (!result || result.affectedRows !== 1) {
@@ -191,23 +206,16 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // --- MARK CALLED ---
+    // MARK CALLED
     if (action === "called") {
-      const { leadId, agentId, callSummary } = body || {};
-
-      if (!leadId || !agentId) {
-        return NextResponse.json(
-          { ok: false, error: "leadId and agentId are required" },
-          { status: 400 }
-        );
+      const { leadId, callSummary } = body || {};
+      if (!leadId) {
+        return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
       }
 
       const summary = String(callSummary || "").trim();
       if (!summary) {
-        return NextResponse.json(
-          { ok: false, error: "callSummary is required" },
-          { status: 400 }
-        );
+        return NextResponse.json({ ok: false, error: "callSummary is required" }, { status: 400 });
       }
 
       const [result]: any = await conn.query(
@@ -215,12 +223,11 @@ export async function PATCH(req: Request) {
         UPDATE linescout_leads
         SET status = 'called',
             called_at = NOW(),
-            called_by = ?,
             call_summary = ?
         WHERE id = ?
           AND status IN ('claimed','new')
         `,
-        [Number(agentId), summary, Number(leadId)]
+        [summary, Number(leadId)]
       );
 
       if (!result || result.affectedRows !== 1) {
@@ -244,8 +251,6 @@ export async function PATCH(req: Request) {
       { status: 500 }
     );
   } finally {
-    try {
-      if (conn) await conn.end();
-    } catch {}
+    conn.release();
   }
 }

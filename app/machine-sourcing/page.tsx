@@ -329,7 +329,7 @@ useEffect(() => {
 
     setHandoffSubmitting(true);
     try {
-      const res = await fetch("/api/linescout-handoff", {
+      const res = await fetch("/api/linescout-handoffs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
