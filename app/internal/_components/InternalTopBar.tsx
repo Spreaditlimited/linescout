@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
@@ -62,12 +61,10 @@ export default function InternalTopBar() {
   return (
     <div className="mb-6 flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <Image
-          src="/lineScout-logo.png"
-          alt="LineScout"
-          width={140}
-          height={36}
-          priority
+        <img
+            src="/linescout-logo.png"
+            alt="LineScout"
+            className="h-[22px] w-auto"
         />
         <div className="hidden sm:block">
           <div className="text-sm font-semibold text-neutral-100">Internal Dashboard</div>
