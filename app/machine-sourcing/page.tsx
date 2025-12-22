@@ -6,6 +6,7 @@ import Image from "next/image";
 import BusinessPlanForm from "@/components/BusinessPlanForm";
 import { track } from "@/lib/metaPixel";
 import { useMemo, useState, useEffect, useRef } from "react";
+import AboutModal from "@/components/AboutModal";
 
 type Mode = "chat" | "businessPlan";
 
@@ -16,6 +17,7 @@ type ChatMessage = {
 };
 
 export default function MachineSourcingPage() {
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("chat");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -478,55 +480,70 @@ export default function MachineSourcingPage() {
     <div className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-neutral-950 text-neutral-100 text-sm sm:text-base flex flex-col">
       {/* Top bar */}
       <header className="flex-shrink-0 sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center" aria-label="LineScout home">
-              <Image
-                src="/linescout-logo.png"
-                alt="LineScout"
-                width={120}
-                height={28}
-                priority
-                className="h-[26px] w-auto"
-              />
-            </Link>
-          </div>
+  <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+    <div className="flex items-center gap-3">
+      <Link href="/" className="flex items-center" aria-label="LineScout home">
+        <Image
+          src="/linescout-logo.png"
+          alt="LineScout"
+          width={120}
+          height={28}
+          priority
+          className="h-[26px] w-auto"
+        />
+      </Link>
+    </div>
 
-          <div className="hidden items-center gap-3 md:flex">
-            <div className="text-sm text-neutral-300">Your co-pilot for machine sourcing</div>
-            <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-xs font-semibold tracking-wide text-neutral-200">
-              BETA
-            </span>
-          </div>
+    <div className="hidden items-center gap-3 md:flex">
+      <div className="text-sm text-neutral-300">Your co-pilot for machine sourcing</div>
+      <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-xs font-semibold tracking-wide text-neutral-200">
+        BETA
+      </span>
+    </div>
 
-          <nav className="hidden items-center gap-6 lg:flex">
-            <Link href="/#how" className="text-sm font-medium text-neutral-300 hover:text-white">
-              How it works
-            </Link>
-            <Link href="/#products" className="text-sm font-medium text-neutral-300 hover:text-white">
-              Modes
-            </Link>
-            <Link href="/#prompts" className="text-sm font-medium text-neutral-300 hover:text-white">
-              Examples
-            </Link>
-          </nav>
+    <nav className="hidden items-center gap-6 lg:flex">
+      <Link href="/#how" className="text-sm font-medium text-neutral-300 hover:text-white">
+        How it works
+      </Link>
+      <Link href="/#products" className="text-sm font-medium text-neutral-300 hover:text-white">
+        Modes
+      </Link>
+      <Link href="/#prompts" className="text-sm font-medium text-neutral-300 hover:text-white">
+        Examples
+      </Link>
+    </nav>
 
-          <div className="flex items-center gap-2">
-            <Link
-              href="/machine-sourcing"
-              className="hidden rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 sm:inline-flex"
-            >
-              Business plan
-            </Link>
-            <Link
-              href="/machine-sourcing"
-              className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
-            >
-              Start chat
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="flex items-center gap-2">
+      {/* About trigger */}
+      <button
+        type="button"
+        onClick={() => setAboutOpen(true)}
+        className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
+        aria-label="About Sure Importers Limited"
+      >
+        <span className="hidden sm:inline">About</span>
+        <span className="inline sm:hidden">?</span>
+      </button>
+
+      <Link
+        href="/machine-sourcing"
+        className="hidden rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 sm:inline-flex"
+      >
+        Business plan
+      </Link>
+
+      <Link
+        href="/machine-sourcing"
+        className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
+      >
+        Start chat
+      </Link>
+    </div>
+  </div>
+
+  {/* About modal */}
+  <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+</header>
 
       {/* Main layout */}
       <main className="mx-auto w-full flex-1 min-h-0 overflow-hidden max-w-6xl gap-4 px-4 py-3 md:py-5 flex">

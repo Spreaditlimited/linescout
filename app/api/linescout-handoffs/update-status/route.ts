@@ -1,3 +1,4 @@
+// app/api/linescout-handoffs/update-status/route.ts
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
@@ -21,6 +22,33 @@ function normStatus(s: any) {
 
 function nonEmpty(v: any) {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+async function safeNotifyN8n(payload: any) {
+  const base = process.env.N8N_BASE_URL;
+  if (!base) return { ok: false, error: "N8N_BASE_URL not set" };
+
+  const url = `${base}/webhook/linescout_status_notify`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Keep payload small + explicit. n8n can decide WhatsApp + Email content.
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      return { ok: false, status: res.status, details: data };
+    }
+
+    return { ok: true, details: data };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "Notify failed" };
+  }
 }
 
 export async function POST(req: Request) {
@@ -146,8 +174,43 @@ export async function POST(req: Request) {
       params
     );
 
+    // Fetch updated row for notification payload
+    const [handoffRows] = await conn.execute<any[]>(
+      `SELECT id, token, handoff_type, customer_name, email, whatsapp_number, context, status, claimed_by,
+              manufacturer_found_at, paid_at, shipped_at, shipper, tracking_number, delivered_at, cancelled_at, cancel_reason,
+              created_at
+       FROM linescout_handoffs
+       WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
     await conn.end();
-    return NextResponse.json({ ok: true });
+
+    const handoff = handoffRows?.[0] || null;
+
+    // Fire-and-forget (but we still compute a result so you can debug if you want)
+    const notifyResult = handoff
+      ? await safeNotifyN8n({
+          event: "handoff.status_changed",
+          handoff,
+          previous_status: current,
+          new_status: target,
+          // include only what matters for template decisions
+          extras:
+            target === "shipped"
+              ? { shipper, tracking_number }
+              : target === "cancelled"
+              ? { cancel_reason }
+              : {},
+        })
+      : { ok: false, error: "Could not load updated handoff row" };
+
+    // Do NOT block admin. Status update is the source of truth.
+    return NextResponse.json({
+      ok: true,
+      notified: notifyResult.ok === true,
+      notify_error: notifyResult.ok ? null : notifyResult,
+    });
   } catch (err: any) {
     console.error("update-status error:", err);
     return NextResponse.json(

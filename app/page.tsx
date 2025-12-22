@@ -593,7 +593,7 @@ function Footer({ year }: { year: number }) {
       </div>
 
       <div className="mt-10 flex flex-col gap-2 border-t border-neutral-800 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-neutral-400">© {year} LineScout. Built by Sure Imports.</div>
+        <div className="text-xs text-neutral-400">© {year} LineScout. Built by Sure Importers Limited in Nigeria.</div>
         <div className="text-xs text-neutral-400">Focused on machines. Built for Nigeria.</div>
       </div>
     </footer>

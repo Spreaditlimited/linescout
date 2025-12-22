@@ -4,6 +4,13 @@ import mysql from "mysql2/promise";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const N8N_BASE_URL = process.env.N8N_BASE_URL;
+
+// Status email webhook (fixed URL you provided)
+const N8N_STATUS_NOTIFY_URL =
+  process.env.N8N_STATUS_NOTIFY_URL ||
+  "https://n8n.sureimports.com/webhook/linescout_status_notify";
+
 function db() {
   return mysql.createConnection({
     host: process.env.DB_HOST,
@@ -12,6 +19,48 @@ function db() {
     database: process.env.DB_NAME,
     port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
   });
+}
+
+// Fire-and-forget: never block saving payments (admin notify)
+async function notifyN8n(event: string, payload: any) {
+  if (!N8N_BASE_URL) return;
+
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 2500);
+
+    await fetch(`${N8N_BASE_URL}/webhook/linescout_admin_notify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event, ...payload }),
+      signal: controller.signal,
+    }).catch(() => null);
+
+    clearTimeout(t);
+  } catch {
+    // ignore
+  }
+}
+
+// Fire-and-forget: status email workflow notify (customer)
+async function notifyStatusEmail(payload: any) {
+  if (!N8N_STATUS_NOTIFY_URL) return;
+
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 2500);
+
+    await fetch(N8N_STATUS_NOTIFY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    }).catch(() => null);
+
+    clearTimeout(t);
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -109,6 +158,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let conn: mysql.Connection | null = null;
 
+  // capture for notification (after commit)
+  let notifyPayload: any = null;
+  let statusEmailPayload: any = null;
+
   try {
     const body = await req.json().catch(() => ({}));
     const {
@@ -177,6 +230,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // Insert payment
     await conn.query(
       `INSERT INTO linescout_handoff_payments
        (handoff_id, amount, currency, purpose, note, paid_at)
@@ -184,7 +238,89 @@ export async function POST(req: Request) {
       [hid, amt, currency, purpose, note, paid_at]
     );
 
+    // Get handoff details for notifications (still inside transaction for consistency)
+    const [handoffRows]: any = await conn.query(
+      `SELECT id, token, customer_name, email, whatsapp_number, status
+       FROM linescout_handoffs
+       WHERE id = ?
+       LIMIT 1`,
+      [hid]
+    );
+    const h = handoffRows?.[0] || null;
+
+    // Compute financial summary for email extras (inside txn)
+    const [finRows]: any = await conn.query(
+      `SELECT total_due, currency
+       FROM linescout_handoff_financials
+       WHERE handoff_id = ?
+       LIMIT 1`,
+      [hid]
+    );
+
+    const [sumRows]: any = await conn.query(
+      `SELECT COALESCE(SUM(amount),0) AS total_paid
+       FROM linescout_handoff_payments
+       WHERE handoff_id = ?`,
+      [hid]
+    );
+
+    const totalPaid = Number(sumRows?.[0]?.total_paid || 0);
+    const totalDueDb = Number(finRows?.[0]?.total_due || 0);
+    const currencyDb = finRows?.[0]?.currency || currency || "NGN";
+    const balance = totalDueDb - totalPaid;
+
+    // Admin notification payload (existing behavior)
+    notifyPayload = {
+      handoff: h,
+      payment: {
+        amount: amt,
+        currency: currencyDb,
+        purpose,
+        note: typeof note === "string" && note.trim() ? note.trim() : null,
+        paid_at: paid_at.toISOString(),
+      },
+    };
+
+    // Status email payload (NEW): treat payment as a status update event
+    // IMPORTANT: status progression remains manual, so previous_status === new_status
+    statusEmailPayload = {
+      event: "handoff.status_changed",
+      previous_status: h?.status || null,
+      new_status: h?.status || null,
+      handoff: {
+        token: h?.token || null,
+        customer_name: h?.customer_name || null,
+        customer_email: h?.email || null,
+      },
+      extras: {
+        update_type: "payment",
+        payment_amount: amt,
+        payment_currency: currencyDb,
+        payment_purpose: purpose,
+        payment_method: "manual_record",
+        payment_reference: null,
+
+        total_paid: totalPaid,
+        total_due: totalDueDb,
+        balance,
+
+        email_subject: h?.token ? `Payment Received: ${h.token}` : "Payment Received",
+        email_text:
+          `We have recorded your payment of ${currencyDb} ${Number(amt).toLocaleString()}.\n\n` +
+          (totalDueDb > 0
+            ? `Total Due: ${currencyDb} ${Number(totalDueDb).toLocaleString()}\nTotal Paid: ${currencyDb} ${Number(totalPaid).toLocaleString()}\nBalance: ${currencyDb} ${Number(balance).toLocaleString()}`
+            : ""),
+      },
+    };
+
     await conn.commit();
+
+    // Fire-and-forget AFTER commit
+    notifyN8n("payment_recorded", notifyPayload);
+
+    // Also notify the unified email workflow AFTER commit
+    notifyStatusEmail(statusEmailPayload);
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("handoff payments POST error", e);

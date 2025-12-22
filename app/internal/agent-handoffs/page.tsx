@@ -44,9 +44,20 @@ type MeResponse =
     }
   | { ok: false; error: string };
 
-type NextAction = "claim" | "manufacturer_found" | "payment" | "shipped" | "delivered" | "cancelled";
+type NextAction =
+  | "claim"
+  | "manufacturer_found"
+  | "paid"
+  | "payment"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
 
-type PaymentPurpose = "downpayment" | "full_payment" | "shipping_payment" | "additional_payment";
+type PaymentPurpose =
+  | "downpayment"
+  | "full_payment"
+  | "shipping_payment"
+  | "additional_payment";
 
 type PaymentSummaryResponse =
   | {
@@ -112,17 +123,25 @@ function badge(status: string) {
   return `${base} border-neutral-700 bg-neutral-900/60 text-neutral-200`;
 }
 
-function allowedNextActions(h: Handoff): NextAction[] {
+function allowedNextActions(h: Handoff, ps?: PaymentSummary): NextAction[] {
   const s = (h.status || "").toLowerCase();
+
+  const totalDue = Number(ps?.total_due ?? 0);
+  const balance = Number(ps?.balance ?? Number.POSITIVE_INFINITY);
+  const hasDueSet = totalDue > 0;
 
   if (s === "pending" && !h.claimed_by) return ["claim", "cancelled"];
   if (s === "claimed") return ["manufacturer_found", "cancelled"];
 
-  // Manufacturer found and beyond: allow payment logging any time
-  if (s === "manufacturer_found") return ["payment", "cancelled"];
+  if (s === "manufacturer_found") {
+    const actions: NextAction[] = ["payment", "cancelled"];
+    if (hasDueSet && balance <= 0) actions.unshift("paid");
+    return actions;
+  }
+
   if (s === "paid") return ["payment", "shipped", "cancelled"];
   if (s === "shipped") return ["payment", "delivered", "cancelled"];
-  if (s === "delivered") return ["payment"]; // allow more payments even after delivery
+  if (s === "delivered") return ["payment"];
 
   return [];
 }
@@ -130,6 +149,7 @@ function allowedNextActions(h: Handoff): NextAction[] {
 function actionLabel(a: NextAction) {
   if (a === "claim") return "Claim";
   if (a === "manufacturer_found") return "Manufacturer Found";
+  if (a === "paid") return "Mark Paid";
   if (a === "payment") return "Record Payment";
   if (a === "shipped") return "Mark Shipped";
   if (a === "delivered") return "Mark Delivered";
@@ -150,6 +170,13 @@ const btnPrimary = `${btnBase} bg-white text-neutral-950 border-white hover:bg-n
 const btnSecondary = `${btnBase} border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700`;
 const btnDanger = `${btnBase} border-red-700/60 bg-red-500/10 text-red-200 hover:bg-red-500/15`;
 
+function norm(v: any) {
+  return String(v ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function AgentHandoffsPage() {
   const [handoffs, setHandoffs] = useState<Handoff[]>([]);
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -161,6 +188,10 @@ export default function AgentHandoffsPage() {
 
   // payment summaries keyed by handoff id
   const [paySummary, setPaySummary] = useState<Record<number, PaymentSummary>>({});
+
+  // Search
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Update modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -183,6 +214,12 @@ export default function AgentHandoffsPage() {
 
   // Payment confirm (optional)
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
+
+  // Debounce search input so filtering stays smooth
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     let alive = true;
@@ -229,9 +266,10 @@ export default function AgentHandoffsPage() {
       try {
         const ids = handoffs.map((h) => h.id);
 
-        // fetch sequentially to avoid hammering; still fine for admin scale
         for (const id of ids) {
-          const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${id}`, { cache: "no-store" });
+          const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${id}`, {
+            cache: "no-store",
+          });
           const data = (await res.json().catch(() => null)) as PaymentSummaryResponse | null;
           if (!alive || !data) continue;
           if ("ok" in data && data.ok) {
@@ -247,7 +285,7 @@ export default function AgentHandoffsPage() {
           }
         }
       } catch {
-        // ignore summary errors, page remains usable
+        // ignore summary errors
       }
     }
 
@@ -261,12 +299,37 @@ export default function AgentHandoffsPage() {
     return me && "ok" in me && me.ok ? me.user.username : "";
   }, [me]);
 
+  const filteredHandoffs = useMemo(() => {
+    const q = norm(debouncedSearch);
+    if (!q) return handoffs;
+
+    return handoffs.filter((h) => {
+      const hay = [
+        h.token,
+        h.handoff_type,
+        h.customer_name,
+        h.email,
+        h.whatsapp_number,
+        h.status,
+        h.claimed_by,
+        h.context,
+        h.tracking_number,
+        h.shipper,
+      ]
+        .map(norm)
+        .join(" | ");
+
+      return hay.includes(q);
+    });
+  }, [handoffs, debouncedSearch]);
+
   function openUpdateModal(h: Handoff) {
     setBanner(null);
     setModalHandoff(h);
     setModalOpen(true);
 
-    const allowed = allowedNextActions(h);
+    const ps = paySummary[h.id];
+    const allowed = allowedNextActions(h, ps);
     setModalAction(allowed[0] ?? "");
     setShipper("");
     setTracking("");
@@ -284,7 +347,10 @@ export default function AgentHandoffsPage() {
 
   async function claim(id: number) {
     if (!agentUsername) {
-      setBanner({ type: "err", msg: "Could not identify signed-in agent. Sign out and sign in again." });
+      setBanner({
+        type: "err",
+        msg: "Could not identify signed-in agent. Sign out and sign in again.",
+      });
       return;
     }
 
@@ -339,7 +405,6 @@ export default function AgentHandoffsPage() {
     setPayNote("");
 
     const summary = paySummary[h.id];
-    // only require Total Due when not set yet (0)
     setTotalDueInput(summary && summary.total_due > 0 ? "" : "");
   }
 
@@ -355,7 +420,9 @@ export default function AgentHandoffsPage() {
 
   async function refreshPaymentSummary(handoffId: number) {
     try {
-      const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${handoffId}`, { cache: "no-store" });
+      const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${handoffId}`, {
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => null)) as PaymentSummaryResponse | null;
       if (!data || !("ok" in data) || !data.ok) return;
 
@@ -387,7 +454,6 @@ export default function AgentHandoffsPage() {
     const current = paySummary[hid];
     const totalDue = current?.total_due ?? 0;
 
-    // if total_due not set yet, force it now
     if (!totalDue || totalDue <= 0) {
       const td = Number(String(totalDueInput).replace(/,/g, "").trim());
       if (!td || td <= 0) {
@@ -396,7 +462,6 @@ export default function AgentHandoffsPage() {
       }
     }
 
-    // open confirm modal (nice UX)
     setPaymentConfirmOpen(true);
   }
 
@@ -436,9 +501,6 @@ export default function AgentHandoffsPage() {
 
       setBanner({ type: "ok", msg: "Payment recorded." });
 
-      // optional: if this is “full payment” or balance <= 0, mark status paid (business choice)
-      // We keep status separate; you can decide later if you want auto-status updates.
-
       await refreshPaymentSummary(hid);
       closePayment();
     } catch (e: any) {
@@ -454,8 +516,9 @@ export default function AgentHandoffsPage() {
 
     const h = modalHandoff;
     const id = h.id;
+    const ps = paySummary[id];
 
-    const allowed = allowedNextActions(h);
+    const allowed = allowedNextActions(h, ps);
     if (!allowed.includes(modalAction as NextAction)) {
       setBanner({ type: "err", msg: "That action is no longer valid. Refreshing list…" });
       closeUpdateModal();
@@ -471,6 +534,12 @@ export default function AgentHandoffsPage() {
 
       if (modalAction === "claim") {
         await claim(id);
+        closeUpdateModal();
+        return;
+      }
+
+      if (modalAction === "paid") {
+        await updateStatus(id, "paid");
         closeUpdateModal();
         return;
       }
@@ -518,15 +587,53 @@ export default function AgentHandoffsPage() {
     }
   }
 
+  const totalCount = handoffs.length;
+  const shownCount = filteredHandoffs.length;
+  const hasSearch = norm(debouncedSearch).length > 0;
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-neutral-100">Handoffs</h2>
           <p className="text-sm text-neutral-400">Claim and progress handoffs through sourcing milestones.</p>
         </div>
 
-        <div className="text-xs text-neutral-400">{agentUsername ? `Signed in as ${agentUsername}` : ""}</div>
+        <div className="flex flex-col gap-2 sm:items-end">
+          <div className="text-xs text-neutral-400">{agentUsername ? `Signed in as ${agentUsername}` : ""}</div>
+
+          {/* Search bar */}
+          <div className="flex w-full items-center gap-2 sm:w-[420px]">
+            <div className="relative w-full">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search token, name, email, WhatsApp, status, owner..."
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 pr-10 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              />
+              {search.trim() ? (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+                  aria-label="Clear search"
+                  type="button"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 text-[11px] text-neutral-400">
+              {hasSearch ? (
+                <span>
+                  {shownCount}/{totalCount}
+                </span>
+              ) : (
+                <span>{totalCount}</span>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {banner ? (
@@ -543,9 +650,18 @@ export default function AgentHandoffsPage() {
 
       {loading && <p className="text-sm text-neutral-400">Loading handoffs...</p>}
 
-      {!loading && handoffs.length === 0 ? <p className="text-sm text-neutral-400">No handoffs yet.</p> : null}
+      {!loading && totalCount === 0 ? <p className="text-sm text-neutral-400">No handoffs yet.</p> : null}
 
-      {!loading && handoffs.length > 0 ? (
+      {!loading && totalCount > 0 && shownCount === 0 ? (
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <p className="text-sm text-neutral-300">No matches for your search.</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Try searching by token (SRC-...), email, WhatsApp number, or status.
+          </p>
+        </div>
+      ) : null}
+
+      {!loading && shownCount > 0 ? (
         <div className="overflow-x-auto rounded-2xl border border-neutral-800">
           <table className="w-full text-sm">
             <thead className="bg-neutral-900/70 text-neutral-300">
@@ -565,10 +681,10 @@ export default function AgentHandoffsPage() {
             </thead>
 
             <tbody className="bg-neutral-950">
-              {handoffs.map((h) => {
+              {filteredHandoffs.map((h) => {
                 const disabled = busyId === h.id;
-                const allowed = allowedNextActions(h);
                 const ps = paySummary[h.id];
+                const allowed = allowedNextActions(h, ps);
 
                 return (
                   <tr key={h.id} className="border-t border-neutral-800 hover:bg-neutral-900/40 align-top">
@@ -578,9 +694,8 @@ export default function AgentHandoffsPage() {
                       <div className="font-medium text-neutral-100">{h.customer_name || "N/A"}</div>
                     </td>
 
-                    <td className="px-3 py-3 text-xs text-neutral-300">
-                      {h.email || "N/A"}
-                    </td>
+                    <td className="px-3 py-3 text-xs text-neutral-300">{h.email || "N/A"}</td>
+
                     <td className="px-3 py-3">
                       <div className="font-semibold text-neutral-100">{h.token}</div>
                       <div className="mt-1 text-[11px] text-neutral-500">{h.handoff_type}</div>
@@ -709,7 +824,7 @@ export default function AgentHandoffsPage() {
                 }}
                 className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
               >
-                {allowedNextActions(modalHandoff).map((a) => (
+                {allowedNextActions(modalHandoff, paySummary[modalHandoff.id]).map((a) => (
                   <option key={a} value={a}>
                     {actionLabel(a)}
                   </option>
@@ -805,7 +920,6 @@ export default function AgentHandoffsPage() {
 
               return (
                 <div className="mt-4 space-y-3">
-                  {/* Total due only if not set */}
                   {due <= 0 ? (
                     <div>
                       <label className="text-xs text-neutral-400">Total amount due (required first time)</label>
@@ -825,7 +939,13 @@ export default function AgentHandoffsPage() {
                       <div className="mt-1 text-sm text-neutral-200">
                         Due: <span className="font-semibold">{fmtMoney(ps!.total_due, currency)}</span> · Paid:{" "}
                         <span className="font-semibold">{fmtMoney(ps!.total_paid, currency)}</span> · Balance:{" "}
-                        <span className={ps!.balance <= 0 ? "font-semibold text-emerald-200" : "font-semibold text-amber-200"}>
+                        <span
+                          className={
+                            ps!.balance <= 0
+                              ? "font-semibold text-emerald-200"
+                              : "font-semibold text-amber-200"
+                          }
+                        >
                           {fmtMoney(ps!.balance, currency)}
                         </span>
                       </div>
@@ -854,6 +974,7 @@ export default function AgentHandoffsPage() {
                         <option value="downpayment">Downpayment</option>
                         <option value="full_payment">Full Payment</option>
                         <option value="shipping_payment">Shipping Payment</option>
+                        <option value="additional_payment">Shipping Payment</option>
                         <option value="additional_payment">Additional Payment</option>
                       </select>
                     </div>
@@ -878,7 +999,9 @@ export default function AgentHandoffsPage() {
                       </button>
                       <button
                         onClick={submitPayment}
-                        className={`${btnPrimary} ${busyId === paymentHandoff.id ? "opacity-60 cursor-not-allowed" : ""}`}
+                        className={`${btnPrimary} ${
+                          busyId === paymentHandoff.id ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                         disabled={busyId === paymentHandoff.id}
                       >
                         {busyId === paymentHandoff.id ? "Saving..." : "Continue"}

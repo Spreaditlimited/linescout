@@ -3,7 +3,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-
 type Lead = {
   id: number;
   created_at: string;
@@ -39,6 +38,13 @@ type RowState = {
 
 const defaultRowState: RowState = { open: false, action: "", summary: "" };
 
+function norm(v: any) {
+  return String(v ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function InternalLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,9 +60,18 @@ export default function InternalLeadsPage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [row, setRow] = useState<Record<number, RowState>>({});
 
+  // Search (client-side for current page)
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPrev = page > 1 && !loading;
   const canNext = page < totalPages && !loading;
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 200);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     let alive = true;
@@ -138,6 +153,9 @@ export default function InternalLeadsPage() {
       setLeads(data.items || []);
       setTotal(Number(data.total || 0));
       setPage(Number(data.page || p));
+
+      // Keep search box as-is, but close any open row UIs when page changes
+      setRow({});
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -193,11 +211,11 @@ export default function InternalLeadsPage() {
   }
 
   function allowedActions(lead: Lead): LeadAction[] {
-  const s = (lead.status || "").toLowerCase();
-  if (s === "new") return ["claim", "mark_called"];
-  if (s === "claimed") return ["mark_called"];
-  return [];
-}
+    const s = (lead.status || "").toLowerCase();
+    if (s === "new") return ["claim", "mark_called"];
+    if (s === "claimed") return ["mark_called"];
+    return [];
+  }
 
   async function submitRowAction(lead: Lead) {
     const st = getRowState(lead.id);
@@ -226,10 +244,35 @@ export default function InternalLeadsPage() {
     }
   }
 
+  const filteredLeads = useMemo(() => {
+    const q = norm(debouncedSearch);
+    if (!q) return leads;
+
+    return leads.filter((lead) => {
+      const hay = [
+        lead.id,
+        lead.name,
+        lead.email,
+        lead.whatsapp,
+        lead.sourcing_request,
+        lead.status,
+        lead.claimed_by ? "claimed" : "",
+        lead.called_by ? "called" : "",
+        lead.call_summary,
+      ]
+        .map(norm)
+        .join(" | ");
+
+      return hay.includes(q);
+    });
+  }, [leads, debouncedSearch]);
+
+  const totalOnPage = leads.length;
+  const shownOnPage = filteredLeads.length;
+  const hasSearch = norm(debouncedSearch).length > 0;
+
   return (
     <div className="space-y-5">
-      
-
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -239,35 +282,60 @@ export default function InternalLeadsPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fetchLeads(page)}
-              className={btnSecondary}
-            >
-              Refresh
-            </button>
-
-            <div className="ml-0 sm:ml-2 flex items-center gap-2">
-              <button
-                type="button"
-                disabled={!canPrev}
-                onClick={() => fetchLeads(page - 1)}
-                className={`${btnSecondary} ${!canPrev ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                Prev
-              </button>
-              <div className="text-sm text-neutral-400 whitespace-nowrap">
-                Page {page} of {totalPages}
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+            {/* Search bar */}
+            <div className="flex w-full items-center gap-2 sm:w-[420px]">
+              <div className="relative w-full">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, email, WhatsApp, request, status, ID..."
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 pr-10 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                />
+                {search.trim() ? (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:bg-neutral-800"
+                    aria-label="Clear search"
+                    type="button"
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
-              <button
-                type="button"
-                disabled={!canNext}
-                onClick={() => fetchLeads(page + 1)}
-                className={`${btnSecondary} ${!canNext ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                Next
+
+              <div className="shrink-0 text-[11px] text-neutral-400">
+                {hasSearch ? <span>{shownOnPage}/{totalOnPage}</span> : <span>{totalOnPage}</span>}
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => fetchLeads(page)} className={btnSecondary}>
+                Refresh
               </button>
+
+              <div className="ml-0 sm:ml-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!canPrev}
+                  onClick={() => fetchLeads(page - 1)}
+                  className={`${btnSecondary} ${!canPrev ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  Prev
+                </button>
+                <div className="text-sm text-neutral-400 whitespace-nowrap">
+                  Page {page} of {totalPages}
+                </div>
+                <button
+                  type="button"
+                  disabled={!canNext}
+                  onClick={() => fetchLeads(page + 1)}
+                  className={`${btnSecondary} ${!canNext ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -275,7 +343,16 @@ export default function InternalLeadsPage() {
         {loading && <p className="mt-4 text-sm text-neutral-400">Loading leads...</p>}
         {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
 
-        {!loading && !error && (
+        {!loading && !error && shownOnPage === 0 ? (
+          <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <p className="text-sm text-neutral-300">No matches for your search.</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Try searching by WhatsApp number, email, or a keyword in the request.
+            </p>
+          </div>
+        ) : null}
+
+        {!loading && !error && shownOnPage > 0 ? (
           <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
             <table className="min-w-full text-sm">
               <thead className="bg-neutral-900/70 text-neutral-300">
@@ -291,7 +368,7 @@ export default function InternalLeadsPage() {
               </thead>
 
               <tbody className="bg-neutral-950">
-                {leads.map((lead) => {
+                {filteredLeads.map((lead) => {
                   const st = getRowState(lead.id);
                   const disabled = busyId === lead.id;
                   const allowed = allowedActions(lead);
@@ -355,9 +432,7 @@ export default function InternalLeadsPage() {
 
                               {st.open ? (
                                 <button
-                                  onClick={() =>
-                                    setRowState(lead.id, { open: false, action: "", summary: "" })
-                                  }
+                                  onClick={() => setRowState(lead.id, { open: false, action: "", summary: "" })}
                                   disabled={disabled}
                                   className={`${btnDanger} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
                                 >
@@ -380,9 +455,7 @@ export default function InternalLeadsPage() {
                                   className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                                 >
                                   <option value="">Select action</option>
-                                  {allowed.includes("claim") ? (
-                                    <option value="claim">Claim</option>
-                                  ) : null}
+                                  {allowed.includes("claim") ? <option value="claim">Claim</option> : null}
                                   {allowed.includes("mark_called") ? (
                                     <option value="mark_called">Mark called</option>
                                   ) : null}
@@ -411,9 +484,7 @@ export default function InternalLeadsPage() {
                                     {disabled ? "Saving..." : "Save"}
                                   </button>
 
-                                  <div className="text-[11px] text-neutral-500">
-                                    Admin only
-                                  </div>
+                                  <div className="text-[11px] text-neutral-500">Admin only</div>
                                 </div>
                               </div>
                             ) : null}
@@ -427,10 +498,10 @@ export default function InternalLeadsPage() {
             </table>
 
             <div className="px-3 py-3 text-xs text-neutral-500">
-              Showing {leads.length} of {total} leads.
+              Showing {shownOnPage} of {totalOnPage} on this page. Total leads: {total}.
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
