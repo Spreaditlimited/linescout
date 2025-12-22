@@ -12,7 +12,7 @@ type Handoff = {
   whatsapp_number: string;
 
   customer_name?: string | null;
-  customer_email?: string | null;
+  email?: string | null;
 
   status: string;
   created_at: string;
@@ -579,7 +579,7 @@ export default function AgentHandoffsPage() {
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300">
-                      {h.customer_email || "N/A"}
+                      {h.email || "N/A"}
                     </td>
                     <td className="px-3 py-3">
                       <div className="font-semibold text-neutral-100">{h.token}</div>

@@ -1,12 +1,11 @@
 // app/machine-sourcing/page.tsx
 "use client";
 
-
 import Link from "next/link";
 import Image from "next/image";
 import BusinessPlanForm from "@/components/BusinessPlanForm";
- import { track } from "@/lib/metaPixel";
-import { useMemo, useState, useEffect, useRef } from "react"; // make sure useMemo is imported
+import { track } from "@/lib/metaPixel";
+import { useMemo, useState, useEffect, useRef } from "react";
 
 type Mode = "chat" | "businessPlan";
 
@@ -28,13 +27,13 @@ export default function MachineSourcingPage() {
   ]);
 
   const derivedLeadIntent = useMemo(() => {
-  const userMsgs = messages
-    .filter((m) => m.role === "user" && m.content?.trim())
-    .slice(-4)
-    .map((m) => m.content.trim());
+    const userMsgs = messages
+      .filter((m) => m.role === "user" && m.content?.trim())
+      .slice(-4)
+      .map((m) => m.content.trim());
 
-  return userMsgs.join("\n\n").trim();
-}, [messages]);
+    return userMsgs.join("\n\n").trim();
+  }, [messages]);
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -61,6 +60,7 @@ export default function MachineSourcingPage() {
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [handoffSubmitting, setHandoffSubmitting] = useState(false);
 
+  const [handoffName, setHandoffName] = useState("");
   const [handoffEmail, setHandoffEmail] = useState("");
   const [handoffWhatsapp, setHandoffWhatsapp] = useState("");
   const [handoffContext, setHandoffContext] = useState("");
@@ -130,30 +130,30 @@ export default function MachineSourcingPage() {
     setUiAlertOpen(true);
   }
 
-// Trigger lead modal after 3 user messages (chat mode only)
-// Prefill lead intent BEFORE opening the modal (reliable on all browsers/incognito)
-useEffect(() => {
-  if (mode !== "chat") return;
-  if (leadCaptured) return;
-  if (showLeadModal) return; // don’t keep re-opening
+  // Trigger lead modal after 3 user messages (chat mode only)
+  // Prefill lead intent BEFORE opening the modal (reliable on all browsers/incognito)
+  useEffect(() => {
+    if (mode !== "chat") return;
+    if (leadCaptured) return;
+    if (showLeadModal) return; // don’t keep re-opening
 
-  const userMsgs = messages.filter((m) => m.role === "user" && (m.content || "").trim());
-  if (userMsgs.length < 3) return;
+    const userMsgs = messages.filter((m) => m.role === "user" && (m.content || "").trim());
+    if (userMsgs.length < 3) return;
 
-  // Prefill only if empty (functional update prevents stale state issues)
-  setLeadIntent((prev) => {
-    if (prev.trim()) return prev;
+    // Prefill only if empty (functional update prevents stale state issues)
+    setLeadIntent((prev) => {
+      if (prev.trim()) return prev;
 
-    const lastFew = userMsgs
-      .slice(-4)
-      .map((m) => (m.content || "").trim())
-      .filter(Boolean);
+      const lastFew = userMsgs
+        .slice(-4)
+        .map((m) => (m.content || "").trim())
+        .filter(Boolean);
 
-    return lastFew.join("\n\n");
-  });
+      return lastFew.join("\n\n");
+    });
 
-  setShowLeadModal(true);
-}, [messages, leadCaptured, mode, showLeadModal]);
+    setShowLeadModal(true);
+  }, [messages, leadCaptured, mode, showLeadModal]);
 
   function normalizeWhatsAppUI(raw: string) {
     const digits = raw.replace(/\D/g, "");
@@ -186,7 +186,7 @@ useEffect(() => {
     }
 
     const email = leadEmail.trim();
-    const intent = (leadIntent.trim() || derivedLeadIntent.trim());
+    const intent = leadIntent.trim() || derivedLeadIntent.trim();
 
     if (!name || !whatsapp || !email || !intent) {
       alert("All fields are required.");
@@ -221,11 +221,9 @@ useEffect(() => {
       localStorage.setItem("linescout_lead_intent", intent);
 
       setLeadCaptured(true);
-      // Track lead capture
-      track("LeadCaptured", {
-      source: "linescout-chat",
-      });   
+      track("LeadCaptured", { source: "linescout-chat" });
       track("Lead", { content_name: "LineScout Lead Capture" });
+
       setShowLeadModal(false);
 
       // Prefill handoff fields too
@@ -286,8 +284,13 @@ useEffect(() => {
       setIsVerified(true);
       track("CompleteRegistration", { content_name: "Sourcing Token Verified" });
 
-      // Prefill email from token record (you said you store only email)
       if (data.email) setHandoffEmail(String(data.email));
+      if (data.customer_name) setHandoffName(String(data.customer_name));
+
+      if (data.customer_phone) {
+        if (!handoffWhatsapp) setHandoffWhatsapp(String(data.customer_phone));
+        localStorage.setItem("linescout_lead_whatsapp", String(data.customer_phone));
+      }
 
       // Prefill whatsapp from lead if available
       const storedWhatsapp = localStorage.getItem("linescout_lead_whatsapp") || "";
@@ -306,6 +309,7 @@ useEffect(() => {
     const t = sourcingToken.trim();
     const email = handoffEmail.trim();
     const context = handoffContext.trim();
+    const name = handoffName.trim();
 
     let whatsapp: string;
     try {
@@ -320,7 +324,7 @@ useEffect(() => {
       return;
     }
 
-    if (!email || !whatsapp || !context) {
+    if (!name || !email || !whatsapp || !context) {
       alert("Please fill all fields.");
       return;
     }
@@ -334,6 +338,7 @@ useEffect(() => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: t,
+          customer_name: name,
           email,
           whatsapp_number: whatsapp,
           context,
@@ -470,10 +475,9 @@ useEffect(() => {
   }
 
   return (
-    // App shell: fixed-height, no page scroll, mobile app feel
-    <div className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-slate-950 text-slate-50 text-sm sm:text-base flex flex-col">
+    <div className="h-[100dvh] min-h-[100dvh] overflow-hidden bg-neutral-950 text-neutral-100 text-sm sm:text-base flex flex-col">
       {/* Top bar */}
-      <header className="flex-shrink-0 sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
+      <header className="flex-shrink-0 sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center" aria-label="LineScout home">
@@ -489,20 +493,20 @@ useEffect(() => {
           </div>
 
           <div className="hidden items-center gap-3 md:flex">
-            <div className="text-sm text-slate-300">Your co-pilot for machine sourcing</div>
-            <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold tracking-wide text-emerald-200">
+            <div className="text-sm text-neutral-300">Your co-pilot for machine sourcing</div>
+            <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-xs font-semibold tracking-wide text-neutral-200">
               BETA
             </span>
           </div>
 
           <nav className="hidden items-center gap-6 lg:flex">
-            <Link href="/#how" className="text-sm font-medium text-slate-300 hover:text-white">
+            <Link href="/#how" className="text-sm font-medium text-neutral-300 hover:text-white">
               How it works
             </Link>
-            <Link href="/#products" className="text-sm font-medium text-slate-300 hover:text-white">
+            <Link href="/#products" className="text-sm font-medium text-neutral-300 hover:text-white">
               Modes
             </Link>
-            <Link href="/#prompts" className="text-sm font-medium text-slate-300 hover:text-white">
+            <Link href="/#prompts" className="text-sm font-medium text-neutral-300 hover:text-white">
               Examples
             </Link>
           </nav>
@@ -510,13 +514,13 @@ useEffect(() => {
           <div className="flex items-center gap-2">
             <Link
               href="/machine-sourcing"
-              className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-white/10 sm:inline-flex"
+              className="hidden rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 sm:inline-flex"
             >
               Business plan
             </Link>
             <Link
               href="/machine-sourcing"
-              className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+              className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
             >
               Start chat
             </Link>
@@ -524,26 +528,26 @@ useEffect(() => {
         </div>
       </header>
 
-      {/* Main layout: contained, no outer scroll */}
+      {/* Main layout */}
       <main className="mx-auto w-full flex-1 min-h-0 overflow-hidden max-w-6xl gap-4 px-4 py-3 md:py-5 flex">
         {/* Sidebar */}
-        <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 md:flex overflow-hidden">
-          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-400">Modes</div>
+        <aside className="hidden w-64 flex-shrink-0 flex-col gap-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 md:flex overflow-hidden">
+          <div className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-400">Modes</div>
 
           <button
             type="button"
             onClick={() => setMode("chat")}
             className={`
-              flex flex-col items-start rounded-xl px-4 py-3 text-left transition ring-1
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition border
               ${
                 mode === "chat"
-                  ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-                  : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
+                  ? "bg-neutral-900/60 text-white border-neutral-700"
+                  : "bg-neutral-950 text-neutral-200 border-neutral-800 hover:border-neutral-700"
               }
             `}
           >
             <span className="font-semibold">Machine Sourcing Chat</span>
-            <span className="mt-0.5 text-sm text-slate-400">
+            <span className="mt-0.5 text-sm text-neutral-400">
               Ask about production lines, capacity, suppliers and budgets.
             </span>
           </button>
@@ -552,20 +556,20 @@ useEffect(() => {
             type="button"
             onClick={() => setMode("businessPlan")}
             className={`
-              flex flex-col items-start rounded-xl px-4 py-3 text-left transition ring-1
+              flex flex-col items-start rounded-xl px-4 py-3 text-left transition border
               ${
                 mode === "businessPlan"
-                  ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-                  : "bg-white/5 text-slate-200 ring-white/15 hover:bg-white/10"
+                  ? "bg-neutral-900/60 text-white border-neutral-700"
+                  : "bg-neutral-950 text-neutral-200 border-neutral-800 hover:border-neutral-700"
               }
             `}
           >
             <span className="font-semibold">Business Plan Writer</span>
-            <span className="mt-0.5 text-sm text-slate-400">Use your paid token to generate a full plan.</span>
+            <span className="mt-0.5 text-sm text-neutral-400">Use your paid token to generate a full plan.</span>
           </button>
 
-          <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-sm text-slate-400">
-            <div className="mb-1 font-semibold text-slate-200">How tokens work</div>
+          <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-sm text-neutral-400">
+            <div className="mb-1 font-semibold text-neutral-200">How tokens work</div>
             <p>
               • Sourcing tokens unlock human-agent sourcing (exact quotation).
               <br />
@@ -578,7 +582,7 @@ useEffect(() => {
 
         {/* Content */}
         <section
-          className="flex-1 min-h-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80 p-3 sm:p-4 flex flex-col"
+          className="flex-1 min-h-0 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 p-3 sm:p-4 flex flex-col"
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
@@ -588,11 +592,11 @@ useEffect(() => {
               type="button"
               onClick={() => setMode("chat")}
               className={`
-                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ring-1
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition border
                 ${
                   mode === "chat"
-                    ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-                    : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
+                    ? "bg-white text-neutral-950 border-white"
+                    : "bg-neutral-950 text-neutral-200 border-neutral-800 hover:border-neutral-700"
                 }
               `}
             >
@@ -603,11 +607,11 @@ useEffect(() => {
               type="button"
               onClick={() => setMode("businessPlan")}
               className={`
-                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ring-1
+                flex-1 rounded-full px-4 py-2 text-sm font-semibold transition border
                 ${
                   mode === "businessPlan"
-                    ? "bg-emerald-500/15 text-emerald-100 ring-emerald-400/35"
-                    : "bg-white/5 text-slate-300 ring-white/15 hover:bg-white/10"
+                    ? "bg-white text-neutral-950 border-white"
+                    : "bg-neutral-950 text-neutral-200 border-neutral-800 hover:border-neutral-700"
                 }
               `}
             >
@@ -615,7 +619,6 @@ useEffect(() => {
             </button>
           </div>
 
-          {/* Inner content must be bounded and non-scrolling so ChatMode owns scroll */}
           <div className="flex-1 min-h-0 overflow-hidden">
             {mode === "chat" ? (
               <ChatMode
@@ -643,70 +646,82 @@ useEffect(() => {
       </main>
 
       {/* Lead Capture Modal */}
-{showLeadModal && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-    <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-      <h2 className="text-lg font-semibold text-slate-100 mb-1">Let’s continue properly</h2>
-      <p className="text-sm text-slate-400 mb-4">Please share your details so our team can support you better.</p>
+      {showLeadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl shadow-black/50">
+            <h2 className="text-lg font-semibold text-white mb-1">Let’s continue properly</h2>
+            <p className="text-sm text-neutral-400 mb-4">
+              Please share your details so our team can support you better.
+            </p>
 
-      <div className="space-y-3">
-        <input
-          value={leadName}
-          onChange={(e) => setLeadName(e.target.value)}
-          placeholder="Your full name"
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-        />
+            <div className="space-y-3">
+              <input
+                value={leadName}
+                onChange={(e) => setLeadName(e.target.value)}
+                placeholder="Your full name"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+              />
 
-        <input
-          value={leadWhatsapp}
-          onChange={(e) => setLeadWhatsapp(e.target.value.replace(/\D/g, ""))}
-          inputMode="numeric"
-          maxLength={13}
-          placeholder="WhatsApp number (e.g. 8037649956)"
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-        />
+              <input
+                value={leadWhatsapp}
+                onChange={(e) => setLeadWhatsapp(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                maxLength={13}
+                placeholder="WhatsApp number (e.g. 8037649956)"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+              />
 
-        <input
-          value={leadEmail}
-          onChange={(e) => setLeadEmail(e.target.value)}
-          placeholder="Email address"
-          className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-        />
+              <input
+                value={leadEmail}
+                onChange={(e) => setLeadEmail(e.target.value)}
+                placeholder="Email address"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+              />
 
-        <textarea
-          value={leadIntent.length > 0 ? leadIntent : derivedLeadIntent}
-          onChange={(e) => setLeadIntent(e.target.value)}
-          placeholder="What do you want to source from China?"
-          className="w-full min-h-[90px] resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-          rows={4}
-        />
-      </div>
+              <textarea
+                value={leadIntent.length > 0 ? leadIntent : derivedLeadIntent}
+                onChange={(e) => setLeadIntent(e.target.value)}
+                placeholder="What do you want to source from China?"
+                className="w-full min-h-[90px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                rows={4}
+              />
+            </div>
 
-      <button
-        onClick={submitLead}
-        disabled={leadSubmitting}
-        className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        {leadSubmitting ? "Saving…" : "Continue with LineScout"}
-      </button>
+            <button
+              onClick={submitLead}
+              disabled={leadSubmitting}
+              className="mt-4 w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {leadSubmitting ? "Saving…" : "Continue with LineScout"}
+            </button>
 
-      <p className="mt-3 text-xs text-slate-500">All fields are required to continue.</p>
-    </div>
-  </div>
-)}
+            <p className="mt-3 text-xs text-neutral-500">All fields are required to continue.</p>
+          </div>
+        </div>
+      )}
+
       {/* Handoff Modal */}
       {showHandoffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">Ready for human agents</h2>
-            <p className="text-sm text-slate-400 mb-4">Confirm your details and tell us briefly what you want to source.</p>
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl shadow-black/50">
+            <h2 className="text-lg font-semibold text-white mb-1">Ready for human agents</h2>
+            <p className="text-sm text-neutral-400 mb-4">
+              Confirm your details and tell us briefly what you want to source.
+            </p>
 
             <div className="space-y-3">
+              <input
+                value={handoffName}
+                onChange={(e) => setHandoffName(e.target.value)}
+                placeholder="Full name"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+              />
+
               <input
                 value={handoffEmail}
                 onChange={(e) => setHandoffEmail(e.target.value)}
                 placeholder="Email address"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
 
               <input
@@ -715,21 +730,21 @@ useEffect(() => {
                 inputMode="numeric"
                 maxLength={13}
                 placeholder="WhatsApp number (e.g. 8037649956)"
-                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
 
               <textarea
                 value={handoffContext}
                 onChange={(e) => setHandoffContext(e.target.value)}
                 placeholder="What are you in the market for? Mention product, capacity, location, budget if you have one."
-                className="w-full min-h-[110px] resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full min-h-[110px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
             </div>
 
             <button
               onClick={submitHandoff}
               disabled={handoffSubmitting}
-              className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+              className="mt-4 w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {handoffSubmitting ? "Submitting…" : "Let’s get started"}
             </button>
@@ -737,7 +752,7 @@ useEffect(() => {
             <button
               type="button"
               onClick={() => setShowHandoffModal(false)}
-              className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-900"
+              className="mt-3 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
             >
               Close
             </button>
@@ -748,14 +763,14 @@ useEffect(() => {
       {/* UI alert modal */}
       {uiAlertOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-slate-100 mb-1">{uiAlertTitle}</h2>
-            <p className="text-sm text-slate-300 whitespace-pre-line">{uiAlertMessage}</p>
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl shadow-black/50">
+            <h2 className="text-lg font-semibold text-white mb-1">{uiAlertTitle}</h2>
+            <p className="text-sm text-neutral-300 whitespace-pre-line">{uiAlertMessage}</p>
 
             <button
               type="button"
               onClick={() => setUiAlertOpen(false)}
-              className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+              className="mt-4 w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
             >
               OK
             </button>
@@ -903,10 +918,10 @@ function ChatMode({
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] sm:max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base break-words ${
+                className={`max-w-[85%] sm:max-w-[90%] rounded-2xl px-3 py-2 text-sm sm:text-base break-words border ${
                   m.role === "user"
-                    ? "rounded-br-sm bg-[#12356b] text-slate-50"
-                    : "rounded-bl-sm bg-slate-800 text-slate-100"
+                    ? "rounded-br-sm bg-white text-neutral-950 border-neutral-200"
+                    : "rounded-bl-sm bg-neutral-900 text-neutral-100 border-neutral-800"
                 }`}
               >
                 {m.content}
@@ -916,8 +931,8 @@ function ChatMode({
 
           {sending && (
             <div className="flex justify-start">
-              <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1 text-sm text-slate-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-950 px-3 py-1 text-sm text-neutral-300">
+                <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
                 <span>LineScout is thinking…</span>
               </div>
             </div>
@@ -929,7 +944,7 @@ function ChatMode({
       <form
         ref={composerRef}
         onSubmit={onSend}
-        className="flex-shrink-0 z-20 border-t border-slate-800 bg-slate-950"
+        className="flex-shrink-0 z-20 border-t border-neutral-800 bg-neutral-950"
         style={{
           position: "sticky",
           bottom: 0,
@@ -942,7 +957,7 @@ function ChatMode({
         <div className="flex flex-col gap-2 px-2 sm:px-0">
           <textarea
             ref={textareaRef}
-            className="min-h-[70px] max-h-[200px] w-full resize-none rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm sm:text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500 focus:ring-0"
+            className="min-h-[70px] max-h-[200px] w-full resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm sm:text-base text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-neutral-700 focus:ring-0"
             placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
             value={input}
             onChange={(e) => onChangeInput(e.target.value)}
@@ -950,7 +965,7 @@ function ChatMode({
             rows={1}
           />
 
-          <div className="flex items-center justify-end gap-2 text-xs sm:text-sm text-slate-500 pb-1">
+          <div className="flex items-center justify-end gap-2 text-xs sm:text-sm text-neutral-500 pb-1">
             <span className="hidden sm:inline text-[10px] sm:text-xs leading-tight mr-auto">
               LineScout is advisory. Human agents at Sure Imports handle actual product sourcing in China.
             </span>
@@ -962,15 +977,14 @@ function ChatMode({
                 touch-manipulation
                 inline-flex items-center justify-center
                 rounded-xl
-                bg-emerald-500/15
+                bg-white
                 px-4 sm:px-5
                 py-2 sm:py-2.5
                 text-sm sm:text-base
                 font-semibold
-                text-emerald-100
-                ring-1 ring-emerald-400/35
-                hover:bg-emerald-500/20
-                active:bg-emerald-500/25
+                text-neutral-950
+                hover:bg-neutral-200
+                active:bg-neutral-300
                 whitespace-nowrap
                 disabled:opacity-60
                 disabled:cursor-not-allowed
@@ -1012,7 +1026,7 @@ function TokenStrip({
   }
 
   return (
-    <div className="mb-3 rounded-2xl border border-slate-800 bg-slate-950/60 overflow-hidden">
+    <div className="mb-3 rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
       <div
         role="button"
         tabIndex={0}
@@ -1027,32 +1041,32 @@ function TokenStrip({
         aria-expanded={open}
       >
         <div className="min-w-0 flex items-center gap-2">
-          <span className="text-sm sm:text-base font-semibold text-slate-100">Sourcing token</span>
+          <span className="text-sm sm:text-base font-semibold text-white">Sourcing token</span>
 
           {verified ? (
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-600/40 bg-emerald-600/10 px-2.5 py-1 text-xs text-emerald-200">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span className="inline-flex items-center gap-2 rounded-full border border-neutral-700 bg-neutral-900/60 px-2.5 py-1 text-xs text-neutral-200">
+              <span className="h-2 w-2 rounded-full bg-white" />
               Verified
             </span>
           ) : hasToken ? (
-            <span className="text-xs text-slate-400">Token pasted</span>
+            <span className="text-xs text-neutral-400">Token pasted</span>
           ) : (
-            <span className="text-xs text-slate-400">Optional</span>
+            <span className="text-xs text-neutral-400">Optional</span>
           )}
         </div>
 
-        <span className="text-slate-500 text-sm">{open ? "▾" : "▸"}</span>
+        <span className="text-neutral-500 text-sm">{open ? "▾" : "▸"}</span>
       </div>
 
       {open && (
-        <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-slate-800">
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 border-t border-neutral-800">
           <div className="pt-3 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2 lg:items-center">
             <div className="min-w-0">
-              <div className="text-sm text-slate-400 leading-relaxed">
-                Paste your <span className="text-slate-200 font-semibold">sourcing token</span> to move to human agents for
+              <div className="text-sm text-neutral-400 leading-relaxed">
+                Paste your <span className="text-neutral-200 font-semibold">sourcing token</span> to move to human agents for
                 exact quotation and landing cost. You can still chat without it.
               </div>
-              <div className="mt-2 text-xs text-slate-500">Tip: If you already paid, paste the token and click verify.</div>
+              <div className="mt-2 text-xs text-neutral-500">Tip: If you already paid, paste the token and click verify.</div>
             </div>
 
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:justify-end">
@@ -1060,7 +1074,7 @@ function TokenStrip({
                 value={sourcingToken}
                 onChange={(e) => onChangeSourcingToken(e.target.value)}
                 placeholder="Paste sourcing token"
-                className="touch-manipulation w-full sm:w-[340px] rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm sm:text-base text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 outline-none"
+                className="touch-manipulation w-full sm:w-[340px] rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm sm:text-base text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-700 outline-none"
               />
 
               <button
@@ -1072,16 +1086,16 @@ function TokenStrip({
                   w-full sm:w-auto
                   inline-flex items-center justify-center
                   rounded-xl
-                  bg-emerald-500/15
+                  bg-white
                   px-4 py-2
                   text-sm sm:text-base
                   font-semibold
-                  text-emerald-100
-                  ring-1 ring-emerald-400/35
-                  hover:bg-emerald-500/20
+                  text-neutral-950
+                  hover:bg-neutral-200
                   whitespace-nowrap
                   disabled:opacity-60
                   disabled:cursor-not-allowed
+                  transition-colors
                 "
               >
                 {verifyLabel}

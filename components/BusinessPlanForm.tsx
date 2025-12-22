@@ -364,22 +364,20 @@ export default function BusinessPlanForm() {
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-6 sm:p-8 shadow-xl shadow-black/40">
+    <div className="w-full max-w-3xl mx-auto rounded-2xl border border-neutral-800 bg-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/50">
       {/* Header + compact actions */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-2xl font-semibold text-slate-50">Business Plan Writer</h2>
-          <p className="mt-1 text-sm text-slate-300">
-            Paste your token. Complete the form. Generate a plan.
-          </p>
+          <h2 className="text-2xl font-semibold text-white">Business Plan Writer</h2>
+          <p className="mt-1 text-sm text-neutral-300">Paste your token. Complete the form. Generate a plan.</p>
 
-          <div className="mt-2 text-xs text-slate-400">
+          <div className="mt-2 text-xs text-neutral-400">
             Don’t have a token?{" "}
             <a
               href="https://paystack.shop/pay/linescoutbusinessplan"
               target="_blank"
               rel="noreferrer"
-              className="text-emerald-400 hover:underline"
+              className="text-white underline underline-offset-4 hover:text-neutral-200"
             >
               Get one here (₦20,000)
             </a>
@@ -394,13 +392,13 @@ export default function BusinessPlanForm() {
             disabled={prefillLoading}
             className="
               inline-flex items-center justify-center
-              rounded-lg
-              border border-slate-700
-              bg-slate-900
+              rounded-xl
+              border border-neutral-800
+              bg-neutral-950
               px-3 py-2
-              text-sm font-medium
-              text-slate-200
-              hover:border-emerald-500 hover:text-emerald-300
+              text-sm font-semibold
+              text-neutral-200
+              hover:border-neutral-700
               transition-colors
               whitespace-nowrap
               disabled:opacity-60
@@ -410,15 +408,13 @@ export default function BusinessPlanForm() {
             {prefillLoading ? "Prefilling..." : "Prefill from chat"}
           </button>
 
-          <div className="text-xs text-slate-500">
-            Pulls from your recent chat. Fills empty fields only.
-          </div>
+          <div className="text-xs text-neutral-500">Pulls from your recent chat. Fills empty fields only.</div>
         </div>
       </div>
 
-      {/* Prefill feedback (only appears when there is feedback) */}
+      {/* Prefill feedback */}
       {prefillNote ? (
-        <div className="mb-6 rounded-lg border border-slate-800 bg-slate-900/40 px-3 py-2 text-xs text-slate-300">
+        <div className="mb-6 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-300">
           {prefillNote}
         </div>
       ) : null}
@@ -426,12 +422,12 @@ export default function BusinessPlanForm() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Token */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">Business plan token</label>
+          <label className="block text-sm font-medium text-neutral-200">Business plan token</label>
           <input
             type="text"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
             placeholder="Paste token from your email, e.g. BP-XXXXXX-YYYYY"
           />
         </div>
@@ -439,21 +435,11 @@ export default function BusinessPlanForm() {
         {/* Purpose & currency */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Purpose of business plan</label>
+            <label className="block text-sm font-medium text-neutral-200">Purpose of business plan</label>
             <select
               value={purpose}
               onChange={(e) => setPurpose(e.target.value as Purpose)}
-              className="
-                w-full h-10
-                rounded-lg
-                border border-slate-700
-                bg-slate-900
-                px-3
-                text-sm text-slate-50
-                focus:outline-none
-                focus:ring-2 focus:ring-emerald-500
-                focus:border-emerald-500
-              "
+              className="w-full h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 focus:outline-none focus:border-neutral-700"
             >
               <option value="loan">Bank loan / financing</option>
               <option value="investor">Investor funding</option>
@@ -466,16 +452,11 @@ export default function BusinessPlanForm() {
           <div className="space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-200">Currency</label>
+                <label className="block text-sm font-medium text-neutral-200">Currency</label>
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value as "NGN" | "USD")}
-                  className="
-                    w-full h-11 rounded-lg border border-slate-700
-                    bg-slate-900 px-3 text-sm text-slate-50
-                    focus:outline-none focus:ring-2 focus:ring-emerald-500
-                    focus:border-emerald-500
-                  "
+                  className="w-full h-11 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 focus:outline-none focus:border-neutral-700"
                 >
                   <option value="NGN">NGN</option>
                   <option value="USD">USD</option>
@@ -484,18 +465,13 @@ export default function BusinessPlanForm() {
 
               {currency === "NGN" && (
                 <div className="space-y-2 sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-200">Exchange rate (₦ per $1)</label>
+                  <label className="block text-sm font-medium text-neutral-200">Exchange rate (₦ per $1)</label>
                   <input
                     type="number"
                     value={exchangeRate}
                     onChange={(e) => setExchangeRate(e.target.value)}
                     placeholder="1500"
-                    className="
-                      w-full h-11 rounded-lg border border-slate-700
-                      bg-slate-900 px-3 text-sm text-slate-50
-                      focus:outline-none focus:ring-2 focus:ring-emerald-500
-                      focus:border-emerald-500
-                    "
+                    className="w-full h-11 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                   />
                 </div>
               )}
@@ -506,31 +482,31 @@ export default function BusinessPlanForm() {
         {/* Basic info */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Business name</label>
+            <label className="block text-sm font-medium text-neutral-200">Business name</label>
             <input
               type="text"
               value={intake.businessName}
               onChange={(e) => updateField("businessName", e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               placeholder="Spreadit Limited"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">City & country</label>
+            <label className="block text-sm font-medium text-neutral-200">City & country</label>
             <div className="flex gap-2">
               <input
                 type="text"
                 value={intake.city}
                 onChange={(e) => updateField("city", e.target.value)}
-                className="w-1/2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-1/2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="Lagos"
               />
               <input
                 type="text"
                 value={intake.country}
                 onChange={(e) => updateField("country", e.target.value)}
-                className="w-1/2 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-1/2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="Nigeria"
               />
             </div>
@@ -540,23 +516,23 @@ export default function BusinessPlanForm() {
         {/* Line & capacity */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Product line / project</label>
+            <label className="block text-sm font-medium text-neutral-200">Product line / project</label>
             <input
               type="text"
               value={intake.productLine}
               onChange={(e) => updateField("productLine", e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               placeholder="Groundnut/Peanut Oil Extraction Line"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Planned capacity</label>
+            <label className="block text-sm font-medium text-neutral-200">Planned capacity</label>
             <input
               type="text"
               value={intake.capacity}
               onChange={(e) => updateField("capacity", e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               placeholder="5 tons per day"
             />
           </div>
@@ -564,23 +540,23 @@ export default function BusinessPlanForm() {
 
         {/* Customers & channels */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">Target customers</label>
+          <label className="block text-sm font-medium text-neutral-200">Target customers</label>
           <input
             type="text"
             value={intake.targetCustomers}
             onChange={(e) => updateField("targetCustomers", e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
             placeholder="Wholesalers, supermarkets, bulk buyers"
           />
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">Distribution channels</label>
+          <label className="block text-sm font-medium text-neutral-200">Distribution channels</label>
           <input
             type="text"
             value={intake.distributionChannels}
             onChange={(e) => updateField("distributionChannels", e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
             placeholder="Open markets, supermarkets, wholesalers"
           />
         </div>
@@ -588,23 +564,23 @@ export default function BusinessPlanForm() {
         {/* Pricing & unique angle */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Pricing approach</label>
+            <label className="block text-sm font-medium text-neutral-200">Pricing approach</label>
             <input
               type="text"
               value={intake.pricingApproach}
               onChange={(e) => updateField("pricingApproach", e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               placeholder="Slightly below imported oil, premium packaging"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-200">Unique angle</label>
+            <label className="block text-sm font-medium text-neutral-200">Unique angle</label>
             <input
               type="text"
               value={intake.uniqueAngle}
               onChange={(e) => updateField("uniqueAngle", e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               placeholder="Locally processed, healthier oil, transparent sourcing"
             />
           </div>
@@ -614,36 +590,36 @@ export default function BusinessPlanForm() {
         {showLoanFields && (
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="space-y-2 sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-200">
+              <label className="block text-sm font-medium text-neutral-200">
                 Total project cost (startup capital) in {currency}
               </label>
               <input
                 type="number"
                 value={intake.startupCapital}
                 onChange={(e) => updateField("startupCapital", e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="150000000"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">Owner contribution ({currency})</label>
+              <label className="block text-sm font-medium text-neutral-200">Owner contribution ({currency})</label>
               <input
                 type="number"
                 value={intake.ownerContribution}
                 onChange={(e) => updateField("ownerContribution", e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="30000000"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">Loan amount ({currency})</label>
+              <label className="block text-sm font-medium text-neutral-200">Loan amount ({currency})</label>
               <input
                 type="number"
                 value={intake.loanAmount}
                 onChange={(e) => updateField("loanAmount", e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="120000000"
               />
             </div>
@@ -653,33 +629,22 @@ export default function BusinessPlanForm() {
         {showLoanFields && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">Loan tenor (years)</label>
+              <label className="block text-sm font-medium text-neutral-200">Loan tenor (years)</label>
               <input
                 type="number"
                 value={intake.loanTenorYears}
                 onChange={(e) => updateField("loanTenorYears", e.target.value === "" ? "" : Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
                 placeholder="5"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-200">Equity partners involved?</label>
+              <label className="block text-sm font-medium text-neutral-200">Equity partners involved?</label>
               <select
                 value={intake.equityPartners ? "yes" : "no"}
                 onChange={(e) => updateField("equityPartners", e.target.value === "yes")}
-                className="
-                  w-full
-                  h-9
-                  rounded-lg
-                  border border-slate-700
-                  bg-slate-900
-                  px-3
-                  text-sm text-slate-50
-                  focus:outline-none
-                  focus:ring-2 focus:ring-emerald-500
-                  focus:border-emerald-500
-                "
+                className="w-full h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 focus:outline-none focus:border-neutral-700"
               >
                 <option value="no">No</option>
                 <option value="yes">Yes</option>
@@ -690,22 +655,22 @@ export default function BusinessPlanForm() {
 
         {/* Experience & notes */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">Existing experience</label>
+          <label className="block text-sm font-medium text-neutral-200">Existing experience</label>
           <textarea
             value={intake.existingExperience}
             onChange={(e) => updateField("existingExperience", e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
             rows={2}
             placeholder="We already run a kulikuli business..."
           />
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-200">Extra notes</label>
+          <label className="block text-sm font-medium text-neutral-200">Extra notes</label>
           <textarea
             value={intake.extraNotes}
             onChange={(e) => updateField("extraNotes", e.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
             rows={2}
             placeholder="Focus on Lagos and Ogun first, then expand..."
           />
@@ -713,37 +678,27 @@ export default function BusinessPlanForm() {
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-700 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</div>
+          <div className="rounded-xl border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+            {error}
+          </div>
         )}
 
         {/* Progress bar */}
         {loading && (
-          <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${progress}%` }} />
+          <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-neutral-900">
+            <div className="h-full bg-white transition-all duration-500" style={{ width: `${progress}%` }} />
           </div>
         )}
 
         {tokenUsed ? (
-          <div
-            className="
-              w-full
-              rounded-xl
-              border border-emerald-600
-              bg-emerald-500/5
-              px-4 py-3
-              sm:px-5 sm:py-4
-              flex flex-col sm:flex-row
-              sm:items-center sm:justify-between
-              gap-3
-            "
-          >
+          <div className="w-full rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 sm:px-5 sm:py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-start gap-2">
-              <div className="mt-0.5 h-6 w-6 flex items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300 text-sm">
+              <div className="mt-0.5 h-6 w-6 flex items-center justify-center rounded-full bg-white text-neutral-950 text-sm">
                 ✓
               </div>
               <div>
-                <p className="text-sm sm:text-base font-semibold text-emerald-200">Your business plan is ready.</p>
-                <p className="mt-1 text-xs sm:text-sm text-emerald-100/80">
+                <p className="text-sm sm:text-base font-semibold text-white">Your business plan is ready.</p>
+                <p className="mt-1 text-xs sm:text-sm text-neutral-400">
                   This token has now been used. To write another plan, please get a new token.
                 </p>
               </div>
@@ -754,17 +709,7 @@ export default function BusinessPlanForm() {
                 href="https://paystack.shop/pay/linescoutbusinessplan"
                 target="_blank"
                 rel="noreferrer"
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl
-                  bg-emerald-500/15
-                  px-4 py-2
-                  text-sm font-semibold
-                  text-emerald-100
-                  ring-1 ring-emerald-400/35
-                  hover:bg-emerald-500/20
-                  transition-colors
-                "
+                className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 transition-colors"
               >
                 Get new token
               </a>
@@ -772,17 +717,7 @@ export default function BusinessPlanForm() {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="
-                  inline-flex items-center justify-center
-                  rounded-xl
-                  bg-emerald-500/15
-                  px-4 py-2
-                  text-sm font-semibold
-                  text-emerald-100
-                  ring-1 ring-emerald-400/35
-                  hover:bg-emerald-500/20
-                  transition-colors
-                "
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 transition-colors"
               >
                 Start another plan
               </button>
@@ -792,19 +727,7 @@ export default function BusinessPlanForm() {
           <button
             type="submit"
             disabled={loading || tokenUsed}
-            className="
-              w-full sm:w-auto
-              inline-flex items-center justify-center
-              rounded-xl
-              bg-emerald-500/15
-              px-4 py-2
-              text-sm font-semibold
-              text-emerald-100
-              ring-1 ring-emerald-400/35
-              hover:bg-emerald-500/20
-              disabled:opacity-60 disabled:cursor-not-allowed
-              transition-colors
-            "
+            className="w-full sm:w-auto inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? "Writing plan..." : "Write business plan"}
           </button>
@@ -814,24 +737,24 @@ export default function BusinessPlanForm() {
       {/* Result */}
       {result && result.ok && result.planText && (
         <div className="mt-8 space-y-4">
-          <div className="rounded-lg border border-emerald-600 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-            <p className="font-semibold">Your business plan is ready.</p>
-            <p className="text-emerald-100/80">You can review the preview below or download it as DOCX.</p>
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-200">
+            <p className="font-semibold text-white">Your business plan is ready.</p>
+            <p className="text-neutral-400">You can review the preview below or download it as DOCX.</p>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => handleDownload("docx")}
-              className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-50 hover:border-emerald-500 hover:text-emerald-300"
+              className="rounded-full border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
             >
               Download DOCX
             </button>
           </div>
 
-          <div className="mt-2 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 max-h-[480px] overflow-y-auto">
-            <h3 className="text-base font-semibold text-slate-50 mb-3">Plan preview</h3>
-            <pre className="whitespace-pre-wrap text-sm leading-relaxed text-slate-100">{result.planText}</pre>
+          <div className="mt-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-4 max-h-[480px] overflow-y-auto">
+            <h3 className="text-base font-semibold text-white mb-3">Plan preview</h3>
+            <pre className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-100">{result.planText}</pre>
           </div>
         </div>
       )}

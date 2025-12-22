@@ -45,7 +45,7 @@ export default function HomePage() {
     {
       label: "Organic fertilizer plant",
       value:
-        " I want to set up an organic fertilizer plant in Imo state Nigeria. Which machines do I need and what is the estimate cost of the production line?",
+        "I want to set up an organic fertilizer plant in Imo state Nigeria. Which machines do I need and what is the estimate cost of the production line?",
     },
   ];
 
@@ -79,7 +79,7 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#050815] via-[#070b18] to-[#050815] text-slate-100">
+    <main className="min-h-screen bg-neutral-950 text-neutral-100">
       <Header />
 
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-16 sm:px-6 lg:px-8">
@@ -102,15 +102,15 @@ export default function HomePage() {
 
 function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060a17]/75 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
       <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center" aria-label="LineScout home">
             <Image
               src="/linescout-logo.png"
               alt="LineScout"
-              width={120}
-              height={28}
+              width={140}
+              height={32}
               priority
               className="h-[26px] w-auto"
             />
@@ -118,8 +118,8 @@ function Header() {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <div className="text-sm text-slate-300">Your co-pilot for machine sourcing</div>
-          <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-xs font-semibold tracking-wide text-emerald-200">
+          <div className="text-sm text-neutral-300">Your co-pilot for machine sourcing</div>
+          <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-xs font-semibold tracking-wide text-neutral-200">
             BETA
           </span>
         </div>
@@ -133,13 +133,14 @@ function Header() {
         <div className="flex items-center gap-2">
           <Link
             href="/machine-sourcing"
-            className="hidden rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-white/10 sm:inline-flex"
+            className="hidden rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 sm:inline-flex"
           >
             Business plan
           </Link>
+
           <Link
             href="/machine-sourcing"
-            className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
           >
             Start chat
           </Link>
@@ -160,7 +161,7 @@ function Hero() {
             Clear guidance for machines and equipment sourcing from China to Nigeria
           </h1>
 
-          <p className="mt-4 max-w-2xl text-pretty text-base leading-relaxed text-slate-300 sm:text-lg">
+          <p className="mt-4 max-w-2xl text-pretty text-base leading-relaxed text-neutral-300 sm:text-lg">
             LineScout helps Nigerian entrepreneurs, agro-processors, and manufacturers think through machine sourcing from
             China with real constraints in mind: power, compliance, shipping and clearing, and verification risks.
           </p>
@@ -176,8 +177,8 @@ function Hero() {
             <Stat title="Execution gating" body="Token unlocks execution support and WhatsApp handoff." />
           </div>
 
-          <p className="mt-6 text-sm text-slate-400">
-           No credit or debit card required to start a conversation with LineScout. Pay when you are ready.
+          <p className="mt-6 text-sm text-neutral-400">
+            No credit or debit card required to start a conversation with LineScout. Pay when you are ready.
           </p>
         </div>
 
@@ -191,10 +192,10 @@ function Hero() {
 
 function HeroPanel() {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)] sm:p-6">
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl sm:p-6">
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-white">Modes</div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300">
+        <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-300">
           Focused workflows
         </span>
       </div>
@@ -214,10 +215,10 @@ function HeroPanel() {
           action="Open"
         />
       </div>
-      
-      <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+
+      <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
         <div className="text-sm font-semibold text-white">How tokens work</div>
-        <ul className="mt-3 space-y-2 text-sm text-slate-300">
+        <ul className="mt-3 space-y-2 text-sm text-neutral-300">
           <li className="flex gap-2">
             <Dot />
             Sourcing tokens unlock machine sourcing help.
@@ -235,23 +236,23 @@ function HeroPanel() {
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <Link
             href="https://paystack.shop/pay/sourcing"
-            className="inline-flex items-center justify-center rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+            className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
           >
             Sourcing Token
           </Link>
           <Link
             href="https://paystack.shop/pay/linescoutbusinessplan"
-            className="inline-flex items-center justify-center rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+            className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
           >
             Business Plan Token
           </Link>
         </div>
       </div>
 
-      <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Fast start</div>
+      <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Fast start</div>
         <div className="mt-2 text-sm font-semibold text-white">Tell LineScout these 4 things</div>
-        <ul className="mt-3 space-y-2 text-sm text-slate-300">
+        <ul className="mt-3 space-y-2 text-sm text-neutral-300">
           <li className="flex gap-2">
             <Dot />
             Product and output capacity (per hour or per day)
@@ -281,19 +282,18 @@ function HowItWorks({ items }: { items: HowItem[] }) {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-4">
         {items.map((it) => (
-          <div
-            key={it.step}
-            className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]"
-          >
+          <div key={it.step} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-wide text-slate-300">Step {it.step}</span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300">Funnel</span>
+              <span className="text-xs font-semibold tracking-wide text-neutral-300">Step {it.step}</span>
+              <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs text-neutral-300">
+                Funnel
+              </span>
             </div>
             <div className="mt-3 text-base font-semibold text-white">{it.title}</div>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">{it.body}</p>
+            <p className="mt-2 text-sm leading-relaxed text-neutral-300">{it.body}</p>
             {it.cta ? (
               <div className="mt-4">
-                <Link href={it.cta.href} className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-100 hover:underline">
+                <Link href={it.cta.href} className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-200 hover:text-white">
                   {it.cta.label}
                   <ArrowRight />
                 </Link>
@@ -315,8 +315,16 @@ function Products() {
         <ProductCard
           title="Machine Sourcing Assistant"
           eyebrow="Machine Sourcing Chat"
-          whoFor={["Agro-processors planning a new line", "Manufacturers expanding capacity", "Importers who need realistic specs and landing cost ranges"]}
-          youGet={["Equipment list and spec direction for your capacity", "Power and operational realism for Nigeria", "Landing cost ranges and timeline risks"]}
+          whoFor={[
+            "Agro-processors planning a new line",
+            "Manufacturers expanding capacity",
+            "Importers who need realistic specs and landing cost ranges",
+          ]}
+          youGet={[
+            "Equipment list and spec direction for your capacity",
+            "Power and operational realism for Nigeria",
+            "Landing cost ranges and timeline risks",
+          ]}
           microcopy="No supplier names. No exact prices. Clear direction."
           href="/machine-sourcing"
           cta="Start sourcing chat"
@@ -325,8 +333,16 @@ function Products() {
         <ProductCard
           title="Business Plan Writer"
           eyebrow="Business Plan Writer"
-          whoFor={["Loan applications and bank documentation", "Grant applications and impact programs", "Internal planning and investor support"]}
-          youGet={["A structured business plan for a production line setup", "Operations, market overview, staffing, risks, and assumptions", "A plan that supports realistic execution, not fantasy numbers"]}
+          whoFor={[
+            "Loan applications and bank documentation",
+            "Grant applications and impact programs",
+            "Internal planning and investor support",
+          ]}
+          youGet={[
+            "A structured business plan for a production line setup",
+            "Operations, market overview, staffing, risks, and assumptions",
+            "A plan that supports realistic execution, not fantasy numbers",
+          ]}
           microcopy="Generate and refine, then export for use."
           href="/machine-sourcing"
           cta="Generate a business plan"
@@ -362,27 +378,29 @@ function NigeriaReality() {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
         {items.map((it) => (
-          <div key={it.title} className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+          <div key={it.title} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
             <div className="flex items-start gap-3">
               <IconBadge />
               <div>
                 <div className="text-base font-semibold text-white">{it.title}</div>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">{it.body}</p>
+                <p className="mt-2 text-sm leading-relaxed text-neutral-300">{it.body}</p>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+      <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-sm font-semibold text-white">Ready to move from ranges to exact sourcing?</div>
-            <div className="mt-1 text-sm text-slate-300">Purchase a sourcing token when you need verified suppliers, exact quotes, and execution support.</div>
+            <div className="mt-1 text-sm text-neutral-300">
+              Purchase a sourcing token when you need verified suppliers, exact quotes, and execution support.
+            </div>
           </div>
           <Link
             href="https://paystack.shop/pay/sourcing"
-            className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
           >
             Token unlocks execution
           </Link>
@@ -399,10 +417,10 @@ function ExamplePrompts({ chips }: { chips: Chip[] }) {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-7">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm font-semibold text-white">Prompt chips</div>
-              <span className="text-xs text-slate-400">Copy in one click</span>
+              <span className="text-xs text-neutral-400">Copy in one click</span>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -411,37 +429,43 @@ function ExamplePrompts({ chips }: { chips: Chip[] }) {
               ))}
             </div>
 
-            <div className="mt-5 rounded-xl border border-white/10 bg-black/20 p-4">
+            <div className="mt-5 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-sm font-semibold text-white">Where to paste</div>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <Link
                   href="/machine-sourcing"
-                  className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+                  className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
                 >
                   Paste in Sourcing Chat
                 </Link>
                 <Link
                   href="/machine-sourcing"
-                  className="inline-flex items-center justify-center rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+                  className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
                 >
                   Go to Business Plan Writer
                 </Link>
               </div>
-              <p className="mt-3 text-xs text-slate-400">Tip: Include your location, capacity, and power situation for sharper guidance.</p>
+              <p className="mt-3 text-xs text-neutral-400">
+                Tip: Include your location, capacity, and power situation for sharper guidance.
+              </p>
             </div>
           </div>
         </div>
 
         <div className="lg:col-span-5">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
             <div className="text-sm font-semibold text-white">What to expect</div>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">
-              LineScout gives grounded direction and landing cost ranges. For actual machine sourcing, exact quotes, and factory verification, you will need a sourcing token and a WhatsApp handoff to our human team.
+            <p className="mt-2 text-sm leading-relaxed text-neutral-300">
+              LineScout gives grounded direction and landing cost ranges. For actual machine sourcing, exact quotes, and
+              factory verification, you will need a sourcing token and a WhatsApp handoff to our human team.
             </p>
 
             <div className="mt-4 space-y-3">
               <ExpectationRow title="Estimates not invoices" body="Rough ranges to help you plan and compare." />
-              <ExpectationRow title="No supplier engagement until you’re ready to execute" body="We protect you from rushed decisions and misinformation." />
+              <ExpectationRow
+                title="No supplier engagement until you’re ready to execute"
+                body="We protect you from rushed decisions and misinformation."
+              />
               <ExpectationRow title="Token unlocks execution support" body="Verification, negotiation, and coordination." />
             </div>
           </div>
@@ -477,34 +501,36 @@ function Trust() {
 
       <div className="mt-8 grid gap-4 lg:grid-cols-2">
         {items.map((it) => (
-          <div key={it.title} className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+          <div key={it.title} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
             <div className="flex items-start gap-3">
               <Shield />
               <div>
                 <div className="text-base font-semibold text-white">{it.title}</div>
-                <p className="mt-2 text-sm leading-relaxed text-slate-300">{it.body}</p>
+                <p className="mt-2 text-sm leading-relaxed text-neutral-300">{it.body}</p>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+      <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-sm font-semibold text-white">Already clear on what you want?</div>
-            <div className="mt-1 text-sm text-slate-300">Start the chat for clarity, then use token when you want supplier verification and execution.</div>
+            <div className="mt-1 text-sm text-neutral-300">
+              Start the chat for clarity, then use token when you want supplier verification and execution.
+            </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Link
               href="/machine-sourcing"
-              className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+              className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
             >
               Start sourcing chat
             </Link>
             <Link
               href="https://paystack.shop/pay/sourcing"
-              className="inline-flex items-center justify-center rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+              className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
             >
               Get Sourcing Token
             </Link>
@@ -517,20 +543,22 @@ function Trust() {
 
 function Footer({ year }: { year: number }) {
   return (
-    <footer className="border-t border-white/10 py-10">
+    <footer className="border-t border-neutral-800 py-10">
       <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <div className="flex items-center gap-3">
             <Image src="/linescout-logo.png" alt="LineScout" width={120} height={28} className="h-[22px] w-auto" />
           </div>
-          <p className="mt-3 text-sm leading-relaxed text-slate-300">Nigeria-focused machine sourcing guidance and production line business plan writing.</p>
+          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+            Nigeria-focused machine sourcing guidance and production line business plan writing.
+          </p>
         </div>
 
         <FooterCol
           title="Product"
           links={[
-            { href: "/chat", label: "Sourcing chat" },
-            { href: "/business-plan", label: "Business plan writer" },
+            { href: "/machine-sourcing", label: "Sourcing chat" },
+            { href: "/machine-sourcing", label: "Business plan writer" },
             { href: "https://paystack.shop/pay/sourcing", label: "Sourcing Token" },
             { href: "https://paystack.shop/pay/linescoutbusinessplan", label: "Business Plan Token" },
           ]}
@@ -547,39 +575,48 @@ function Footer({ year }: { year: number }) {
 
         <div>
           <div className="text-sm font-semibold text-white">Notes</div>
-          <ul className="mt-3 space-y-2 text-sm text-slate-300">
-            <li className="flex gap-2"><Dot />Estimates not invoices</li>
-            <li className="flex gap-2"><Dot />No supplier engagement until you’re ready to execute</li>
-            <li className="flex gap-2"><Dot />Token unlocks execution support</li>
+          <ul className="mt-3 space-y-2 text-sm text-neutral-300">
+            <li className="flex gap-2">
+              <Dot />
+              Estimates not invoices
+            </li>
+            <li className="flex gap-2">
+              <Dot />
+              No supplier engagement until you’re ready to execute
+            </li>
+            <li className="flex gap-2">
+              <Dot />
+              Token unlocks execution support
+            </li>
           </ul>
         </div>
       </div>
 
-      <div className="mt-10 flex flex-col gap-2 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-slate-400">© {year} LineScout. Built by Sure Imports.</div>
-        <div className="text-xs text-slate-400">Focused on machines. Built for Nigeria.</div>
+      <div className="mt-10 flex flex-col gap-2 border-t border-neutral-800 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-xs text-neutral-400">© {year} LineScout. Built by Sure Imports.</div>
+        <div className="text-xs text-neutral-400">Focused on machines. Built for Nigeria.</div>
       </div>
     </footer>
   );
 }
 
 function Divider() {
-  return <div className="my-10 h-px w-full bg-white/10" />;
+  return <div className="my-10 h-px w-full bg-neutral-800" />;
 }
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="max-w-3xl">
       <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">{title}</h2>
-      <p className="mt-2 text-sm leading-relaxed text-slate-300 sm:text-base">{subtitle}</p>
+      <p className="mt-2 text-sm leading-relaxed text-neutral-300 sm:text-base">{subtitle}</p>
     </div>
   );
 }
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+    <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 px-3 py-1 text-xs font-semibold text-neutral-200">
+      <span className="h-1.5 w-1.5 rounded-full bg-neutral-200" />
       {children}
     </div>
   );
@@ -587,9 +624,9 @@ function Pill({ children }: { children: React.ReactNode }) {
 
 function Stat({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 shadow-xl">
       <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm leading-relaxed text-slate-300">{body}</div>
+      <div className="mt-1 text-sm leading-relaxed text-neutral-300">{body}</div>
     </div>
   );
 }
@@ -612,31 +649,37 @@ function ProductCard({
   cta: string;
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-6 shadow-xl">
       <div className="flex items-center justify-between gap-3">
-        <span className="rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-1 text-xs font-semibold text-emerald-100">
+        <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2 py-1 text-xs font-semibold text-neutral-200">
           {eyebrow}
         </span>
-        <span className="text-xs text-slate-400">First-class feature</span>
+        <span className="text-xs text-neutral-400">First-class feature</span>
       </div>
 
       <div className="mt-4 text-xl font-semibold tracking-tight text-white">{title}</div>
-      <div className="mt-2 text-sm text-slate-300">{microcopy}</div>
+      <div className="mt-2 text-sm text-neutral-300">{microcopy}</div>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Who it’s for</div>
-          <ul className="mt-3 space-y-2 text-sm text-slate-300">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Who it’s for</div>
+          <ul className="mt-3 space-y-2 text-sm text-neutral-300">
             {whoFor.map((x) => (
-              <li key={x} className="flex gap-2"><Dot />{x}</li>
+              <li key={x} className="flex gap-2">
+                <Dot />
+                {x}
+              </li>
             ))}
           </ul>
         </div>
-        <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">What you get</div>
-          <ul className="mt-3 space-y-2 text-sm text-slate-300">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">What you get</div>
+          <ul className="mt-3 space-y-2 text-sm text-neutral-300">
             {youGet.map((x) => (
-              <li key={x} className="flex gap-2"><Dot />{x}</li>
+              <li key={x} className="flex gap-2">
+                <Dot />
+                {x}
+              </li>
             ))}
           </ul>
         </div>
@@ -645,13 +688,13 @@ function ProductCard({
       <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <Link
           href={href}
-          className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+          className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
         >
           {cta}
         </Link>
         <Link
           href="/machine-sourcing"
-          className="inline-flex items-center justify-center rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+          className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
         >
           Token unlocks execution
         </Link>
@@ -674,15 +717,20 @@ function ModeRow({
   action: string;
 }) {
   return (
-    <div className={"rounded-xl border p-4 " + (active ? "border-emerald-400/45 bg-emerald-400/10" : "border-white/10 bg-white/5")}>
+    <div
+      className={
+        "rounded-xl border p-4 " +
+        (active ? "border-neutral-700 bg-neutral-900/60" : "border-neutral-800 bg-neutral-950")
+      }
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-white">{title}</div>
-          <div className="mt-1 text-sm leading-relaxed text-slate-300">{body}</div>
+          <div className="mt-1 text-sm leading-relaxed text-neutral-300">{body}</div>
         </div>
         <Link
           href={href}
-          className="shrink-0 rounded-xl bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+          className="shrink-0 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
         >
           {action}
         </Link>
@@ -693,9 +741,9 @@ function ModeRow({
 
 function ExpectationRow({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-4">
       <div className="text-sm font-semibold text-white">{title}</div>
-      <div className="mt-1 text-sm leading-relaxed text-slate-300">{body}</div>
+      <div className="mt-1 text-sm leading-relaxed text-neutral-300">{body}</div>
     </div>
   );
 }
@@ -706,13 +754,15 @@ function CopyChip({ label, value }: { label: string; value: string }) {
     <button
       id={id}
       type="button"
-      className="group inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/25"
+      className="group inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-medium text-neutral-200 hover:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-neutral-700"
       onClick={() => copyToClipboard(value)}
       aria-label={`Copy prompt: ${label}`}
       title="Click to copy"
     >
       <span className="truncate">{label}</span>
-      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-100 ring-1 ring-emerald-400/25 group-hover:bg-emerald-500/20">Copy</span>
+      <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2 py-0.5 text-xs text-neutral-200 group-hover:border-neutral-700">
+        Copy
+      </span>
     </button>
   );
 }
@@ -743,13 +793,13 @@ function fallbackCopy(text: string) {
     document.execCommand("copy");
     document.body.removeChild(ta);
   } catch {
-    // Silently ignore
+    // ignore
   }
 }
 
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a href={href} className="text-sm font-medium text-slate-300 hover:text-white">
+    <a href={href} className="text-sm font-medium text-neutral-300 hover:text-white">
       {children}
     </a>
   );
@@ -759,7 +809,7 @@ function PrimaryCta({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center justify-center rounded-xl bg-emerald-500/15 px-5 py-3 text-sm font-semibold text-emerald-100 ring-1 ring-emerald-400/35 hover:bg-emerald-500/20"
+      className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
     >
       {label}
     </Link>
@@ -770,7 +820,7 @@ function SecondaryCta({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="inline-flex items-center justify-center rounded-xl bg-white/5 px-5 py-3 text-sm font-semibold text-slate-100 ring-1 ring-white/15 hover:bg-white/10"
+      className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-5 py-3 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
     >
       {label}
     </Link>
@@ -785,9 +835,13 @@ function FooterCol({ title, links }: { title: string; links: { href: string; lab
         {links.map((l) => (
           <li key={l.href + l.label}>
             {l.href.startsWith("#") ? (
-              <a href={l.href} className="text-slate-300 hover:text-white hover:underline">{l.label}</a>
+              <a href={l.href} className="text-neutral-300 hover:text-white hover:underline">
+                {l.label}
+              </a>
             ) : (
-              <Link href={l.href} className="text-slate-300 hover:text-white hover:underline">{l.label}</Link>
+              <Link href={l.href} className="text-neutral-300 hover:text-white hover:underline">
+                {l.label}
+              </Link>
             )}
           </li>
         ))}
@@ -797,22 +851,33 @@ function FooterCol({ title, links }: { title: string; links: { href: string; lab
 }
 
 function Dot() {
-  return <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />;
+  return <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-200" />;
 }
 
 function ArrowRight() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-emerald-100">
-      <path d="M13 5l7 7-7 7M20 12H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-neutral-200">
+      <path
+        d="M13 5l7 7-7 7M20 12H4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function IconBadge() {
   return (
-    <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-emerald-100">
-        <path d="M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-neutral-800 bg-neutral-950">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-neutral-200">
+        <path
+          d="M12 2l3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
       </svg>
     </div>
   );
@@ -820,10 +885,21 @@ function IconBadge() {
 
 function Shield() {
   return (
-    <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/5">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-emerald-100">
-        <path d="M12 2l8 4v6c0 5-3.5 9.5-8 10-4.5-.5-8-5-8-10V6l8-4z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-        <path d="M9 12l2 2 4-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-neutral-800 bg-neutral-950">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-neutral-200">
+        <path
+          d="M12 2l8 4v6c0 5-3.5 9.5-8 10-4.5-.5-8-5-8-10V6l8-4z"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M9 12l2 2 4-5"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
     </div>
   );
