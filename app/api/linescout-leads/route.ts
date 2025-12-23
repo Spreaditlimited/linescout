@@ -1,3 +1,4 @@
+// app/api/linescout-leads/route.ts
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
@@ -17,6 +18,71 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
+
+// As agreed
+const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+
+// Your approved template
+const WA_TEMPLATE_NAME = "linescout_lead_received";
+const WA_LANG_CODE = "en";
+
+function sanitizeTemplateText(s: string) {
+  return String(s || "")
+    .replace(/[\r\n\t]+/g, " ") // no newlines/tabs
+    .replace(/ {5,}/g, "    ") // max 4 consecutive spaces
+    .replace(/\s{2,}/g, " ") // collapse other whitespace runs
+    .trim();
+}
+
+function normalizeToDigitsE164(raw: string) {
+  // digits-only E.164 (your curl worked with digits)
+  return String(raw || "").replace(/\D/g, "");
+}
+
+async function sendWhatsAppLeadMessage(opts: { to: string; name: string; sourcingRequest: string }) {
+  if (!WHATSAPP_PHONE_NUMBER_ID) throw new Error("Missing WHATSAPP_PHONE_NUMBER_ID");
+  if (!WHATSAPP_ACCESS_TOKEN) throw new Error("Missing WHATSAPP_ACCESS_TOKEN");
+
+  const toDigits = normalizeToDigitsE164(opts.to);
+  const nameVar = sanitizeTemplateText(opts.name || "there");
+  const requestVar = sanitizeTemplateText(opts.sourcingRequest || "your request");
+
+  const url = `https://graph.facebook.com/v24.0/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: toDigits,
+    type: "template",
+    template: {
+      name: WA_TEMPLATE_NAME,
+      language: { code: WA_LANG_CODE },
+      components: [
+        {
+          type: "body",
+          parameters: [
+            { type: "text", text: nameVar },
+            { type: "text", text: requestVar },
+          ],
+        },
+      ],
+    },
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text().catch(() => "");
+  if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status} ${text}`);
+
+  return { ok: true, raw: text };
+}
 
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
@@ -44,13 +110,8 @@ async function requireAdmin() {
       [token]
     );
 
-    if (!rows.length) {
-      return { ok: false as const, status: 401 as const, error: "Invalid session" };
-    }
-
-    if (rows[0].role !== "admin") {
-      return { ok: false as const, status: 403 as const, error: "Forbidden" };
-    }
+    if (!rows.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
+    if (rows[0].role !== "admin") return { ok: false as const, status: 403 as const, error: "Forbidden" };
 
     return { ok: true as const };
   } finally {
@@ -63,7 +124,6 @@ export async function POST(req: Request) {
   const conn = await pool.getConnection();
   try {
     const body = await req.json().catch(() => ({}));
-
     const { sessionId, name, whatsapp, email, sourcingRequest, meta = {} } = body || {};
 
     if (!sessionId || !name || !whatsapp || !email || !sourcingRequest) {
@@ -77,7 +137,7 @@ export async function POST(req: Request) {
       VALUES (?, ?, ?, ?, ?, ?)
       `,
       [
-        sessionId,
+        String(sessionId).trim(),
         String(name).trim(),
         String(whatsapp).trim(),
         String(email).trim(),
@@ -86,42 +146,23 @@ export async function POST(req: Request) {
       ]
     );
 
-    const n8nUrl =
-      process.env.N8N_LEAD_WEBHOOK_URL ||
-      "https://n8n.sureimports.com/webhook/webhook/linescout_lead_capture";
-
-    // IMPORTANT: In production/serverless, fire-and-forget fetch can be dropped.
-    // We await it with a short timeout so the request actually leaves the server.
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2500);
+    // Don’t block lead saving if WhatsApp fails
+    let waSent = false;
+    let waError: string | null = null;
 
     try {
-      const resp = await fetch(n8nUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          name: String(name).trim(),
-          whatsapp: String(whatsapp).trim(),
-          email: String(email).trim(),
-          sourcingRequest: String(sourcingRequest).trim(),
-          meta,
-        }),
-        signal: controller.signal,
+      await sendWhatsAppLeadMessage({
+        to: String(whatsapp),
+        name: String(name),
+        sourcingRequest: String(sourcingRequest),
       });
-
-      // Optional: log non-2xx responses for debugging
-      if (!resp.ok) {
-        const t = await resp.text().catch(() => "");
-        console.error("n8n lead webhook non-2xx:", resp.status, t);
-      }
-    } catch (err) {
-      console.error("n8n lead webhook failed:", err);
-    } finally {
-      clearTimeout(timeout);
+      waSent = true;
+    } catch (err: any) {
+      waError = err?.message || String(err);
+      console.error("WhatsApp lead message failed:", waError);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, waSent, waError });
   } catch (err: any) {
     console.error("linescout lead insert error:", err);
     return NextResponse.json({ ok: false, error: "Failed to save lead" }, { status: 500 });
@@ -166,13 +207,7 @@ export async function GET(req: Request) {
       [offset, PAGE_SIZE]
     );
 
-    return NextResponse.json({
-      ok: true,
-      page,
-      pageSize: PAGE_SIZE,
-      total,
-      items: rows,
-    });
+    return NextResponse.json({ ok: true, page, pageSize: PAGE_SIZE, total, items: rows });
   } catch (err: any) {
     console.error("GET /api/linescout-leads error:", err);
     return NextResponse.json(
@@ -194,12 +229,9 @@ export async function PATCH(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action } = body || {};
 
-    // CLAIM
     if (action === "claim") {
       const { leadId } = body || {};
-      if (!leadId) {
-        return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
-      }
+      if (!leadId) return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
 
       const [result]: any = await conn.query(
         `
@@ -213,26 +245,18 @@ export async function PATCH(req: Request) {
       );
 
       if (!result || result.affectedRows !== 1) {
-        return NextResponse.json(
-          { ok: false, error: "Lead cannot be claimed (already claimed or not new)." },
-          { status: 409 }
-        );
+        return NextResponse.json({ ok: false, error: "Lead cannot be claimed." }, { status: 409 });
       }
 
       return NextResponse.json({ ok: true });
     }
 
-    // MARK CALLED
     if (action === "called") {
       const { leadId, callSummary } = body || {};
-      if (!leadId) {
-        return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
-      }
+      if (!leadId) return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
 
       const summary = String(callSummary || "").trim();
-      if (!summary) {
-        return NextResponse.json({ ok: false, error: "callSummary is required" }, { status: 400 });
-      }
+      if (!summary) return NextResponse.json({ ok: false, error: "callSummary is required" }, { status: 400 });
 
       const [result]: any = await conn.query(
         `
@@ -247,19 +271,13 @@ export async function PATCH(req: Request) {
       );
 
       if (!result || result.affectedRows !== 1) {
-        return NextResponse.json(
-          { ok: false, error: "Lead could not be updated to called." },
-          { status: 409 }
-        );
+        return NextResponse.json({ ok: false, error: "Lead could not be updated to called." }, { status: 409 });
       }
 
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json(
-      { ok: false, error: "Unknown action. Use action=claim or action=called." },
-      { status: 400 }
-    );
+    return NextResponse.json({ ok: false, error: "Unknown action. Use action=claim or action=called." }, { status: 400 });
   } catch (err: any) {
     console.error("PATCH /api/linescout-leads error:", err);
     return NextResponse.json(
