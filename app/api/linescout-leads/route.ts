@@ -90,20 +90,36 @@ export async function POST(req: Request) {
       process.env.N8N_LEAD_WEBHOOK_URL ||
       "https://n8n.sureimports.com/webhook/webhook/linescout_lead_capture";
 
-    fetch(n8nUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId,
-        name: String(name).trim(),
-        whatsapp: String(whatsapp).trim(),
-        email: String(email).trim(),
-        sourcingRequest: String(sourcingRequest).trim(),
-        meta,
-      }),
-    }).catch((err) => {
+    // IMPORTANT: In production/serverless, fire-and-forget fetch can be dropped.
+    // We await it with a short timeout so the request actually leaves the server.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+
+    try {
+      const resp = await fetch(n8nUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          name: String(name).trim(),
+          whatsapp: String(whatsapp).trim(),
+          email: String(email).trim(),
+          sourcingRequest: String(sourcingRequest).trim(),
+          meta,
+        }),
+        signal: controller.signal,
+      });
+
+      // Optional: log non-2xx responses for debugging
+      if (!resp.ok) {
+        const t = await resp.text().catch(() => "");
+        console.error("n8n lead webhook non-2xx:", resp.status, t);
+      }
+    } catch (err) {
       console.error("n8n lead webhook failed:", err);
-    });
+    } finally {
+      clearTimeout(timeout);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
