@@ -193,6 +193,10 @@ export default function AgentHandoffsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
+  // ✅ Pagination (matches Leads: 20 per page)
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
   // Update modal
   const [modalOpen, setModalOpen] = useState(false);
   const [modalHandoff, setModalHandoff] = useState<Handoff | null>(null);
@@ -322,6 +326,29 @@ export default function AgentHandoffsPage() {
       return hay.includes(q);
     });
   }, [handoffs, debouncedSearch]);
+
+  // ✅ Pagination derived from filtered results (doesn't touch refresh behavior)
+  const shownCount = filteredHandoffs.length;
+  const totalCount = handoffs.length;
+
+  const totalPages = Math.max(1, Math.ceil(shownCount / pageSize));
+  const canPrev = page > 1 && !loading;
+  const canNext = page < totalPages && !loading;
+
+  // If data shrinks (search or refresh) and current page is now invalid, clamp it
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
+
+  // Reset to page 1 on search change (keeps UX sane)
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  const pagedHandoffs = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredHandoffs.slice(start, start + pageSize);
+  }, [filteredHandoffs, page]);
 
   function openUpdateModal(h: Handoff) {
     setBanner(null);
@@ -587,16 +614,14 @@ export default function AgentHandoffsPage() {
     }
   }
 
-  const totalCount = handoffs.length;
-  const shownCount = filteredHandoffs.length;
   const hasSearch = norm(debouncedSearch).length > 0;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-100">Handoffs</h2>
-          <p className="text-sm text-neutral-400">Claim and progress handoffs through sourcing milestones.</p>
+          <h2 className="text-lg font-semibold text-neutral-100">Sourcing Projects</h2>
+          <p className="text-sm text-neutral-400">Claim and progress sourcing projects through sourcing milestones.</p>
         </div>
 
         <div className="flex flex-col gap-2 sm:items-end">
@@ -633,6 +658,31 @@ export default function AgentHandoffsPage() {
               )}
             </div>
           </div>
+
+          {/* ✅ Pagination controls (no refresh button added) */}
+          {shownCount > 0 ? (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={!canPrev}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className={`${btnSecondary} ${!canPrev ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                Prev
+              </button>
+              <div className="text-sm text-neutral-400 whitespace-nowrap">
+                Page {page} of {totalPages}
+              </div>
+              <button
+                type="button"
+                disabled={!canNext}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className={`${btnSecondary} ${!canNext ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -681,7 +731,7 @@ export default function AgentHandoffsPage() {
             </thead>
 
             <tbody className="bg-neutral-950">
-              {filteredHandoffs.map((h) => {
+              {pagedHandoffs.map((h) => {
                 const disabled = busyId === h.id;
                 const ps = paySummary[h.id];
                 const allowed = allowedNextActions(h, ps);
@@ -786,7 +836,9 @@ export default function AgentHandoffsPage() {
             </tbody>
           </table>
 
-          <div className="px-3 py-3 text-xs text-neutral-500">Tip: This dashboard refreshes every 5 seconds.</div>
+          <div className="px-3 py-3 text-xs text-neutral-500">
+            Tip: This dashboard refreshes every 5 seconds. Showing {pagedHandoffs.length} of {shownCount}.
+          </div>
         </div>
       ) : null}
 
@@ -973,7 +1025,6 @@ export default function AgentHandoffsPage() {
                       >
                         <option value="downpayment">Downpayment</option>
                         <option value="full_payment">Full Payment</option>
-                        <option value="shipping_payment">Shipping Payment</option>
                         <option value="additional_payment">Shipping Payment</option>
                         <option value="additional_payment">Additional Payment</option>
                       </select>

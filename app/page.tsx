@@ -3,6 +3,8 @@
 import React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import WhatsAppFloat from "@/components/WhatsAppFloat";
+import { track } from "@/lib/metaPixel";
 
 type Chip = { label: string; value: string };
 
@@ -94,6 +96,7 @@ export default function HomePage() {
         <ExamplePrompts chips={promptChips} />
         <Divider />
         <Trust />
+        <WhatsAppFloat />
         <Footer year={year} />
       </div>
     </main>
