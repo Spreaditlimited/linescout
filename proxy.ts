@@ -47,23 +47,31 @@ export default async function proxy(req: NextRequest) {
     if (!rows.length) return redirectToSignIn(req, pathname);
 
     const role = String(rows[0].role || "");
-    const canHandoffs = !!rows[0].can_view_handoffs;
+    const canLeads = role === "admin" || !!rows[0].can_view_leads;
+    const canHandoffs = role === "admin" || !!rows[0].can_view_handoffs;
 
-    // RULE: Leads + Settings are admin-only, always.
-    if (pathname.startsWith("/internal/leads") || pathname.startsWith("/internal/settings")) {
+    // Settings stays admin-only
+    if (pathname.startsWith("/internal/settings")) {
       if (role !== "admin") {
         return NextResponse.redirect(new URL("/internal/agent-handoffs", req.url));
       }
       return NextResponse.next();
     }
 
-    // Handoffs still respects permissions for agents/admin
+    // Leads: admin OR permission flag
+    if (pathname.startsWith("/internal/leads")) {
+      if (!canLeads) {
+        return NextResponse.redirect(new URL("/internal/agent-handoffs", req.url));
+      }
+      return NextResponse.next();
+    }
+
+    // Handoffs: admin OR permission flag
     if (pathname.startsWith("/internal/agent-handoffs")) {
       if (!canHandoffs) return redirectToSignIn(req, pathname);
       return NextResponse.next();
     }
 
-    // default: allow other internal routes (if any later)
     return NextResponse.next();
   } finally {
     conn.release();

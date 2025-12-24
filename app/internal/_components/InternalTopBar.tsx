@@ -71,6 +71,10 @@ export default function InternalTopBar() {
   const authed = useMemo(() => !!(me && "ok" in me && me.ok), [me]);
   const user = authed ? (me as any).user : null;
 
+  const isAdmin = user?.role === "admin";
+  const canLeads = !!(isAdmin || user?.permissions?.can_view_leads);
+  const canHandoffs = !!(isAdmin || user?.permissions?.can_view_handoffs);
+
   async function signOut() {
     await fetch("/api/internal/auth/sign-out", { method: "POST" });
     window.location.href = "/internal/sign-in";
@@ -83,20 +87,26 @@ export default function InternalTopBar() {
   const navItems: NavItem[] = useMemo(() => {
     const items: NavItem[] = [];
 
-    if (user?.role === "admin") {
+    // Leads: admin OR permission
+    if (canLeads) {
       items.push({ label: "Leads", href: "/internal/leads" });
-      items.push({ label: "Settings", href: "/internal/settings" });
     }
 
-    if (user?.permissions?.can_view_handoffs) {
-      items.splice(user?.role === "admin" ? 1 : 0, 0, {
+    // Handoffs: admin OR permission
+    if (canHandoffs) {
+      items.push({
         label: "Sourcing Projects",
         href: "/internal/agent-handoffs",
       });
     }
 
+    // Settings: admin-only
+    if (isAdmin) {
+      items.push({ label: "Settings", href: "/internal/settings" });
+    }
+
     return items;
-  }, [user]);
+  }, [canLeads, canHandoffs, isAdmin]);
 
   if (hide) return null;
   if (!authed || !user) return null;

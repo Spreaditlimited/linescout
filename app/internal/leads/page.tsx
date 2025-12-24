@@ -22,7 +22,7 @@ type MeResponse =
       ok: true;
       user: {
         username: string;
-        role: string;
+        role: "admin" | "agent" | string;
         permissions: { can_view_leads: boolean; can_view_handoffs: boolean };
       };
     }
@@ -51,7 +51,15 @@ export default function InternalLeadsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [me, setMe] = useState<MeResponse | null>(null);
-  const isAdmin = useMemo(() => !!(me && "ok" in me && me.ok && me.user.role === "admin"), [me]);
+
+  const authed = useMemo(() => !!(me && "ok" in me && me.ok), [me]);
+  const user = authed ? (me as any).user : null;
+
+  const isAdmin = useMemo(() => !!(user?.role === "admin"), [user]);
+  const canLeads = useMemo(() => {
+    if (!user) return false;
+    return user.role === "admin" || !!user?.permissions?.can_view_leads;
+  }, [user]);
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -154,7 +162,7 @@ export default function InternalLeadsPage() {
       setTotal(Number(data.total || 0));
       setPage(Number(data.page || p));
 
-      // Keep search box as-is, but close any open row UIs when page changes
+      // close any open row UIs when page changes
       setRow({});
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -172,9 +180,6 @@ export default function InternalLeadsPage() {
         body: JSON.stringify({
           action: "claim",
           leadId,
-          // existing endpoint expects agentId
-          // for now we keep the contract and pass 0 (server will be hardened next)
-          agentId: 0,
         }),
       });
 
@@ -196,7 +201,6 @@ export default function InternalLeadsPage() {
         body: JSON.stringify({
           action: "called",
           leadId,
-          agentId: 0,
           callSummary: summary,
         }),
       });
@@ -221,8 +225,8 @@ export default function InternalLeadsPage() {
     const st = getRowState(lead.id);
     if (!st.action) return;
 
-    if (!isAdmin) {
-      alert("Admins only.");
+    if (!canLeads) {
+      alert("You don’t have Leads access.");
       return;
     }
 
@@ -278,8 +282,13 @@ export default function InternalLeadsPage() {
           <div>
             <h2 className="text-lg font-semibold text-neutral-100">Leads</h2>
             <p className="text-sm text-neutral-400">
-              Admin workflow: claim, call, and log the outcome. Agents do not operate here.
+              Claim leads, call customers, and log outcomes.
             </p>
+            {!isAdmin ? (
+              <p className="mt-1 text-xs text-neutral-500">
+                Signed in as agent. Leads access: {canLeads ? "Yes" : "No"}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
@@ -419,6 +428,10 @@ export default function InternalLeadsPage() {
                       <td className="px-3 py-3 min-w-[320px]">
                         {allowed.length === 0 ? (
                           <div className="text-xs text-neutral-500">No actions</div>
+                        ) : !canLeads ? (
+                          <div className="text-xs text-neutral-500">
+                            You don’t have permission to update leads.
+                          </div>
                         ) : (
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
@@ -432,7 +445,9 @@ export default function InternalLeadsPage() {
 
                               {st.open ? (
                                 <button
-                                  onClick={() => setRowState(lead.id, { open: false, action: "", summary: "" })}
+                                  onClick={() =>
+                                    setRowState(lead.id, { open: false, action: "", summary: "" })
+                                  }
                                   disabled={disabled}
                                   className={`${btnDanger} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
                                 >
@@ -455,7 +470,9 @@ export default function InternalLeadsPage() {
                                   className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                                 >
                                   <option value="">Select action</option>
-                                  {allowed.includes("claim") ? <option value="claim">Claim</option> : null}
+                                  {allowed.includes("claim") ? (
+                                    <option value="claim">Claim</option>
+                                  ) : null}
                                   {allowed.includes("mark_called") ? (
                                     <option value="mark_called">Mark called</option>
                                   ) : null}
@@ -466,7 +483,9 @@ export default function InternalLeadsPage() {
                                     <label className="text-xs text-neutral-400">Call summary</label>
                                     <textarea
                                       value={st.summary}
-                                      onChange={(e) => setRowState(lead.id, { summary: e.target.value })}
+                                      onChange={(e) =>
+                                        setRowState(lead.id, { summary: e.target.value })
+                                      }
                                       className="mt-1 w-full min-h-[80px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-neutral-600"
                                       placeholder="Outcome, next steps, and notes..."
                                     />
@@ -484,7 +503,9 @@ export default function InternalLeadsPage() {
                                     {disabled ? "Saving..." : "Save"}
                                   </button>
 
-                                  <div className="text-[11px] text-neutral-500">Admin only</div>
+                                  <div className="text-[11px] text-neutral-500">
+                                    {isAdmin ? "Admin" : "Agent"}
+                                  </div>
                                 </div>
                               </div>
                             ) : null}

@@ -36,7 +36,7 @@ function sanitizeTemplateText(s: string) {
 }
 
 function normalizeToDigitsE164(raw: string) {
-  // digits-only E.164 (your curl worked with digits)
+  // digits-only E.164
   return String(raw || "").replace(/\D/g, "");
 }
 
@@ -84,7 +84,11 @@ async function sendWhatsAppLeadMessage(opts: { to: string; name: string; sourcin
   return { ok: true, raw: text };
 }
 
-async function requireAdmin() {
+/**
+ * Admin OR (agent with can_view_leads=1)
+ * Returns userId + role so we can stamp claimed_by / called_by.
+ */
+async function requireLeadsAccess() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
@@ -93,16 +97,19 @@ async function requireAdmin() {
   const cookieStore = await cookies();
   const token = cookieStore.get(cookieName)?.value;
 
-  if (!token) {
-    return { ok: false as const, status: 401 as const, error: "Not signed in" };
-  }
+  if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await pool.getConnection();
   try {
     const [rows]: any = await conn.query(
-      `SELECT u.role
+      `SELECT
+         u.id,
+         u.role,
+         u.is_active,
+         COALESCE(p.can_view_leads, 0) AS can_view_leads
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
+       LEFT JOIN internal_user_permissions p ON p.user_id = u.id
        WHERE s.session_token = ?
          AND s.revoked_at IS NULL
          AND u.is_active = 1
@@ -111,9 +118,16 @@ async function requireAdmin() {
     );
 
     if (!rows.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
-    if (rows[0].role !== "admin") return { ok: false as const, status: 403 as const, error: "Forbidden" };
 
-    return { ok: true as const };
+    const userId = Number(rows[0].id);
+    const role = String(rows[0].role || "");
+    const canViewLeads = !!rows[0].can_view_leads;
+
+    if (role === "admin" || canViewLeads) {
+      return { ok: true as const, userId, role };
+    }
+
+    return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
     conn.release();
   }
@@ -171,9 +185,9 @@ export async function POST(req: Request) {
   }
 }
 
-// Admin-only: list leads
+// Admin OR leads-permitted agent: list leads
 export async function GET(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireLeadsAccess();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const conn = await pool.getConnection();
@@ -219,9 +233,9 @@ export async function GET(req: Request) {
   }
 }
 
-// Admin-only: update lead status
+// Admin OR leads-permitted agent: update lead status
 export async function PATCH(req: Request) {
-  const auth = await requireAdmin();
+  const auth = await requireLeadsAccess();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const conn = await pool.getConnection();
@@ -229,6 +243,7 @@ export async function PATCH(req: Request) {
     const body = await req.json().catch(() => ({}));
     const { action } = body || {};
 
+    // CLAIM
     if (action === "claim") {
       const { leadId } = body || {};
       if (!leadId) return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
@@ -236,21 +251,26 @@ export async function PATCH(req: Request) {
       const [result]: any = await conn.query(
         `
         UPDATE linescout_leads
-        SET status = 'claimed'
+        SET status = 'claimed',
+            claimed_by = ?
         WHERE id = ?
           AND status = 'new'
           AND claimed_by IS NULL
         `,
-        [Number(leadId)]
+        [auth.userId, Number(leadId)]
       );
 
       if (!result || result.affectedRows !== 1) {
-        return NextResponse.json({ ok: false, error: "Lead cannot be claimed." }, { status: 409 });
+        return NextResponse.json(
+          { ok: false, error: "Lead cannot be claimed (already claimed or not new)." },
+          { status: 409 }
+        );
       }
 
       return NextResponse.json({ ok: true });
     }
 
+    // MARK CALLED
     if (action === "called") {
       const { leadId, callSummary } = body || {};
       if (!leadId) return NextResponse.json({ ok: false, error: "leadId is required" }, { status: 400 });
@@ -263,21 +283,28 @@ export async function PATCH(req: Request) {
         UPDATE linescout_leads
         SET status = 'called',
             called_at = NOW(),
-            call_summary = ?
+            call_summary = ?,
+            called_by = ?
         WHERE id = ?
           AND status IN ('claimed','new')
         `,
-        [summary, Number(leadId)]
+        [summary, auth.userId, Number(leadId)]
       );
 
       if (!result || result.affectedRows !== 1) {
-        return NextResponse.json({ ok: false, error: "Lead could not be updated to called." }, { status: 409 });
+        return NextResponse.json(
+          { ok: false, error: "Lead could not be updated to called." },
+          { status: 409 }
+        );
       }
 
       return NextResponse.json({ ok: true });
     }
 
-    return NextResponse.json({ ok: false, error: "Unknown action. Use action=claim or action=called." }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Unknown action. Use action=claim or action=called." },
+      { status: 400 }
+    );
   } catch (err: any) {
     console.error("PATCH /api/linescout-leads error:", err);
     return NextResponse.json(
