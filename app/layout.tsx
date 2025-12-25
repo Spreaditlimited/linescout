@@ -97,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <noscript
           dangerouslySetInnerHTML={{
-            __html: `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1080444112537852&ev=PageView&noscript=1" />`,
+            __html: `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1221261339913567&ev=PageView&noscript=1" />`,
           }}
         />
 
