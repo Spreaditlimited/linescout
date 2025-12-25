@@ -14,6 +14,7 @@ type MeResponse =
         permissions: {
           can_view_leads: boolean;
           can_view_handoffs: boolean;
+          can_view_analytics: boolean; // ✅ ADD
         };
       };
     }
@@ -51,12 +52,10 @@ export default function InternalTopBar() {
     };
   }, [hide]);
 
-  // Close menu on route change
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
 
-  // ESC closes menu
   useEffect(() => {
     if (!menuOpen) return;
 
@@ -74,6 +73,7 @@ export default function InternalTopBar() {
   const isAdmin = user?.role === "admin";
   const canLeads = !!(isAdmin || user?.permissions?.can_view_leads);
   const canHandoffs = !!(isAdmin || user?.permissions?.can_view_handoffs);
+  const canAnalytics = !!(isAdmin || user?.permissions?.can_view_analytics); // ✅ ADD
 
   async function signOut() {
     await fetch("/api/internal/auth/sign-out", { method: "POST" });
@@ -87,39 +87,32 @@ export default function InternalTopBar() {
   const navItems: NavItem[] = useMemo(() => {
     const items: NavItem[] = [];
 
-    // Leads: admin OR permission
-    if (canLeads) {
-      items.push({ label: "Leads", href: "/internal/leads" });
-    }
+    if (canLeads) items.push({ label: "Leads", href: "/internal/leads" });
 
-    // Handoffs: admin OR permission
     if (canHandoffs) {
-      items.push({
-        label: "Sourcing Projects",
-        href: "/internal/agent-handoffs",
-      });
+      items.push({ label: "Sourcing Projects", href: "/internal/agent-handoffs" });
     }
 
-    // Settings: admin-only
-    if (isAdmin) {
-      items.push({ label: "Settings", href: "/internal/settings" });
+    // ✅ Analytics: admin OR permission
+    if (canAnalytics) {
+      items.push({ label: "Analytics", href: "/internal/analytics" });
     }
+
+    if (isAdmin) items.push({ label: "Settings", href: "/internal/settings" });
 
     return items;
-  }, [canLeads, canHandoffs, isAdmin]);
+  }, [canLeads, canHandoffs, canAnalytics, isAdmin]);
 
   if (hide) return null;
   if (!authed || !user) return null;
 
   const linkBase = "rounded-xl border px-4 py-2 text-sm transition-colors";
-  const linkIdle =
-    "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700";
+  const linkIdle = "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700";
   const linkActive = "border-neutral-600 bg-neutral-100 text-neutral-950";
 
   return (
     <div className="mb-6">
       <div className="flex items-center justify-between gap-3">
-        {/* Left */}
         <div className="flex items-center gap-3 min-w-0">
           <img src="/linescout-logo.png" alt="LineScout" className="h-[22px] w-auto" />
 
@@ -133,7 +126,6 @@ export default function InternalTopBar() {
           </div>
         </div>
 
-        {/* Desktop nav */}
         <div className="hidden sm:flex items-center gap-2">
           <nav className="flex items-center gap-2">
             {navItems.map((item) => (
@@ -155,7 +147,6 @@ export default function InternalTopBar() {
           </button>
         </div>
 
-        {/* Mobile hamburger */}
         <div className="sm:hidden">
           <button
             type="button"
@@ -169,11 +160,9 @@ export default function InternalTopBar() {
         </div>
       </div>
 
-      {/* Mobile menu via portal (always overlays search field) */}
       {mounted && menuOpen
         ? createPortal(
             <div className="fixed inset-0 z-[9999]">
-              {/* Backdrop */}
               <button
                 type="button"
                 className="absolute inset-0 bg-black/60"
@@ -181,7 +170,6 @@ export default function InternalTopBar() {
                 onClick={() => setMenuOpen(false)}
               />
 
-              {/* Panel */}
               <div className="absolute right-3 top-3 w-[min(92vw,320px)] overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
                   <div className="text-sm font-semibold text-neutral-100">Menu</div>

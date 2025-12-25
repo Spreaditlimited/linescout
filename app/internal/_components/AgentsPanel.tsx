@@ -11,6 +11,7 @@ type InternalUser = {
   is_active: 0 | 1;
   can_view_leads: 0 | 1;
   can_view_handoffs: 0 | 1;
+  can_view_analytics: 0 | 1;
   created_at: string;
 };
 
@@ -27,6 +28,7 @@ export default function AgentsPanel() {
   const [newPassword, setNewPassword] = useState("");
   const [canLeads, setCanLeads] = useState(false);
   const [canHandoffs, setCanHandoffs] = useState(true);
+  const [canAnalytics, setCanAnalytics] = useState(false);
 
   // Deactivate/reactivate modal
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -44,6 +46,7 @@ export default function AgentsPanel() {
   const [accessUser, setAccessUser] = useState<InternalUser | null>(null);
   const [accessLeads, setAccessLeads] = useState(false);
   const [accessHandoffs, setAccessHandoffs] = useState(true);
+  const [accessAnalytics, setAccessAnalytics] = useState(false);
 
   const accessDescription = useMemo(() => {
     if (!accessUser) return "";
@@ -101,6 +104,7 @@ export default function AgentsPanel() {
           password: newPassword,
           can_view_leads: canLeads,
           can_view_handoffs: canHandoffs,
+          can_view_analytics: canAnalytics,
         }),
       });
 
@@ -111,6 +115,7 @@ export default function AgentsPanel() {
       setNewPassword("");
       setCanLeads(false);
       setCanHandoffs(true);
+      setCanAnalytics(false);
 
       setCreatedMsg(`Created agent "${u}". Share credentials securely.`);
       await load();
@@ -147,7 +152,7 @@ export default function AgentsPanel() {
     }
   }
 
-  async function updatePermissions(userId: number, leads: boolean, handoffs: boolean) {
+  async function updatePermissions(userId: number, leads: boolean, handoffs: boolean, analytics: boolean) {
     setErr(null);
     setCreatedMsg(null);
 
@@ -160,6 +165,7 @@ export default function AgentsPanel() {
           userId,
           can_view_leads: leads,
           can_view_handoffs: handoffs,
+          can_view_analytics: analytics,
         }),
       });
 
@@ -202,6 +208,7 @@ export default function AgentsPanel() {
     setAccessUser(u);
     setAccessLeads(!!u.can_view_leads);
     setAccessHandoffs(!!u.can_view_handoffs);
+    setAccessAnalytics(!!u.can_view_analytics);
     setAccessOpen(true);
   }
 
@@ -210,9 +217,7 @@ export default function AgentsPanel() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-sm font-semibold text-neutral-100">Agents</h3>
-          <p className="text-xs text-neutral-400">
-            Create agents, manage access, and reset credentials.
-          </p>
+          <p className="text-xs text-neutral-400">Create agents, manage access, and reset credentials.</p>
         </div>
 
         <div className="w-full lg:max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
@@ -251,12 +256,8 @@ export default function AgentsPanel() {
 
             <div className="sm:col-span-2 flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={canLeads}
-                  onChange={(e) => setCanLeads(e.target.checked)}
-                />
-                Can view Leads (for future use)
+                <input type="checkbox" checked={canLeads} onChange={(e) => setCanLeads(e.target.checked)} />
+                Can view Leads
               </label>
 
               <label className="flex items-center gap-2 text-sm text-neutral-200">
@@ -266,6 +267,15 @@ export default function AgentsPanel() {
                   onChange={(e) => setCanHandoffs(e.target.checked)}
                 />
                 Can view Handoffs
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={canAnalytics}
+                  onChange={(e) => setCanAnalytics(e.target.checked)}
+                />
+                Can view Analytics
               </label>
             </div>
 
@@ -313,6 +323,7 @@ export default function AgentsPanel() {
                   <th className="px-3 py-2 text-left">Active</th>
                   <th className="px-3 py-2 text-left">Leads</th>
                   <th className="px-3 py-2 text-left">Handoffs</th>
+                  <th className="px-3 py-2 text-left">Analytics</th>
                   <th className="px-3 py-2 text-left">Created</th>
                   <th className="px-3 py-2 text-left">Actions</th>
                 </tr>
@@ -325,6 +336,7 @@ export default function AgentsPanel() {
                     <td className="px-3 py-2 text-neutral-200">{u.is_active ? "Yes" : "No"}</td>
                     <td className="px-3 py-2 text-neutral-200">{u.can_view_leads ? "Yes" : "No"}</td>
                     <td className="px-3 py-2 text-neutral-200">{u.can_view_handoffs ? "Yes" : "No"}</td>
+                    <td className="px-3 py-2 text-neutral-200">{u.can_view_analytics ? "Yes" : "No"}</td>
                     <td className="px-3 py-2 text-neutral-400">
                       {new Date(u.created_at).toLocaleDateString()}
                     </td>
@@ -402,7 +414,6 @@ export default function AgentsPanel() {
           setResetUser(null);
         }}
         onConfirm={() => {
-          // proceed to password modal
           setResetConfirmOpen(false);
           setPwUser(resetUser);
           setPwOpen(true);
@@ -432,9 +443,11 @@ export default function AgentsPanel() {
         }}
       />
 
-      {/* Access modal (simple, professional) */}
+      {/* Access modal */}
       <div
-        className={`fixed inset-0 z-50 ${accessOpen ? "flex" : "hidden"} items-center justify-center bg-black/60 backdrop-blur-sm`}
+        className={`fixed inset-0 z-50 ${
+          accessOpen ? "flex" : "hidden"
+        } items-center justify-center bg-black/60 backdrop-blur-sm`}
       >
         <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
           <h3 className="text-lg font-semibold text-neutral-100">Edit access</h3>
@@ -447,7 +460,7 @@ export default function AgentsPanel() {
                 checked={accessLeads}
                 onChange={(e) => setAccessLeads(e.target.checked)}
               />
-              Allow Leads (admin-only in middleware, kept for future)
+              Allow Leads
             </label>
 
             <label className="flex items-center gap-2 text-sm text-neutral-200">
@@ -457,6 +470,15 @@ export default function AgentsPanel() {
                 onChange={(e) => setAccessHandoffs(e.target.checked)}
               />
               Allow Handoffs
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-neutral-200">
+              <input
+                type="checkbox"
+                checked={accessAnalytics}
+                onChange={(e) => setAccessAnalytics(e.target.checked)}
+              />
+              Allow Analytics
             </label>
           </div>
 
@@ -479,7 +501,7 @@ export default function AgentsPanel() {
                 setAccessOpen(false);
                 setAccessUser(null);
 
-                await updatePermissions(userId, accessLeads, accessHandoffs);
+                await updatePermissions(userId, accessLeads, accessHandoffs, accessAnalytics);
               }}
               className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-neutral-200"
             >

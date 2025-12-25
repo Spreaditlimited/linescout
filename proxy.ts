@@ -33,7 +33,8 @@ export default async function proxy(req: NextRequest) {
          u.id,
          u.role,
          COALESCE(p.can_view_leads, 0) AS can_view_leads,
-         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
+         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs,
+         COALESCE(p.can_view_analytics, 0) AS can_view_analytics
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
        LEFT JOIN internal_user_permissions p ON p.user_id = u.id
@@ -47,8 +48,10 @@ export default async function proxy(req: NextRequest) {
     if (!rows.length) return redirectToSignIn(req, pathname);
 
     const role = String(rows[0].role || "");
+
     const canLeads = role === "admin" || !!rows[0].can_view_leads;
     const canHandoffs = role === "admin" || !!rows[0].can_view_handoffs;
+    const canAnalytics = role === "admin" || !!rows[0].can_view_analytics;
 
     // Settings stays admin-only
     if (pathname.startsWith("/internal/settings")) {
@@ -61,6 +64,14 @@ export default async function proxy(req: NextRequest) {
     // Leads: admin OR permission flag
     if (pathname.startsWith("/internal/leads")) {
       if (!canLeads) {
+        return NextResponse.redirect(new URL("/internal/agent-handoffs", req.url));
+      }
+      return NextResponse.next();
+    }
+
+    // Analytics: admin OR permission flag
+    if (pathname.startsWith("/internal/analytics")) {
+      if (!canAnalytics) {
         return NextResponse.redirect(new URL("/internal/agent-handoffs", req.url));
       }
       return NextResponse.next();

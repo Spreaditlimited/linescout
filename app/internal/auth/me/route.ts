@@ -1,3 +1,4 @@
+// app/internal/auth/me/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mysql from "mysql2/promise";
@@ -10,7 +11,14 @@ const pool = mysql.createPool({
 });
 
 export async function GET() {
-  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
+  const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "").trim();
+  if (!cookieName) {
+    return NextResponse.json(
+      { ok: false, error: "Missing INTERNAL_AUTH_COOKIE_NAME" },
+      { status: 500 }
+    );
+  }
+
   const cookieStore = await cookies();
   const token = cookieStore.get(cookieName)?.value;
 
@@ -25,13 +33,16 @@ export async function GET() {
          u.id,
          u.username,
          u.role,
-         p.can_view_leads,
-         p.can_view_handoffs
+         u.is_active,
+         COALESCE(p.can_view_leads, 0) AS can_view_leads,
+         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs,
+         COALESCE(p.can_view_analytics, 0) AS can_view_analytics
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
        LEFT JOIN internal_user_permissions p ON p.user_id = u.id
        WHERE s.session_token = ?
          AND s.revoked_at IS NULL
+         AND u.is_active = 1
        LIMIT 1`,
       [token]
     );
@@ -45,12 +56,13 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       user: {
-        id: r.id,
-        username: r.username,
-        role: r.role,
+        id: Number(r.id),
+        username: String(r.username || ""),
+        role: String(r.role || ""),
         permissions: {
           can_view_leads: !!r.can_view_leads,
           can_view_handoffs: !!r.can_view_handoffs,
+          can_view_analytics: !!r.can_view_analytics,
         },
       },
     });

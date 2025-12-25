@@ -62,7 +62,8 @@ export async function GET() {
          u.is_active,
          u.created_at,
          COALESCE(p.can_view_leads, 0) AS can_view_leads,
-         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
+         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs,
+         COALESCE(p.can_view_analytics, 0) AS can_view_analytics
        FROM internal_users u
        LEFT JOIN internal_user_permissions p ON p.user_id = u.id
        WHERE u.role = 'agent'
@@ -84,14 +85,19 @@ export async function POST(req: Request) {
 
   const username = (body?.username ?? "").trim();
   const password = body?.password ?? "";
+
   const can_view_leads = !!body?.can_view_leads;
   const can_view_handoffs = body?.can_view_handoffs === false ? false : true;
+  const can_view_analytics = !!body?.can_view_analytics;
 
   if (!username || username.length < 3) {
     return NextResponse.json({ ok: false, error: "Username too short" }, { status: 400 });
   }
   if (!password || password.length < 8) {
-    return NextResponse.json({ ok: false, error: "Password must be at least 8 characters" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Password must be at least 8 characters" },
+      { status: 400 }
+    );
   }
 
   const password_hash = await bcrypt.hash(password, 12);
@@ -107,9 +113,9 @@ export async function POST(req: Request) {
     const userId = result.insertId;
 
     await conn.query(
-      `INSERT INTO internal_user_permissions (user_id, can_view_leads, can_view_handoffs)
-       VALUES (?, ?, ?)`,
-      [userId, can_view_leads ? 1 : 0, can_view_handoffs ? 1 : 0]
+      `INSERT INTO internal_user_permissions (user_id, can_view_leads, can_view_handoffs, can_view_analytics)
+       VALUES (?, ?, ?, ?)`,
+      [userId, can_view_leads ? 1 : 0, can_view_handoffs ? 1 : 0, can_view_analytics ? 1 : 0]
     );
 
     return NextResponse.json({ ok: true, id: userId });
@@ -123,7 +129,7 @@ export async function POST(req: Request) {
   }
 }
 
-// PATCH: toggle active (admin only)
+// PATCH: toggle active / reset_password / update_permissions (admin only)
 export async function PATCH(req: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -163,32 +169,37 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "update_permissions") {
-  const userId = Number(body?.userId || 0);
-  const can_view_leads = body?.can_view_leads ? 1 : 0;
-  const can_view_handoffs = body?.can_view_handoffs ? 1 : 0;
+      const userId = Number(body?.userId || 0);
+      if (!userId) {
+        return NextResponse.json({ ok: false, error: "userId is required" }, { status: 400 });
+      }
 
-  if (!userId) {
-    return NextResponse.json({ ok: false, error: "userId is required" }, { status: 400 });
-  }
+      const can_view_leads = body?.can_view_leads ? 1 : 0;
+      const can_view_handoffs = body?.can_view_handoffs ? 1 : 0;
+      const can_view_analytics = body?.can_view_analytics ? 1 : 0;
 
-  await conn.query(
-    `INSERT INTO internal_user_permissions (user_id, can_view_leads, can_view_handoffs)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       can_view_leads = VALUES(can_view_leads),
-       can_view_handoffs = VALUES(can_view_handoffs)`,
-    [userId, can_view_leads, can_view_handoffs]
-  );
+      await conn.query(
+        `INSERT INTO internal_user_permissions (user_id, can_view_leads, can_view_handoffs, can_view_analytics)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           can_view_leads = VALUES(can_view_leads),
+           can_view_handoffs = VALUES(can_view_handoffs),
+           can_view_analytics = VALUES(can_view_analytics)`,
+        [userId, can_view_leads, can_view_handoffs, can_view_analytics]
+      );
 
-  return NextResponse.json({ ok: true });
-}
+      return NextResponse.json({ ok: true });
+    }
 
     // action === "toggle_active"
     const userId = Number(body?.userId || 0);
     const isActive = Number(body?.is_active);
 
     if (!userId || (isActive !== 0 && isActive !== 1)) {
-      return NextResponse.json({ ok: false, error: "userId and is_active are required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "userId and is_active are required" },
+        { status: 400 }
+      );
     }
 
     if (userId === 1 && isActive === 0) {
