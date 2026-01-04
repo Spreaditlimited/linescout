@@ -58,13 +58,13 @@ export async function POST(req: Request) {
     const res = NextResponse.json({ ok: true });
 
     res.cookies.set({
-      name: cookieName,
-      value: sessionToken,
-      httpOnly: true,
-      path: "/",
-      sameSite: "strict",
-      secure: true,
-    });
+  name: cookieName,
+  value: sessionToken,
+  httpOnly: true,
+  path: "/",
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production", // IMPORTANT
+});
 
     return res;
   } finally {

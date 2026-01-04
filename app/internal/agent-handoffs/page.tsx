@@ -31,6 +31,7 @@ type Handoff = {
 
   cancelled_at?: string | null;
   cancel_reason?: string | null;
+  
 };
 
 type MeResponse =
@@ -400,36 +401,92 @@ export default function AgentHandoffsPage() {
       setBusyId(null);
     }
   }
+  
+const [selectedShippingCompanyId, setSelectedShippingCompanyId] = useState<number | null>(null);
+const [trackingNumber, setTrackingNumber] = useState("");
+const [banks, setBanks] = useState<{ id: number; name: string }[]>([]);
+const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
 
-  async function updateStatus(id: number, status: string, extra: Record<string, string> = {}) {
-    setBusyId(id);
-    setBanner(null);
+useEffect(() => {
+  let alive = true;
+
+  async function loadBanks() {
     try {
-      const res = await fetch("/api/linescout-handoffs/update-status", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status, ...extra }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to update status");
-
-      setBanner({ type: "ok", msg: "Status updated." });
-    } catch (e: any) {
-      setBanner({ type: "err", msg: e.message || "Failed to update status." });
-      throw e;
-    } finally {
-      setBusyId(null);
+      const res = await fetch("/api/linescout-banks", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) return;
+      if (alive) setBanks(data.items || []);
+    } catch {
+      // ignore
     }
   }
+
+  loadBanks();
+  return () => {
+    alive = false;
+  };
+}, []);
+
+  async function updateStatus(
+  id: number,
+  status: string,
+  extra: Record<string, any> = {}
+) {
+  setBusyId(id);
+  setBanner(null);
+
+  try {
+    // Build payload safely
+    const payload: Record<string, any> = { id, status, ...extra };
+
+    // If shipped, enforce required fields
+    if (status === "shipped") {
+      // Prefer values passed in `extra`, else fall back to component state (if you have them)
+      const shippingCompanyId =
+        payload.shipping_company_id ?? (typeof selectedShippingCompanyId !== "undefined" ? selectedShippingCompanyId : null);
+
+      const tracking =
+        payload.tracking_number ?? (typeof trackingNumber !== "undefined" ? trackingNumber : "");
+
+      if (!shippingCompanyId) {
+        throw new Error("Please select a shipping company.");
+      }
+
+      if (!String(tracking || "").trim()) {
+        throw new Error("Please enter a tracking number.");
+      }
+
+      payload.shipping_company_id = Number(shippingCompanyId);
+      payload.tracking_number = String(tracking).trim();
+    }
+
+    const res = await fetch("/api/linescout-handoffs/update-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to update status");
+
+    setBanner({ type: "ok", msg: "Status updated." });
+  } catch (e: any) {
+    setBanner({ type: "err", msg: e.message || "Failed to update status." });
+    throw e;
+  } finally {
+    setBusyId(null);
+  }
+}
 
   function openPayment(h: Handoff) {
     setBanner(null);
     setPaymentHandoff(h);
+    setSelectedBankId(null);
     setPaymentOpen(true);
     setPayAmount("");
     setPayPurpose("downpayment");
     setPayNote("");
+    setSelectedBankId(null);
 
     const summary = paySummary[h.id];
     setTotalDueInput(summary && summary.total_due > 0 ? "" : "");
@@ -443,6 +500,7 @@ export default function AgentHandoffsPage() {
     setPayNote("");
     setTotalDueInput("");
     setPaymentConfirmOpen(false);
+    setSelectedBankId(null);
   }
 
   async function refreshPaymentSummary(handoffId: number) {
@@ -469,6 +527,10 @@ export default function AgentHandoffsPage() {
 
   async function submitPayment() {
     if (!paymentHandoff) return;
+    if (!selectedBankId) {
+  setBanner({ type: "err", msg: "Please select a bank." });
+  return;
+}
 
     const hid = paymentHandoff.id;
     const amt = Number(String(payAmount).replace(/,/g, "").trim());
@@ -500,13 +562,21 @@ export default function AgentHandoffsPage() {
     const current = paySummary[hid];
     const totalDueExisting = current?.total_due ?? 0;
 
-    const payload: any = {
-      handoffId: hid,
-      amount: amt,
-      purpose: payPurpose,
-      currency: (current?.currency || "NGN") as string,
-      note: payNote.trim(),
-    };
+  const bankId = Number(selectedBankId);
+
+if (!Number.isFinite(bankId) || bankId <= 0) {
+  setBanner({ type: "err", msg: "Please select the bank used for this payment." });
+  return;
+}
+
+const payload: any = {
+  handoffId: hid,
+  amount: amt,
+  purpose: payPurpose,
+  currency: (current?.currency || "NGN") as string,
+  note: payNote.trim(),
+  bank_id: bankId,
+};
 
     if (!totalDueExisting || totalDueExisting <= 0) {
       const td = Number(String(totalDueInput).replace(/,/g, "").trim());
@@ -1025,11 +1095,27 @@ export default function AgentHandoffsPage() {
                       >
                         <option value="downpayment">Downpayment</option>
                         <option value="full_payment">Full Payment</option>
-                        <option value="additional_payment">Shipping Payment</option>
+                        <option value="shipping_payment">Shipping Payment</option>
                         <option value="additional_payment">Additional Payment</option>
                       </select>
                     </div>
                   </div>
+
+                <div>
+                  <label className="text-xs font-medium text-neutral-300">Bank</label>
+                  <select
+                    value={selectedBankId ?? ""}
+                    onChange={(e) => setSelectedBankId(e.target.value ? Number(e.target.value) : null)}
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  >
+                    <option value="">Select bank</option>
+                    {banks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                   <div>
                     <label className="text-xs text-neutral-400">Note (optional)</label>

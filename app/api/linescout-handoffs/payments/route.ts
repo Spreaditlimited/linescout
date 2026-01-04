@@ -21,6 +21,14 @@ function db() {
   });
 }
 
+function toOptionalPositiveInt(v: any): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || Number.isNaN(n)) return null;
+  if (n <= 0) return null;
+  return Math.floor(n);
+}
+
 // Fire-and-forget: never block saving payments (admin notify)
 async function notifyN8n(event: string, payload: any) {
   if (!N8N_BASE_URL) return;
@@ -152,7 +160,8 @@ export async function GET(req: Request) {
  *   totalDue?: number,   // optional, set once or adjust
  *   currency?: "NGN",
  *   note?: string,
- *   paidAt?: ISO string
+ *   paidAt?: ISO string,
+ *   bank_id?: number | null   // NEW: optional bank selection (stored on linescout_handoffs.bank_id)
  * }
  */
 export async function POST(req: Request) {
@@ -161,6 +170,14 @@ export async function POST(req: Request) {
   // capture for notification (after commit)
   let notifyPayload: any = null;
   let statusEmailPayload: any = null;
+
+  function toOptionalPositiveInt(v: any): number | null {
+    if (v === null || v === undefined || v === "") return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || Number.isNaN(n)) return null;
+    if (n <= 0) return null;
+    return Math.floor(n);
+  }
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -172,10 +189,12 @@ export async function POST(req: Request) {
       currency = "NGN",
       note = "",
       paidAt,
+      bank_id, // NEW
     } = body;
 
     const hid = Number(handoffId);
     const amt = Number(amount);
+    const bankId = toOptionalPositiveInt(bank_id);
 
     if (!hid || !amt || amt <= 0) {
       return NextResponse.json(
@@ -191,24 +210,47 @@ export async function POST(req: Request) {
       "additional_payment",
     ];
     if (!allowed.includes(purpose)) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid payment purpose" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Invalid payment purpose" }, { status: 400 });
+    }
+
+    // Enforce bank selection for recorded payments
+    if (!bankId) {
+      return NextResponse.json({ ok: false, error: "bank_id is required" }, { status: 400 });
     }
 
     conn = await db();
     await conn.beginTransaction();
+
+    // Validate bank exists + active
+    const [bankRows]: any = await conn.query(
+      `SELECT id, name, is_active
+       FROM linescout_banks
+       WHERE id = ?
+       LIMIT 1`,
+      [bankId]
+    );
+
+    if (!bankRows || bankRows.length === 0) {
+      await conn.rollback();
+      return NextResponse.json({ ok: false, error: "Invalid bank_id" }, { status: 400 });
+    }
+    if (!bankRows[0].is_active) {
+      await conn.rollback();
+      return NextResponse.json(
+        { ok: false, error: "Selected bank is inactive" },
+        { status: 400 }
+      );
+    }
+
+    // Persist the selected bank on the handoff (source of truth for the project)
+    await conn.query(`UPDATE linescout_handoffs SET bank_id = ? WHERE id = ?`, [bankId, hid]);
 
     // set or update total due (only when provided)
     if (totalDue !== undefined) {
       const td = Number(totalDue);
       if (Number.isNaN(td) || td < 0) {
         await conn.rollback();
-        return NextResponse.json(
-          { ok: false, error: "totalDue must be >= 0" },
-          { status: 400 }
-        );
+        return NextResponse.json({ ok: false, error: "totalDue must be >= 0" }, { status: 400 });
       }
 
       await conn.query(
@@ -224,13 +266,10 @@ export async function POST(req: Request) {
     const paid_at = paidAt ? new Date(paidAt) : new Date();
     if (Number.isNaN(paid_at.getTime())) {
       await conn.rollback();
-      return NextResponse.json(
-        { ok: false, error: "Invalid paidAt" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Invalid paidAt" }, { status: 400 });
     }
 
-    // Insert payment
+    // Insert payment (unchanged table)
     await conn.query(
       `INSERT INTO linescout_handoff_payments
        (handoff_id, amount, currency, purpose, note, paid_at)
@@ -238,9 +277,9 @@ export async function POST(req: Request) {
       [hid, amt, currency, purpose, note, paid_at]
     );
 
-    // Get handoff details for notifications (still inside transaction for consistency)
+    // Get handoff details for notifications
     const [handoffRows]: any = await conn.query(
-      `SELECT id, token, customer_name, email, whatsapp_number, status
+      `SELECT id, token, customer_name, email, whatsapp_number, status, bank_id
        FROM linescout_handoffs
        WHERE id = ?
        LIMIT 1`,
@@ -248,7 +287,7 @@ export async function POST(req: Request) {
     );
     const h = handoffRows?.[0] || null;
 
-    // Compute financial summary for email extras (inside txn)
+    // Compute financial summary
     const [finRows]: any = await conn.query(
       `SELECT total_due, currency
        FROM linescout_handoff_financials
@@ -269,7 +308,7 @@ export async function POST(req: Request) {
     const currencyDb = finRows?.[0]?.currency || currency || "NGN";
     const balance = totalDueDb - totalPaid;
 
-    // Admin notification payload (existing behavior)
+    // Admin notification payload
     notifyPayload = {
       handoff: h,
       payment: {
@@ -278,11 +317,12 @@ export async function POST(req: Request) {
         purpose,
         note: typeof note === "string" && note.trim() ? note.trim() : null,
         paid_at: paid_at.toISOString(),
+        bank_id: bankId,
+        bank_name: String(bankRows[0].name || ""),
       },
     };
 
-    // Status email payload (NEW): treat payment as a status update event
-    // IMPORTANT: status progression remains manual, so previous_status === new_status
+    // Customer status email payload (payment as an update)
     statusEmailPayload = {
       event: "handoff.status_changed",
       previous_status: h?.status || null,
@@ -299,6 +339,9 @@ export async function POST(req: Request) {
         payment_purpose: purpose,
         payment_method: "manual_record",
         payment_reference: null,
+
+        bank_id: bankId,
+        bank_name: String(bankRows[0].name || ""),
 
         total_paid: totalPaid,
         total_due: totalDueDb,
@@ -317,8 +360,6 @@ export async function POST(req: Request) {
 
     // Fire-and-forget AFTER commit
     notifyN8n("payment_recorded", notifyPayload);
-
-    // Also notify the unified email workflow AFTER commit
     notifyStatusEmail(statusEmailPayload);
 
     return NextResponse.json({ ok: true });
@@ -327,10 +368,7 @@ export async function POST(req: Request) {
     try {
       if (conn) await conn.rollback();
     } catch {}
-    return NextResponse.json(
-      { ok: false, error: "Failed to save payment" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Failed to save payment" }, { status: 500 });
   } finally {
     if (conn) await conn.end();
   }

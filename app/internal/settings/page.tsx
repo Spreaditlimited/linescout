@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AgentsPanel from "../_components/AgentsPanel";
+import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
 
 type MeResponse =
   | { ok: true; user: { username: string; role: string } }
@@ -21,13 +22,29 @@ type ManualHandoffResponse =
     }
   | { ok: false; error: string };
 
+type BankItem = { id: number; name: string; is_active?: number };
+
 export default function InternalSettingsPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
 
-  // Modal
+  // Manual handoff modal
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ManualHandoffResponse | null>(null);
+
+  // Banks (for dropdown + management)
+  const [banks, setBanks] = useState<BankItem[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksErr, setBanksErr] = useState<string | null>(null);
+
+  // Bank creation (settings)
+  const [newBankName, setNewBankName] = useState("");
+  const [creatingBank, setCreatingBank] = useState(false);
+  const [bankMsg, setBankMsg] = useState<string | null>(null);
+  const [bankCreateErr, setBankCreateErr] = useState<string | null>(null);
+
+  // Selected bank for initial payment inside manual handoff modal
+  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
 
   // Form fields
   const [customerName, setCustomerName] = useState("");
@@ -36,7 +53,7 @@ export default function InternalSettingsPage() {
   const [whatsApp, setWhatsApp] = useState("");
   const [notes, setNotes] = useState("");
 
-  // Handoff defaults (match your DB defaults and allowed values)
+  // Handoff defaults
   const [status, setStatus] = useState("pending");
   const [currency, setCurrency] = useState("NGN");
 
@@ -58,6 +75,27 @@ export default function InternalSettingsPage() {
 
   const isAdmin = !!(me && "ok" in me && me.ok && me.user.role === "admin");
 
+  async function loadBanks() {
+    setBanksLoading(true);
+    setBanksErr(null);
+    try {
+      const res = await fetch("/api/linescout-banks", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load banks");
+      setBanks((data.items || []) as BankItem[]);
+    } catch (e: any) {
+      setBanksErr(e?.message || "Failed to load banks");
+    } finally {
+      setBanksLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // Load banks once (for modal dropdown + settings list)
+    loadBanks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const canSubmit = useMemo(() => {
     const nameOk = customerName.trim().length > 0;
     const emailOk = customerEmail.trim().includes("@");
@@ -73,10 +111,21 @@ export default function InternalSettingsPage() {
     if (recordInitialPayment) {
       const amt = Number(initialAmount);
       if (!amt || Number.isNaN(amt) || amt <= 0) return false;
+
+      // require bank selection if recording payment
+      if (!selectedBankId) return false;
     }
 
     return true;
-  }, [customerName, customerEmail, status, totalDue, recordInitialPayment, initialAmount]);
+  }, [
+    customerName,
+    customerEmail,
+    status,
+    totalDue,
+    recordInitialPayment,
+    initialAmount,
+    selectedBankId,
+  ]);
 
   function resetForm() {
     setCustomerName("");
@@ -91,6 +140,7 @@ export default function InternalSettingsPage() {
     setInitialAmount("");
     setInitialPurpose("downpayment");
     setInitialNote("");
+    setSelectedBankId(null);
     setResult(null);
   }
 
@@ -101,7 +151,7 @@ export default function InternalSettingsPage() {
     setResult(null);
 
     try {
-      const payload = {
+      const payload: any = {
         customer_name: customerName.trim(),
         customer_email: customerEmail.trim(),
         customer_phone: customerPhone.trim() || null,
@@ -115,9 +165,13 @@ export default function InternalSettingsPage() {
               amount: Number(initialAmount),
               purpose: initialPurpose,
               note: initialNote.trim() || null,
+              bank_id: selectedBankId, // key addition
             }
           : null,
       };
+
+      // Optional: also send bank_id at root (safe if backend ignores)
+      if (recordInitialPayment) payload.bank_id = selectedBankId;
 
       const res = await fetch("/api/linescout-handoffs/manual", {
         method: "POST",
@@ -134,9 +188,38 @@ export default function InternalSettingsPage() {
     }
   }
 
-  if (!me) {
-    return <p className="text-sm text-neutral-400">Loading...</p>;
+  async function createBank() {
+    setBankMsg(null);
+    setBankCreateErr(null);
+
+    const name = newBankName.trim();
+    if (name.length < 2) {
+      setBankCreateErr("Bank name is too short.");
+      return;
+    }
+
+    setCreatingBank(true);
+    try {
+      const res = await fetch("/api/linescout-banks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to create bank");
+
+      setNewBankName("");
+      setBankMsg(`Created bank "${name}".`);
+      await loadBanks();
+    } catch (e: any) {
+      setBankCreateErr(e?.message || "Failed to create bank");
+    } finally {
+      setCreatingBank(false);
+    }
   }
+
+  if (!me) return <p className="text-sm text-neutral-400">Loading...</p>;
 
   if (!isAdmin) {
     return (
@@ -146,6 +229,8 @@ export default function InternalSettingsPage() {
       </div>
     );
   }
+
+  const activeBanks = banks.filter((b) => b.is_active !== 0);
 
   return (
     <div className="space-y-5">
@@ -181,24 +266,103 @@ export default function InternalSettingsPage() {
               sourcing handoff record. Optional: set total due and record an initial payment.
             </p>
           </div>
-
-          {/*
-<div className="flex flex-col gap-2 sm:flex-row">
-  <button
-    onClick={() => {
-      resetForm();
-      setOpen(true);
-    }}
-    className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2 text-sm font-semibold text-neutral-100 hover:bg-neutral-800"
-  >
-    Open form
-  </button>
-</div>
-*/}
         </div>
       </div>
 
       <AgentsPanel />
+      <ShippingCompaniesPanel />
+
+      {/* Banks panel */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-100">Banks</h3>
+            <p className="text-xs text-neutral-400">
+              Maintain the list of banks customers pay into. Used during manual onboarding and payment logging.
+            </p>
+          </div>
+
+          <div className="w-full lg:max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Add bank</div>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <label className="text-xs text-neutral-400">Bank name</label>
+                <input
+                  value={newBankName}
+                  onChange={(e) => setNewBankName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  placeholder="e.g. Access Bank"
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={createBank}
+                  disabled={creatingBank}
+                  className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60"
+                >
+                  {creatingBank ? "Adding..." : "Add"}
+                </button>
+
+                <button
+                  onClick={loadBanks}
+                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+
+            {bankMsg ? (
+              <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+                {bankMsg}
+              </div>
+            ) : null}
+
+            {bankCreateErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+                {bankCreateErr}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          {banksLoading ? <p className="text-sm text-neutral-400">Loading banks...</p> : null}
+          {banksErr ? <p className="text-sm text-red-300">{banksErr}</p> : null}
+
+          {!banksLoading && !banksErr ? (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-800">
+              <table className="min-w-full text-sm">
+                <thead className="bg-neutral-900/70 text-neutral-300">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">Active</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-neutral-950">
+                  {banks.map((b) => (
+                    <tr key={b.id} className="border-t border-neutral-800">
+                      <td className="px-3 py-2 text-neutral-100">{b.name}</td>
+                      <td className="px-3 py-2 text-neutral-200">
+                        {b.is_active === 0 ? "No" : "Yes"}
+                      </td>
+                    </tr>
+                  ))}
+                  {banks.length === 0 ? (
+                    <tr className="border-t border-neutral-800">
+                      <td className="px-3 py-3 text-neutral-400" colSpan={2}>
+                        No banks yet.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      </div>
 
       {/* Modal */}
       {open && (
@@ -222,9 +386,8 @@ export default function InternalSettingsPage() {
               </button>
             </div>
 
-            {/* Modal body (scrollable on mobile) */}
+            {/* Modal body */}
             <div className="flex-1 overflow-y-auto p-4">
-              {/* Result banner */}
               {result && (
                 <div
                   className={`mb-4 rounded-2xl border p-4 ${
@@ -258,7 +421,6 @@ export default function InternalSettingsPage() {
                 </div>
               )}
 
-              {/* Form */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
@@ -365,11 +527,13 @@ export default function InternalSettingsPage() {
 
                 <div className="hidden sm:block" />
 
-                {/* Initial Payment Section */}
+                {/* Initial Payment */}
                 <div className="sm:col-span-2 mt-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-neutral-100">Initial payment (optional)</p>
+                      <p className="text-sm font-semibold text-neutral-100">
+                        Initial payment (optional)
+                      </p>
                       <p className="mt-1 text-xs text-neutral-400">
                         If you want to record a bank transfer payment immediately, enable this.
                       </p>
@@ -379,7 +543,10 @@ export default function InternalSettingsPage() {
                       <input
                         type="checkbox"
                         checked={recordInitialPayment}
-                        onChange={(e) => setRecordInitialPayment(e.target.checked)}
+                        onChange={(e) => {
+                          setRecordInitialPayment(e.target.checked);
+                          if (!e.target.checked) setSelectedBankId(null);
+                        }}
                         className="h-4 w-4"
                       />
                       Record payment
@@ -411,6 +578,28 @@ export default function InternalSettingsPage() {
                           <option value="shipping_payment">shipping_payment</option>
                           <option value="additional_payment">additional_payment</option>
                         </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="text-xs font-medium text-neutral-300">Bank</label>
+                        <select
+                          value={selectedBankId ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value ? Number(e.target.value) : null;
+                            setSelectedBankId(v);
+                          }}
+                          className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                        >
+                          <option value="">Select bank</option>
+                          {activeBanks.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-neutral-500">
+                          Required when recording a payment.
+                        </p>
                       </div>
 
                       <div className="sm:col-span-2">
