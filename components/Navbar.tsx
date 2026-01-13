@@ -77,14 +77,14 @@ export default function Navbar() {
               ☰
             </button>
 
-            <button
+            {/*<button
               onClick={() => setAboutOpen(true)}
               className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 font-semibold text-neutral-200 hover:border-neutral-700"
               aria-label="About"
               type="button"
             >
               ?
-            </button>
+            </button>*/}
           </div>
         </div>
 
@@ -132,7 +132,7 @@ export default function Navbar() {
         ) : null}
       </nav>
 
-      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {/* <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} /> */}
     </>
   );
 }
