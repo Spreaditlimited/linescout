@@ -104,14 +104,14 @@ Target landed cost: ${targetLandedCost ? `₦${targetLandedCost}` : "N/A"}
 `.trim();
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-neutral-950 text-white">
+    <main className="relative h-full min-h-0 overflow-hidden bg-neutral-950 text-white">
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_20%_10%,rgba(59,130,246,0.16),transparent_55%),radial-gradient(900px_circle_at_80%_25%,rgba(34,197,94,0.12),transparent_55%)]" />
         <div className="absolute inset-0 bg-neutral-950/75" />
       </div>
 
-      <div className="relative mx-auto flex min-h-screen max-w-3xl flex-col px-6 py-10">
+      <div className="relative mx-auto flex h-full min-h-0 max-w-3xl flex-col px-6 py-10 overflow-y-auto">
         {/* Top bar */}
         <div className="flex items-center justify-between">
           <div>
@@ -424,7 +424,7 @@ Target landed cost: ${targetLandedCost ? `₦${targetLandedCost}` : "N/A"}
           </a>
         ) : (
           <p className="mt-2 text-sm text-white/70">
-            {noLink ? "No link provided (user will describe specs clearly)." : "—"}
+            {noLink ? "No link provided (user described specs clearly)." : "—"}
           </p>
         )}
       </div>
@@ -449,7 +449,7 @@ Target landed cost: ${targetLandedCost ? `₦${targetLandedCost}` : "N/A"}
      </div>
 
         <p className="text-center text-xs text-white/55">
-          Uses the same Paystack + token workflow as LineScout.
+          Pay on Paystack. Check your email for your token.
         </p>
       </div>
   </div>

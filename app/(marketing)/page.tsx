@@ -16,7 +16,7 @@ type HowItem = {
 };
 
 export default function HomePage() {
-  const year = new Date().getFullYear();
+
 
   const promptChips: Chip[] = [
     {
@@ -81,8 +81,8 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      <Header />
+    <main className="min-h-screen">
+      
 
       <div className="mx-auto w-full max-w-[1400px] px-4 pb-16 sm:px-6 lg:px-8">
         <Hero />
@@ -97,61 +97,13 @@ export default function HomePage() {
         <Divider />
         <Trust />
         <WhatsAppFloat />
-        <Footer year={year} />
+    
       </div>
     </main>
   );
 }
 
-function Header() {
-  return (
-    <header className="sticky top-0 z-50 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center" aria-label="LineScout home">
-            <Image
-              src="/linescout-logo.png"
-              alt="LineScout"
-              width={140}
-              height={32}
-              priority
-              className="h-[26px] w-auto"
-            />
-          </Link>
-        </div>
 
-        <div className="hidden items-center gap-3 md:flex">
-          <div className="text-sm text-neutral-300">Your co-pilot for machine sourcing</div>
-          <span className="rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-xs font-semibold tracking-wide text-neutral-200">
-            BETA
-          </span>
-        </div>
-
-        <nav className="hidden items-center gap-6 lg:flex">
-          <NavLink href="#how">How it works</NavLink>
-          <NavLink href="#products">Modes</NavLink>
-          <NavLink href="#prompts">Examples</NavLink>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/machine-sourcing"
-            className="hidden rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700 sm:inline-flex"
-          >
-            Business plan
-          </Link>
-
-          <Link
-            href="/machine-sourcing"
-            className="inline-flex items-center justify-center rounded-xl bg-white px-3 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200"
-          >
-            Start chat
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function Hero() {
   return (
@@ -541,65 +493,6 @@ function Trust() {
         </div>
       </div>
     </section>
-  );
-}
-
-function Footer({ year }: { year: number }) {
-  return (
-    <footer className="border-t border-neutral-800 py-10">
-      <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <Image src="/linescout-logo.png" alt="LineScout" width={120} height={28} className="h-[22px] w-auto" />
-          </div>
-          <p className="mt-3 text-sm leading-relaxed text-neutral-300">
-            Nigeria-focused machine sourcing guidance and production line business plan writing.
-          </p>
-        </div>
-
-        <FooterCol
-          title="Product"
-          links={[
-            { href: "/machine-sourcing", label: "Sourcing chat" },
-            { href: "/machine-sourcing", label: "Business plan writer" },
-            { href: "https://paystack.shop/pay/sourcing", label: "Sourcing Token" },
-            { href: "https://paystack.shop/pay/linescoutbusinessplan", label: "Business Plan Token" },
-          ]}
-        />
-
-        <FooterCol
-          title="Focus"
-          links={[
-            { href: "#how", label: "How it works" },
-            { href: "#products", label: "Modes" },
-            { href: "#prompts", label: "Example Prompts" },
-          ]}
-        />
-
-        <div>
-          <div className="text-sm font-semibold text-white">Notes</div>
-          <ul className="mt-3 space-y-2 text-sm text-neutral-300">
-            <li className="flex gap-2">
-              <Dot />
-              Estimates not invoices
-            </li>
-            <li className="flex gap-2">
-              <Dot />
-              No supplier engagement until you’re ready to execute
-            </li>
-            <li className="flex gap-2">
-              <Dot />
-              Token unlocks execution support
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="mt-10 flex flex-col gap-2 border-t border-neutral-800 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs text-neutral-400">© {year} LineScout. Built by Sure Importers Limited in Nigeria.</div>
-        <div className="text-xs text-neutral-400">Focused on machines. Built for Nigeria.</div>
-      </div>
-    </footer>
   );
 }
 

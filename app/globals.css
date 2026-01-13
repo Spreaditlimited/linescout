@@ -1,71 +1,57 @@
 @import "tailwindcss";
 
+/* -------------------------------------------------
+   LineScout global baseline
+   Dark-only, white-label style
+-------------------------------------------------- */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --background: #0b0b0e;
+  --foreground: #e5e7eb;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
-@layer base {
-  html {
-    /* This sets 1rem = 16px */
-    font-size: 16px;
-  }
-
-  body {
-    /* Make normal text use Tailwind's base size (16px) */
-    @apply text-base;
-  }
-}
-
-html, body {
   height: 100%;
 }
 
-body {
-  overscroll-behavior: none;
-  -webkit-tap-highlight-color: transparent;
+/* keep dark consistent even if OS prefers light */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b0b0e;
+    --foreground: #e5e7eb;
+  }
 }
 
-input, textarea {
+html,
+body {
+  height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100dvh;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Typography baseline */
+html {
+  font-size: 16px;
+}
+
+/* Inputs & interaction consistency */
+input,
+textarea {
   font-size: 16px;
 }
 
 button {
   touch-action: manipulation;
-}
-
-body {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-:root {
-  height: 100%;
-}
-
-body {
-  min-height: 100dvh;
 }
 
 * {

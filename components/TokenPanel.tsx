@@ -216,7 +216,7 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
   return (
     <div className="space-y-4">
       {/* Token card */}
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+      <div className="rounded-2xl border border-neutral-800 bg-[#0B0B0E] p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -246,7 +246,7 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
             value={sourcingToken}
             onChange={(e) => setSourcingToken(e.target.value)}
             placeholder="Paste sourcing token"
-            className="w-full sm:flex-1 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-700 outline-none"
+            className="w-full sm:flex-1 rounded-xl border border-neutral-800 bg-[#0B0B0E] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-neutral-700 outline-none"
           />
 
           <button
@@ -266,26 +266,26 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
 
       {/* Handoff Modal */}
       {showHandoffModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl shadow-black/50">
-            <h2 className="text-lg font-semibold text-white mb-1">Ready for human agents</h2>
-            <p className="text-sm text-neutral-400 mb-4">
-              Confirm your details and tell us briefly what you want to source.
-            </p>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-[#0B0B0E] p-5 shadow-xl shadow-black/50">
+              <h2 className="text-lg font-semibold text-white mb-1">Ready for human agents</h2>
+              <p className="text-sm text-neutral-400 mb-4">
+                Confirm your details and tell us briefly what you want to source.
+              </p>
 
             <div className="space-y-3">
               <input
                 value={handoffName}
                 onChange={(e) => setHandoffName(e.target.value)}
                 placeholder="Full name"
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                className="w-full rounded-xl border border-neutral-800 bg-[#0B0B0E] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
 
               <input
                 value={handoffEmail}
                 onChange={(e) => setHandoffEmail(e.target.value)}
                 placeholder="Email address"
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                className="w-full rounded-xl border border-neutral-800 bg-[#0B0B0E] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
 
               <input
@@ -294,14 +294,14 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
                 inputMode="numeric"
                 maxLength={13}
                 placeholder="WhatsApp number (e.g. 8037649956)"
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                className="w-full rounded-xl border border-neutral-800 bg-[#0B0B0E] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
 
               <textarea
                 value={handoffContext}
                 onChange={(e) => setHandoffContext(e.target.value)}
                 placeholder="What are you in the market for? Mention product, capacity, location, budget if you have one."
-                className="w-full min-h-[110px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                className="w-full min-h-[110px] resize-none rounded-xl border border-neutral-800 bg-[#0B0B0E] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
               />
             </div>
 
@@ -316,7 +316,7 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
             <button
               type="button"
               onClick={() => setShowHandoffModal(false)}
-              className="mt-3 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2.5 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
+              className="mt-3 w-full rounded-xl border border-neutral-800 bg-[#0B0B0E] px-4 py-2.5 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
             >
               Close
             </button>
@@ -327,7 +327,7 @@ export default function TokenPanel({ prefillContext = "" }: { prefillContext?: s
       {/* UI alert modal */}
       {uiAlertOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-xl shadow-black/50">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-[#0B0B0E] p-5 shadow-xl shadow-black/50">
             <h2 className="text-lg font-semibold text-white mb-1">{uiAlertTitle}</h2>
             <p className="text-sm text-neutral-300 whitespace-pre-line">{uiAlertMessage}</p>
 

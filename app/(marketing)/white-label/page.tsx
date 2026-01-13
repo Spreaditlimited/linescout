@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, BadgeCheck, Clock } from "lucide-react";
 
+
 export default function ProjectActivationPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-neutral-950 text-white">
+    <main className="relative min-h-screen">
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_18%_10%,rgba(59,130,246,0.18),transparent_55%),radial-gradient(900px_circle_at_82%_18%,rgba(34,197,94,0.14),transparent_55%),radial-gradient(900px_circle_at_60%_92%,rgba(168,85,247,0.10),transparent_55%)]" />
@@ -47,7 +48,7 @@ export default function ProjectActivationPage() {
                   </a>
               </div>
 
-              <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-10 hidden sm:grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <TrustPill icon={<BadgeCheck className="h-4 w-4" />} title="Verified process" desc="Specs first, sourcing second." />
                 <TrustPill icon={<Clock className="h-4 w-4" />} title="Fast kickoff" desc="Instant brief after payment." />
                 <TrustPill icon={<ShieldCheck className="h-4 w-4" />} title="Deposit, not fee" desc="Credited to your order." />
@@ -99,7 +100,7 @@ export default function ProjectActivationPage() {
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-16">
-          <div className="grid gap-4 md:grid-cols-3">
+         <div className="hidden md:grid gap-4 md:grid-cols-3">
             <InfoCard
                 step="01"
                 title="Build a factory-ready brief"
