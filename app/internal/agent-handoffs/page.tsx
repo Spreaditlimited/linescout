@@ -822,7 +822,20 @@ const payload: any = {
                     </td>
 
                     <td className="px-3 py-3">
-                      <div className="text-neutral-100">{h.context}</div>
+                      <div className="max-w-[360px]">
+                        <div
+                          className="text-neutral-100 text-xs whitespace-pre-wrap break-words overflow-hidden"
+                          style={{ display: "-webkit-box", WebkitLineClamp: 6, WebkitBoxOrient: "vertical" } as any}
+                        >
+                          {h.context || "—"}
+                        </div>
+
+                        {String(h.context || "").length > 220 && (
+                          <div className="mt-1 text-[11px] text-neutral-500">
+                            (truncated)
+                          </div>
+                        )}
+                      </div>
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300">{h.whatsapp_number || "N/A"}</td>
@@ -932,6 +945,26 @@ const payload: any = {
                 Close
               </button>
             </div>
+
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+  <div className="flex items-center justify-between">
+    <div className="text-sm font-semibold text-neutral-100">Project brief</div>
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(modalHandoff.context || "");
+        setBanner({ type: "ok", msg: "Brief copied." });
+      }}
+      className="text-xs font-semibold text-neutral-200 hover:text-white"
+    >
+      Copy
+    </button>
+  </div>
+
+  <div className="mt-3 max-h-[260px] overflow-auto rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 text-xs text-neutral-200 whitespace-pre-wrap break-words leading-relaxed">
+    {modalHandoff.context || "—"}
+  </div>
+</div>
 
             <div className="mt-4">
               <label className="text-xs text-neutral-400">Action</label>

@@ -25,7 +25,7 @@ type PaymentSummaryResponse =
     }
   | { ok: false; error: string };
 
-export default function TokenPanel() {
+export default function TokenPanel({ prefillContext = "" }: { prefillContext?: string }) {
   // Token (persisted)
   const [sourcingToken, setSourcingToken] = useState("");
   const [isVerified, setIsVerified] = useState(false);
@@ -98,6 +98,12 @@ export default function TokenPanel() {
     if (w) setHandoffWhatsapp(w);
     if (e) setHandoffEmail(e);
   }, []);
+
+  useEffect(() => {
+  if (!prefillContext) return;
+  // Only prefill if user hasn’t typed anything yet
+  setHandoffContext((prev) => (prev.trim() ? prev : prefillContext));
+}, [prefillContext]);
 
   async function handleVerifyOrGetToken() {
     const t = sourcingToken.trim();
