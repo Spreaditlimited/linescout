@@ -4,7 +4,7 @@ import { ArrowRight, ShieldCheck, BadgeCheck, Clock } from "lucide-react";
 
 export default function ProjectActivationPage() {
   return (
-    <main className="relative min-h-screen w-full overflow-x-clip">
+    <main className="relative min-h-screen w-full overflow-x-hidden">
       {/* Background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_18%_10%,rgba(59,130,246,0.18),transparent_55%),radial-gradient(900px_circle_at_82%_18%,rgba(34,197,94,0.14),transparent_55%),radial-gradient(900px_circle_at_60%_92%,rgba(168,85,247,0.10),transparent_55%)]" />
@@ -13,7 +13,7 @@ export default function ProjectActivationPage() {
 
       <div className="relative">
         <section className="mx-auto max-w-6xl px-6 py-16 md:py-20">
-          <div className="grid gap-10 md:grid-cols-2 md:items-start">
+          <div className="grid gap-y-10 md:grid-cols-2 md:gap-10 md:items-start">
             {/* Left */}
             <div className="pt-2">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 ring-1 ring-white/10">
@@ -22,12 +22,12 @@ export default function ProjectActivationPage() {
               </div>
 
               <h1 className="mt-5 text-4xl font-semibold tracking-tight md:text-5xl">
-                  Build your brand with the world’s best manufacturers
+                  Build and scale your brand with trusted manufacturers in China
                 </h1>
 
                 <p className="mt-5 max-w-xl text-base leading-relaxed text-white/70">
-                  Every project is handled by verified, high-end manufacturers in China to guarantee quality. 
-                  We match your specs to your target price, making sure your brand is profitable from day one.
+                  Every white labeling project is handled by verified, high-end manufacturers in China. 
+                  We focus on getting the specifications right, moving quickly from brief to production, and providing close, personalized support throughout the process.
                 </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -56,7 +56,7 @@ export default function ProjectActivationPage() {
             </div>
 
             {/* Right */}
-            <div className="rounded-3xl bg-white/6 p-6 ring-1 ring-white/10 backdrop-blur-xl">
+            <div className="rounded-3xl bg-white/6 p-6 ring-1 ring-white/10 backdrop-blur-xl overflow-hidden">
               <div className="rounded-2xl bg-neutral-950/40 p-5 ring-1 ring-white/10">
                 <p className="text-xs font-semibold text-white/60">Before you start</p>
                 <h2 className="mt-2 text-xl font-semibold tracking-tight">Who this is for</h2>
@@ -67,22 +67,28 @@ export default function ProjectActivationPage() {
                   <Bullet>You are ready for MOQs, branding decisions, and factory production timelines.</Bullet>
                 </ul>
 
-                <div className="mt-6 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
-                  <div className="flex items-start justify-between gap-6">
-                    <div>
-                      <p className="text-xs font-semibold text-white/60">Project Activation Deposit</p>
-                        <p className="mt-1 text-3xl font-semibold">₦100,000</p>
-                        <p className="mt-1 text-sm text-white/60">
-                          This deposit activates a dedicated White Label sourcing workflow and is fully
-                          credited to your first production order.
-                        </p>
-                    </div>
+          <div className="mt-6 rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-white/60">
+                    Project Activation Deposit
+                  </p>
 
-                    <div className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/70 ring-1 ring-white/10">
-                      Refundable
-                    </div>
-                  </div>
+                  <p className="mt-1 text-3xl font-semibold">
+                    ₦100,000
+                  </p>
+
+                  <p className="mt-2 text-[13.5px] leading-snug text-white/60">
+                    This deposit activates a dedicated White Label sourcing workflow and is fully
+                    credited to your first production order.
+                  </p>
                 </div>
+
+                <div className="self-start rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/70 ring-1 ring-white/10">
+                  Refundable
+                </div>
+              </div>
+            </div>
 
                 <Link
                   href="/white-label/wizard"

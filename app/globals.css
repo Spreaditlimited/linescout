@@ -28,6 +28,12 @@ body {
   color: var(--foreground);
 }
 
+html, 
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   min-height: 100dvh;
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
