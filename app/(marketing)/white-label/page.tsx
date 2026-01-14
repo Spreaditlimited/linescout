@@ -1,6 +1,55 @@
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, BadgeCheck, Clock } from "lucide-react";
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "White Label Manufacturing in China for Nigerian Brands | LineScout",
+  description:
+    "Launch your own white label products with verified manufacturers in China. Define specs, branding depth, quantities, and timelines before production.",
+  keywords: [
+    "white label products Nigeria",
+    "white label manufacturing China",
+    "private label Nigeria",
+    "OEM China Nigeria",
+    "ODM China Nigeria",
+    "white label sourcing agent",
+    "brand manufacturing China",
+    "custom packaging China",
+    "product sourcing China Nigeria",
+    "Sure Imports white label",
+  ],
+  alternates: {
+    canonical: "https://linescout.sureimports.com/white-label",
+  },
+  openGraph: {
+    title: "White Label Manufacturing in China for Nigerian Brands",
+    description:
+      "Verified China manufacturers for Nigerian brands. Build a factory-ready brief, choose branding depth, and activate sourcing with a refundable deposit.",
+    url: "https://linescout.sureimports.com/white-label",
+    siteName: "LineScout",
+    type: "website",
+    images: [
+      {
+      url: "https://linescout.sureimports.com/white-label-social.png",
+      width: 1200,
+      height: 630,
+      alt: "White Label Manufacturing in China for Nigerian Brands",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "White Label Manufacturing in China for Nigerian Brands",
+    description:
+      "Build a factory-ready white label brief and work with verified manufacturers in China.",
+    images: ["https://linescout.sureimports.com/linescout-social.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
 
 export default function ProjectActivationPage() {
   return (

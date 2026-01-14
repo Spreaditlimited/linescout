@@ -40,7 +40,7 @@ export default function Footer() {
 
               <div>
                 <div className="text-neutral-400">Nigeria Office</div>
-                <div>5 Olutosin Ajay Street, Ajao Estate, Lagos, Nigeria</div>
+                <div>5 Olutosin Ajayi (Martins Adegboyega) Street, Ajao Estate, Lagos, Nigeria</div>
                 <div className="mt-2 space-y-1">
                   <div>08037649956</div>
                   <div>08064583664</div>

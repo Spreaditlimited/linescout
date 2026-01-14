@@ -18,6 +18,38 @@ type ChatMessage = {
   content: string;
 };
 
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Machine Sourcing from China for Nigeria | LineScout by Sure Imports",
+  description:
+    "Understand how to source industrial and agro-processing machines from China for Nigeria. LineScout helps you think through capacity, costs, power needs, and execution before importing.",
+  keywords: [
+    "machine sourcing Nigeria",
+    "import machines from China to Nigeria",
+    "agro processing machines Nigeria",
+    "industrial equipment sourcing China",
+    "China machine suppliers Nigeria",
+  ],
+  alternates: {
+    canonical: "https://linescout.sureimports.com/machine-sourcing",
+  },
+  openGraph: {
+    title: "Machine Sourcing from China for Nigeria",
+    description:
+      "Nigeria-aware guidance for sourcing machines from China. Think through machines, capacity, power, and landed costs before you import.",
+    url: "https://linescout.sureimports.com/machine-sourcing",
+    siteName: "LineScout",
+    type: "article",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Machine Sourcing from China for Nigeria",
+    description:
+      "Practical machine sourcing guidance for Nigerian businesses importing from China.",
+  },
+};
+
 export default function MachineSourcingPage() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("chat");
