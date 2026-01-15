@@ -106,7 +106,8 @@ export default function ProjectActivationPage() {
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-16">
-         <div className="hidden md:grid gap-4 md:grid-cols-3">
+
+        <div className="hidden md:grid gap-4 md:grid-cols-3 mb-16">
             <InfoCard
                 step="01"
                 title="Build a factory-ready brief"
@@ -122,6 +123,52 @@ export default function ProjectActivationPage() {
                 title="Activate sourcing and handover"
                 desc="After payment, your brief is routed to the right specialist so samples and production can start faster."
               />
+          </div>
+
+          {/* Testimonials */}
+          <div className="mb-12">
+            <div className="flex flex-col gap-3">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-white/75 ring-1 ring-white/10">
+                <BadgeCheck className="h-4 w-4" />
+                4.8 / 5 Google rating • 90+ reviews
+              </div>
+
+              <h2 className="text-xl font-semibold tracking-tight text-white">
+                Trusted by real founders
+              </h2>
+
+              <p className="max-w-2xl text-sm leading-relaxed text-white/70">
+                These are real experiences from Nigerian and international business owners who have worked with us on white label
+                sourcing, factory coordination, and delivery from China.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              <Testimonial
+                quote="If you want to source anything in China and sleep with both eyes closed, this is the team. People who listen, execute every agreement, understand the terrain, and are really on ground in China. You can pay them ₦100 million and go to sleep. Kobo no go miss."
+                name="Chioma Ifeanyi-Eze"
+                meta="Founder, AccountingHub & Fresh Eggs Market • Nigeria"
+              />
+
+              <Testimonial
+                quote="We needed 2,000 custom-branded items and only provided a description and reference image. What we got back matched exactly what we envisioned. What stood out most was integrity. Pricing was transparent and even came in lower than expected."
+                name="Chukwuedozie Nwokoye"
+                meta="Business Owner • Nigeria"
+              />
+
+              <Testimonial
+                quote="From order placement to delivery, everything was handled with professionalism and precision. The shipment arrived on time and in perfect condition. You can tell this is a team that genuinely cares about execution and customer experience."
+                name="Amarachi Ndukauba Ogbuagu"
+                meta="Business Owner • Canada"
+              />
+            </div>
+
+            <Link
+              href="/white-label/wizard"
+              className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90 md:w-auto"
+            >
+              Start Your White Label Project <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </section>
       </div>
@@ -156,6 +203,33 @@ function InfoCard({ step, title, desc }: { step: string; title: string; desc: st
       <p className="text-xs font-semibold text-white/60">Step {step}</p>
       <h3 className="mt-2 text-lg font-semibold tracking-tight">{title}</h3>
       <p className="mt-2 text-sm leading-relaxed text-white/70">{desc}</p>
+    </div>
+  );
+}
+
+function Testimonial({
+  quote,
+  name,
+  meta,
+}: {
+  quote: string;
+  name: string;
+  meta: string;
+}) {
+  return (
+    <div className="rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur">
+      <p className="text-sm leading-relaxed text-white/75">
+        “{quote}”
+      </p>
+
+      <div className="mt-4">
+        <p className="text-sm font-semibold text-white/90">
+          {name}
+        </p>
+        <p className="mt-0.5 text-xs text-white/55">
+          {meta}
+        </p>
+      </div>
     </div>
   );
 }
