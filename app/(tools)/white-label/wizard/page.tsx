@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import TokenPanel from "@/components/TokenPanel";
 
@@ -14,7 +15,7 @@ type Category =
 
 export default function WhiteLabelWizard() {
     const stepsTotal = 5;
-
+    const router = useRouter();
     const [step, setStep] = useState(1);
     const [category, setCategory] = useState<Category | "">("");
     const [productName, setProductName] = useState("");
@@ -460,9 +461,14 @@ Target landed cost: ${targetLandedCost ? `₦${targetLandedCost}` : "N/A"}
           <div className="mt-10 flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setStep((s) => Math.max(1, s - 1))}
-              disabled={step === 1}
-              className="inline-flex items-center gap-2 rounded-2xl bg-white/5 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                if (step === 1) {
+                  router.push("/white-label");
+                } else {
+                  setStep((s) => s - 1);
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl bg-white/5 px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/10 hover:bg-white/10"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
