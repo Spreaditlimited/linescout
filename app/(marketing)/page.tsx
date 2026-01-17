@@ -55,7 +55,7 @@ export default function HomePage() {
                 <TrustPill
                   icon={<BadgeCheck className="h-4 w-4" />}
                   title="Clarity first"
-                  desc="Specs and production reality before you pay anybody."
+                  desc="Specs and production reality before you make any payment."
                 />
                 <TrustPill
                   icon={<Clock className="h-4 w-4" />}
@@ -94,7 +94,7 @@ export default function HomePage() {
                   href="/machine-sourcing"
                   className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90"
                 >
-                  Continue to Machine Sourcing <ArrowRight className="h-4 w-4" />
+                  Chat with LineScout <ArrowRight className="h-4 w-4" />
                 </Link>
 
                 <p className="mt-3 text-center text-xs text-white/55">
