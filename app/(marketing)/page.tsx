@@ -25,12 +25,12 @@ export default function HomePage() {
               </div>
 
               <h1 className="mt-5 text-4xl font-semibold tracking-tight md:text-5xl">
-                Helping you get the machine you need from China with zero mistakes.
+                Helping you get the machine you need from China with zero mistakes
               </h1>
 
               <p className="mt-5 max-w-xl text-base leading-relaxed text-white/70">
                 Think through the exact machine or production line you need on LineScout, then have our machine sourcing
-                experts get you the machine from verified manufacturers in China
+                experts get you the machine from verified manufacturers in China.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
