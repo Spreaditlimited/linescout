@@ -3,7 +3,9 @@ import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+
 import Navbar from "@/components/Navbar";
+import WhatsAppFloat from "@/components/WhatsAppFloat";
 
 import MetaPixel from "./MetaPixel";
 import InstallPrompt from "@/components/InstallPrompt";
@@ -72,10 +74,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
+      >
         {/* Meta Pixel Base */}
         <Script
           id="facebook-pixel"
@@ -105,36 +113,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Tracks PageView on route changes */}
         <MetaPixel />
 
-        <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
+        <InstallPrompt
+          minSeconds={90}
+          minVisits={2}
+          cooldownDays={7}
+          maxShows={3}
+        />
 
-         {/* Global shell (Navbar everywhere). Pages control their own scrolling. */}
+        {/* Global App Shell */}
         <div className="min-h-screen flex flex-col">
           <Navbar />
 
+          {/* Pages manage their own scroll */}
           <main className="flex-1 min-h-0">
             {children}
           </main>
 
+          {/* Floating WhatsApp CTA */}
+          <WhatsAppFloat />
         </div>
-
-        <Script
-          id="tawk-to"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-              (function(){
-                var s1=document.createElement("script"),
-                    s0=document.getElementsByTagName("script")[0];
-                s1.async=true;
-                s1.src='https://embed.tawk.to/696acde50f26dd197d65be56/1jf4j8i6e';
-                s1.charset='UTF-8';
-                s1.setAttribute('crossorigin','*');
-                s0.parentNode.insertBefore(s1,s0);
-              })();
-            `,
-          }}
-        />
       </body>
     </html>
   );
