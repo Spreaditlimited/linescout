@@ -38,7 +38,7 @@ export default function WhatsAppChannelLandingPage() {
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90"
                 >
-                  Join the WhatsApp Channel <ArrowRight className="h-4 w-4" />
+                  Join WhatsApp Channel <ArrowRight className="h-4 w-4" />
                 </a>
 
               </div>
