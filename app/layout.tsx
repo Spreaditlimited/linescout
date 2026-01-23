@@ -3,9 +3,7 @@ import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-
 import Navbar from "@/components/Navbar";
-import WhatsAppFloat from "@/components/WhatsAppFloat";
 
 import MetaPixel from "./MetaPixel";
 import InstallPrompt from "@/components/InstallPrompt";
@@ -74,16 +72,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
         {/* Meta Pixel Base */}
         <Script
           id="facebook-pixel"
@@ -113,24 +105,16 @@ export default function RootLayout({
         {/* Tracks PageView on route changes */}
         <MetaPixel />
 
-        <InstallPrompt
-          minSeconds={90}
-          minVisits={2}
-          cooldownDays={7}
-          maxShows={3}
-        />
+        <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
 
-        {/* Global App Shell */}
+         {/* Global shell (Navbar everywhere). Pages control their own scrolling. */}
         <div className="min-h-screen flex flex-col">
           <Navbar />
 
-          {/* Pages manage their own scroll */}
           <main className="flex-1 min-h-0">
             {children}
           </main>
-
-          {/* Floating WhatsApp CTA */}
-          <WhatsAppFloat />
+          
         </div>
       </body>
     </html>
