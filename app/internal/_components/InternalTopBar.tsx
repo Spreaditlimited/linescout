@@ -14,7 +14,7 @@ type MeResponse =
         permissions: {
           can_view_leads: boolean;
           can_view_handoffs: boolean;
-          can_view_analytics: boolean; // ✅ ADD
+          can_view_analytics: boolean;
         };
       };
     }
@@ -73,7 +73,7 @@ export default function InternalTopBar() {
   const isAdmin = user?.role === "admin";
   const canLeads = !!(isAdmin || user?.permissions?.can_view_leads);
   const canHandoffs = !!(isAdmin || user?.permissions?.can_view_handoffs);
-  const canAnalytics = !!(isAdmin || user?.permissions?.can_view_analytics); // ✅ ADD
+  const canAnalytics = !!(isAdmin || user?.permissions?.can_view_analytics);
 
   async function signOut() {
     await fetch("/api/internal/auth/sign-out", { method: "POST" });
@@ -87,18 +87,22 @@ export default function InternalTopBar() {
   const navItems: NavItem[] = useMemo(() => {
     const items: NavItem[] = [];
 
-    if (canLeads) items.push({ label: "Leads", href: "/internal/leads" });
+    if (canLeads) {
+      items.push({ label: "Leads", href: "/internal/leads" });
+    }
 
     if (canHandoffs) {
       items.push({ label: "Sourcing Projects", href: "/internal/agent-handoffs" });
+      items.push({ label: "Paid Chat", href: "/internal/paid-chat" });
     }
 
-    // ✅ Analytics: admin OR permission
     if (canAnalytics) {
       items.push({ label: "Analytics", href: "/internal/analytics" });
     }
 
-    if (isAdmin) items.push({ label: "Settings", href: "/internal/settings" });
+    if (isAdmin) {
+      items.push({ label: "Settings", href: "/internal/settings" });
+    }
 
     return items;
   }, [canLeads, canHandoffs, canAnalytics, isAdmin]);
@@ -106,33 +110,50 @@ export default function InternalTopBar() {
   if (hide) return null;
   if (!authed || !user) return null;
 
-  const linkBase = "rounded-xl border px-4 py-2 text-sm transition-colors";
-  const linkIdle = "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700";
-  const linkActive = "border-neutral-600 bg-neutral-100 text-neutral-950";
+  const linkBase =
+    "rounded-xl border px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap";
+  const linkIdle =
+    "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900";
+  const linkActive =
+    "border-neutral-600 bg-neutral-100 text-neutral-950";
 
   return (
     <div className="mb-6">
       <div className="flex items-center justify-between gap-3">
+        {/* Left */}
         <div className="flex items-center gap-3 min-w-0">
-          <img src="/linescout-logo.png" alt="LineScout" className="h-[22px] w-auto" />
+          <img
+            src="/linescout-logo.png"
+            alt="LineScout"
+            className="h-[22px] w-auto flex-shrink-0"
+          />
 
           <div className="hidden sm:block min-w-0">
-            <div className="text-sm font-semibold text-neutral-100">Internal Dashboard</div>
-            <div className="text-xs text-neutral-400 truncate">Signed in as {user.username}</div>
+            <div className="text-sm font-semibold text-neutral-100">
+              Internal Dashboard
+            </div>
+            <div className="text-xs text-neutral-400 truncate">
+              Signed in as {user.username}
+            </div>
           </div>
 
           <div className="sm:hidden min-w-0">
-            <div className="text-sm font-semibold text-neutral-100 truncate">{user.username}</div>
+            <div className="text-sm font-semibold text-neutral-100 truncate">
+              {user.username}
+            </div>
           </div>
         </div>
 
+        {/* Desktop nav */}
         <div className="hidden sm:flex items-center gap-2">
           <nav className="flex items-center gap-2">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`${linkBase} ${isActive(item.href) ? linkActive : linkIdle}`}
+                className={`${linkBase} ${
+                  isActive(item.href) ? linkActive : linkIdle
+                }`}
               >
                 {item.label}
               </Link>
@@ -147,11 +168,12 @@ export default function InternalTopBar() {
           </button>
         </div>
 
+        {/* Mobile menu button */}
         <div className="sm:hidden">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
-            className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
+            className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm font-semibold text-neutral-200 hover:border-neutral-700"
             aria-label="Open menu"
             aria-expanded={menuOpen}
           >
@@ -160,19 +182,22 @@ export default function InternalTopBar() {
         </div>
       </div>
 
+      {/* Mobile menu */}
       {mounted && menuOpen
         ? createPortal(
             <div className="fixed inset-0 z-[9999]">
               <button
                 type="button"
-                className="absolute inset-0 bg-black/60"
+                className="absolute inset-0 bg-black/70"
                 aria-label="Close menu"
                 onClick={() => setMenuOpen(false)}
               />
 
-              <div className="absolute right-3 top-3 w-[min(92vw,320px)] overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
+              <div className="absolute right-3 top-3 w-[min(94vw,360px)] overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-                  <div className="text-sm font-semibold text-neutral-100">Menu</div>
+                  <div className="text-sm font-semibold text-neutral-100">
+                    Menu
+                  </div>
                   <button
                     type="button"
                     onClick={() => setMenuOpen(false)}
@@ -187,7 +212,7 @@ export default function InternalTopBar() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`block rounded-xl px-3 py-2 text-sm ${
+                      className={`block rounded-xl px-4 py-3 text-sm font-medium ${
                         isActive(item.href)
                           ? "bg-neutral-100 text-neutral-950"
                           : "text-neutral-200 hover:bg-neutral-900/60"
@@ -201,7 +226,7 @@ export default function InternalTopBar() {
 
                   <button
                     onClick={signOut}
-                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-left text-sm text-neutral-200 hover:border-neutral-700"
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-left text-sm font-medium text-neutral-200 hover:border-neutral-700"
                   >
                     Sign out
                   </button>

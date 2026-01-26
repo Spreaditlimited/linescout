@@ -1,12 +1,13 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
 
 import MetaPixel from "./MetaPixel";
 import InstallPrompt from "@/components/InstallPrompt";
+import Shell from "@/components/Shell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -75,7 +76,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+      >
         {/* Meta Pixel Base */}
         <Script
           id="facebook-pixel"
@@ -107,15 +110,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
 
-         {/* Global shell (Navbar everywhere). Pages control their own scrolling. */}
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
-
-          <main className="flex-1 min-h-0">
-            {children}
-          </main>
-          
-        </div>
+        {/* Global shell: hides Navbar for /internal routes via Shell */}
+        <Shell>{children}</Shell>
       </body>
     </html>
   );

@@ -191,7 +191,7 @@ export default function MachineSourcingPage() {
     }
 
     const email = leadEmail.trim();
-    const intent = leadIntent.trim() || derivedLeadIntent.trim();
+    const intent = (leadIntent.trim() || derivedLeadIntent.trim()).slice(0, 255);
 
     if (!name || !whatsapp || !email || !intent) {
       alert("All fields are required.");
@@ -632,12 +632,17 @@ export default function MachineSourcingPage() {
               />
 
               <textarea
-                value={leadIntent.length > 0 ? leadIntent : derivedLeadIntent}
-                onChange={(e) => setLeadIntent(e.target.value)}
-                placeholder="What do you want to source from China?"
-                className="w-full min-h-[90px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
-                rows={4}
-              />
+                  value={leadIntent.length > 0 ? leadIntent : derivedLeadIntent}
+                  maxLength={255}
+                  onChange={(e) => setLeadIntent(e.target.value.slice(0, 255))}
+                  placeholder="What do you want to source from China?"
+                  className="w-full min-h-[90px] resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-700"
+                  rows={4}
+                />
+
+                <p className="mt-1 text-xs text-neutral-500">
+                  {255 - ((leadIntent?.length || 0) || (derivedLeadIntent?.length || 0))} characters left
+                </p>
             </div>
 
             <button
