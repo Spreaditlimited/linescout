@@ -40,8 +40,6 @@ function getSmtp() {
   const SMTP_PORT = Number(process.env.SMTP_PORT || 0);
   const SMTP_USER = process.env.SMTP_USER?.trim();
   const SMTP_PASS = process.env.SMTP_PASS?.trim();
-  // You said you use hello@sureimports.com
-  const SMTP_FROM = (process.env.SMTP_FROM || "hello@sureimports.com").trim();
 
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
     return {
@@ -49,6 +47,11 @@ function getSmtp() {
       error: "SMTP not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)",
     };
   }
+
+  // IMPORTANT:
+  // Hostinger requires the FROM address to be a mailbox you own, typically the same as SMTP_USER.
+  // If SMTP_FROM is not set, default to SMTP_USER.
+  const SMTP_FROM = (process.env.SMTP_FROM || SMTP_USER).trim();
 
   return {
     ok: true as const,
