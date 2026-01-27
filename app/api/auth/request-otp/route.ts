@@ -1,6 +1,10 @@
+// app/api/auth/request-otp/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import mysql from "mysql2/promise";
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const nodemailer = require("nodemailer");
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -29,6 +33,92 @@ async function getDb() {
   }
 
   return mysql.createConnection({ host, user, password, database });
+}
+
+function getSmtp() {
+  const SMTP_HOST = process.env.SMTP_HOST?.trim();
+  const SMTP_PORT = Number(process.env.SMTP_PORT || 0);
+  const SMTP_USER = process.env.SMTP_USER?.trim();
+  const SMTP_PASS = process.env.SMTP_PASS?.trim();
+  // You said you use hello@sureimports.com
+  const SMTP_FROM = (process.env.SMTP_FROM || "hello@sureimports.com").trim();
+
+  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) {
+    return {
+      ok: false as const,
+      error: "SMTP not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)",
+    };
+  }
+
+  return {
+    ok: true as const,
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    user: SMTP_USER,
+    pass: SMTP_PASS,
+    from: SMTP_FROM,
+  };
+}
+
+function buildOtpEmail(params: { otp: string }) {
+  const subject = "Your LineScout OTP Code";
+
+  const text = [
+    "LineScout (Sure Importers Limited)",
+    "",
+    `Your OTP is: ${params.otp}`,
+    "",
+    "This code expires in 10 minutes.",
+    "If you did not request this, you can ignore this email.",
+    "",
+    "Help: hello@sureimports.com",
+  ].join("\n");
+
+  const html = `
+  <div style="margin:0;padding:0;background:#f6f7fb;">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f6f7fb;padding:24px 0;">
+      <tr>
+        <td align="center" style="padding:0 16px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="width:600px;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,0.06);">
+            <tr>
+              <td style="padding:18px 22px;background:#0b0f17;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+                <div style="font-size:13px;letter-spacing:0.4px;opacity:0.85;">LineScout (Sure Importers Limited)</div>
+                <div style="font-size:18px;font-weight:700;margin-top:6px;line-height:1.35;">Your OTP Code</div>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding:20px 22px;color:#0b0f17;font-family:Arial,Helvetica,sans-serif;">
+                <p style="margin:0 0 12px 0;font-size:14px;line-height:1.6;color:#111827;">
+                  Use the code below to sign in. This code expires in <b>10 minutes</b>.
+                </p>
+
+                <div style="border:1px solid #e5e7eb;border-radius:14px;padding:16px;background:#fafafa;text-align:center;margin:14px 0 18px 0;">
+                  <div style="font-size:28px;font-weight:800;letter-spacing:6px;color:#0b0f17;">${params.otp}</div>
+                </div>
+
+                <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                  If you did not request this, you can ignore this email.
+                </p>
+
+                <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
+                  <div style="font-weight:700;color:#111827;">Need help?</div>
+                  <div>Email: <a href="mailto:hello@sureimports.com" style="color:#0b0f17;text-decoration:underline;">hello@sureimports.com</a></div>
+                </div>
+              </td>
+            </tr>
+          </table>
+
+          <div style="width:600px;max-width:600px;margin-top:10px;color:#9ca3af;font-size:11px;line-height:1.5;text-align:left;padding:0 4px;">
+            This email was sent because an OTP was requested for your LineScout account.
+          </div>
+        </td>
+      </tr>
+    </table>
+  </div>
+  `;
+
+  return { subject, text, html };
 }
 
 export async function POST(req: Request) {
@@ -98,10 +188,30 @@ export async function POST(req: Request) {
 
     await conn.end();
 
-    // 4) Send email (placeholder)
-    // TODO: integrate your email provider (Resend / Postmark / SES).
-    // For now we just return ok:true. Do NOT return OTP to client in production.
-    console.log("[request-otp] email:", email, "otp:", otp);
+    // 4) Send OTP email via SMTP
+    const smtp = getSmtp();
+    if (!smtp.ok) {
+      console.error(smtp.error);
+      return NextResponse.json({ ok: false, error: "OTP email is not configured." }, { status: 500 });
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.port === 465, // 465 = SSL, 587 = STARTTLS
+      auth: { user: smtp.user, pass: smtp.pass },
+    });
+
+    const mail = buildOtpEmail({ otp });
+
+    await transporter.sendMail({
+      from: smtp.from,
+      to: email,
+      replyTo: "hello@sureimports.com",
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
