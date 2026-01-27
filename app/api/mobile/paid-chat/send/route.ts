@@ -1,4 +1,3 @@
-// app/api/mobile/paid-chat/send/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -9,9 +8,6 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/mobile/paid-chat/send
  * body: { conversation_id: number, message_text: string }
- *
- * Saves a USER message into linescout_messages for a paid conversation
- * that belongs to the signed-in user.
  */
 export async function POST(req: Request) {
   try {
@@ -23,58 +19,50 @@ export async function POST(req: Request) {
     const messageText = String(body?.message_text || "").trim();
 
     if (!conversationId) {
-      return NextResponse.json(
-        { ok: false, error: "conversation_id is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "conversation_id is required" }, { status: 400 });
     }
-
     if (!messageText) {
-      return NextResponse.json(
-        { ok: false, error: "message_text is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "message_text is required" }, { status: 400 });
+    }
+    if (messageText.length > 8000) {
+      return NextResponse.json({ ok: false, error: "message_text too long" }, { status: 400 });
     }
 
-    // Prevent crazy payloads
-    if (messageText.length > 8000) {
-      return NextResponse.json(
-        { ok: false, error: "message_text too long" },
-        { status: 400 }
-      );
-    }
+    const allowDevUnpaid = process.env.ALLOW_DEV_UNPAID_PAID_CHAT === "1";
 
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
 
-      // 1) Ensure conversation belongs to user AND is in paid human mode
-      const [convRows]: any = await conn.query(
+      // Load conversation + linked handoff status
+      const [crows]: any = await conn.query(
         `
-        SELECT id, user_id, chat_mode, payment_status, project_status
-        FROM linescout_conversations
-        WHERE id = ?
-          AND user_id = ?
+        SELECT
+          c.id,
+          c.user_id,
+          c.chat_mode,
+          c.payment_status,
+          c.project_status,
+          c.handoff_id,
+          h.status AS handoff_status,
+          h.cancel_reason
+        FROM linescout_conversations c
+        LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+        WHERE c.id = ?
+          AND c.user_id = ?
         LIMIT 1
         `,
         [conversationId, userId]
       );
 
-      if (!convRows?.length) {
+      if (!crows?.length) {
         await conn.rollback();
-        return NextResponse.json(
-          { ok: false, error: "Not found" },
-          { status: 404 }
-        );
+        return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
 
-      const conv = convRows[0];
-      const chatMode = String(conv.chat_mode || "");
-      const paymentStatus = String(conv.payment_status || "");
-      const projectStatus = String(conv.project_status || "");
+      const c = crows[0];
 
-      // You can tighten/loosen these rules later, but this is safe by default.
-      if (chatMode !== "paid_human" || paymentStatus !== "paid") {
+      if (String(c.chat_mode) !== "paid_human") {
         await conn.rollback();
         return NextResponse.json(
           { ok: false, error: "Paid chat is not enabled for this conversation." },
@@ -82,16 +70,42 @@ export async function POST(req: Request) {
         );
       }
 
-      // Optional guard: if project is cancelled, don’t allow sending
-      if (projectStatus === "cancelled") {
+      if (!allowDevUnpaid && String(c.payment_status) !== "paid") {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "This project is cancelled." },
+          { ok: false, error: "Payment has not been confirmed for this project." },
           { status: 403 }
         );
       }
 
-      // 2) Insert user message
+      const handoffStatus = String(c.handoff_status || "").toLowerCase();
+      const projectCancelled = String(c.project_status) === "cancelled";
+      const isLocked =
+        projectCancelled || handoffStatus === "cancelled" || handoffStatus === "delivered";
+
+      if (isLocked) {
+        await conn.rollback();
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "PROJECT_LOCKED",
+            error:
+              handoffStatus === "delivered"
+                ? "This project is completed. Start a new project to continue."
+                : "This project is cancelled. Start a new project to continue.",
+            meta: {
+              conversation_id: Number(c.id),
+              handoff_id: c.handoff_id ? Number(c.handoff_id) : null,
+              project_status: String(c.project_status || ""),
+              handoff_status: handoffStatus || null,
+              cancel_reason: c.cancel_reason || null,
+            },
+          },
+          { status: 403 }
+        );
+      }
+
+      // Insert user message
       const [ins]: any = await conn.query(
         `
         INSERT INTO linescout_messages
@@ -104,13 +118,12 @@ export async function POST(req: Request) {
 
       const messageId = Number(ins?.insertId || 0);
 
-      // 3) Touch conversation updated_at (useful for lists)
+      // Touch conversation to bump it in lists / agent inbox
       await conn.query(
         `UPDATE linescout_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [conversationId]
       );
 
-      // 4) Return the inserted message row
       const [rows]: any = await conn.query(
         `
         SELECT
@@ -129,19 +142,13 @@ export async function POST(req: Request) {
 
       await conn.commit();
 
-      return NextResponse.json({
-        ok: true,
-        item: rows?.[0] || null,
-      });
+      return NextResponse.json({ ok: true, item: rows?.[0] || null });
     } catch (e: any) {
       try {
         await conn.rollback();
       } catch {}
       console.error("POST /api/mobile/paid-chat/send error:", e?.message || e);
-      return NextResponse.json(
-        { ok: false, error: "Failed to send message" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 500 });
     } finally {
       conn.release();
     }

@@ -1,4 +1,3 @@
-// app/api/mobile/paid-chat/messages/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -8,8 +7,6 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/mobile/paid-chat/messages?conversation_id=123&after_id=0&limit=60
- * Returns messages (user/agent/ai if present) for that conversation,
- * but only if it belongs to the signed-in user.
  */
 export async function GET(req: Request) {
   try {
@@ -29,21 +26,89 @@ export async function GET(req: Request) {
       );
     }
 
+    const allowDevUnpaid = process.env.ALLOW_DEV_UNPAID_PAID_CHAT === "1";
+
     const conn = await db.getConnection();
     try {
-      // Ensure the conversation belongs to this user
-      const [ownRows]: any = await conn.query(
-        `SELECT id FROM linescout_conversations WHERE id = ? AND user_id = ? LIMIT 1`,
+      // Load conversation + linked handoff (project)
+      const [crows]: any = await conn.query(
+        `
+        SELECT
+          c.id,
+          c.user_id,
+          c.chat_mode,
+          c.payment_status,
+          c.project_status,
+          c.handoff_id,
+
+          h.status AS handoff_status,
+          h.claimed_by,
+          h.claimed_at,
+          h.manufacturer_found_at,
+          h.paid_at,
+          h.shipped_at,
+          h.delivered_at,
+          h.cancelled_at,
+          h.cancel_reason
+        FROM linescout_conversations c
+        LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+        WHERE c.id = ?
+          AND c.user_id = ?
+        LIMIT 1
+        `,
         [conversationId, userId]
       );
 
-      if (!ownRows?.length) {
+      if (!crows?.length) {
+        return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+      }
+
+      const c = crows[0];
+
+      // Hard guards
+      if (String(c.chat_mode) !== "paid_human") {
         return NextResponse.json(
-          { ok: false, error: "Not found" },
-          { status: 404 }
+          { ok: false, error: "Paid chat is not enabled for this conversation." },
+          { status: 403 }
         );
       }
 
+      if (!allowDevUnpaid && String(c.payment_status) !== "paid") {
+        return NextResponse.json(
+          { ok: false, error: "Payment has not been confirmed for this project." },
+          { status: 403 }
+        );
+      }
+
+      // Lock rules: conversation cancelled OR handoff delivered/cancelled
+      const projectCancelled = String(c.project_status) === "cancelled";
+      const handoffStatus = String(c.handoff_status || "").toLowerCase();
+
+      const isLocked =
+        projectCancelled || handoffStatus === "cancelled" || handoffStatus === "delivered";
+
+      if (isLocked) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "PROJECT_LOCKED",
+            error:
+              handoffStatus === "delivered"
+                ? "This project is completed. Start a new project to continue."
+                : "This project is cancelled. Start a new project to continue.",
+            meta: {
+              conversation_id: Number(c.id),
+              handoff_id: c.handoff_id ? Number(c.handoff_id) : null,
+              project_status: String(c.project_status || ""),
+              handoff_status: handoffStatus || null,
+              cancel_reason: c.cancel_reason || null,
+            },
+          },
+          { status: 403 }
+        );
+      }
+
+      // Fetch messages
       const [rows]: any = await conn.query(
         `
         SELECT
@@ -62,14 +127,29 @@ export async function GET(req: Request) {
         [conversationId, afterId, limit]
       );
 
-      const lastId =
-        rows && rows.length ? Number(rows[rows.length - 1].id) : afterId;
+      const lastId = rows && rows.length ? Number(rows[rows.length - 1].id) : afterId;
 
       return NextResponse.json({
         ok: true,
-        conversation_id: conversationId,
+        conversation_id: Number(c.id),
         items: rows || [],
         last_id: lastId,
+
+        // Include project meta so UI can render status inside the chat later
+        meta: {
+          handoff_id: c.handoff_id ? Number(c.handoff_id) : null,
+          project_status: String(c.project_status || ""),
+          handoff_status: handoffStatus || null,
+
+          claimed_by: c.claimed_by || null,
+          claimed_at: c.claimed_at || null,
+          manufacturer_found_at: c.manufacturer_found_at || null,
+          paid_at: c.paid_at || null,
+          shipped_at: c.shipped_at || null,
+          delivered_at: c.delivered_at || null,
+          cancelled_at: c.cancelled_at || null,
+          cancel_reason: c.cancel_reason || null,
+        },
       });
     } finally {
       conn.release();

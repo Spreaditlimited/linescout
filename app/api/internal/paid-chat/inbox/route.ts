@@ -1,31 +1,29 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Same internal auth rule as your send endpoint:
- * Admin OR agent with can_view_leads=1
- */
 async function requireInternalAccess() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
-    return {
-      ok: false as const,
-      status: 500 as const,
-      error: "Missing INTERNAL_AUTH_COOKIE_NAME",
-    };
+    return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(cookieName)?.value;
+const h = await headers();
+const bearer = h.get("authorization") || "";
+const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
-  if (!token)
-    return { ok: false as const, status: 401 as const, error: "Not signed in" };
+const cookieStore = await cookies();
+const cookieToken = cookieStore.get(cookieName)?.value || "";
 
-  const conn = await db.getConnection();
+const token = headerToken || cookieToken;
+
+if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
+ 
+const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT
@@ -43,22 +41,13 @@ async function requireInternalAccess() {
       [token]
     );
 
-    if (!rows?.length) {
-      return {
-        ok: false as const,
-        status: 401 as const,
-        error: "Invalid session",
-      };
-    }
+    if (!rows?.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
 
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
     const canViewLeads = !!rows[0].can_view_leads;
 
-    if (role === "admin" || canViewLeads) {
-      return { ok: true as const, userId, role };
-    }
-
+    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
     conn.release();
@@ -77,7 +66,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const limitRaw = Number(url.searchParams.get("limit") || 50);
   const limit = Math.max(10, Math.min(200, limitRaw));
-  const cursor = Number(url.searchParams.get("cursor") || 0); // 0 = first page
+  const cursor = Number(url.searchParams.get("cursor") || 0);
 
   const conn = await db.getConnection();
   try {
@@ -89,13 +78,11 @@ export async function GET(req: Request) {
       AND c.project_status = 'active'
     `;
 
-    // Agent view: assigned to me OR unassigned
     if (auth.role !== "admin") {
       where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
       params.push(auth.userId);
     }
 
-    // Cursor pagination (older items)
     if (cursor > 0) {
       where += ` AND c.id < ?`;
       params.push(cursor);
@@ -104,14 +91,18 @@ export async function GET(req: Request) {
     const [rows]: any = await conn.query(
       `
       SELECT
-        c.id,
+        c.id AS conversation_id,
+        c.id AS id,
+
         c.user_id,
         c.route_type,
         c.chat_mode,
         c.payment_status,
         c.project_status,
+
         c.assigned_agent_id,
         ia.username AS assigned_agent_username,
+
         c.updated_at,
 
         h.id AS handoff_id,
@@ -122,13 +113,24 @@ export async function GET(req: Request) {
         lm.id AS last_message_id,
         lm.sender_type AS last_sender_type,
         lm.message_text AS last_message_text,
-        lm.created_at AS last_message_at
+        lm.created_at AS last_message_at,
+
+        COALESCE(r.last_seen_message_id, 0) AS last_seen_message_id,
+
+        CASE
+          WHEN COALESCE(lm.id, 0) > COALESCE(r.last_seen_message_id, 0)
+               AND lm.sender_type = 'user'
+            THEN 1
+          ELSE 0
+        END AS is_unread
 
       FROM linescout_conversations c
       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
-
-      -- ✅ join internal user for assignment display
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
+
+      LEFT JOIN linescout_conversation_reads r
+        ON r.conversation_id = c.id
+       AND r.internal_user_id = ?
 
       LEFT JOIN (
         SELECT m1.*
@@ -144,16 +146,12 @@ export async function GET(req: Request) {
       ORDER BY COALESCE(lm.id, 0) DESC, c.updated_at DESC
       LIMIT ?
       `,
-      [...params, limit]
+      [auth.userId, ...params, limit]
     );
 
-    const nextCursor = rows?.length ? Number(rows[rows.length - 1].id) : null;
+    const nextCursor = rows?.length ? Number(rows[rows.length - 1].conversation_id) : null;
 
-    return NextResponse.json({
-      ok: true,
-      items: rows || [],
-      next_cursor: nextCursor,
-    });
+    return NextResponse.json({ ok: true, items: rows || [], next_cursor: nextCursor });
   } finally {
     conn.release();
   }

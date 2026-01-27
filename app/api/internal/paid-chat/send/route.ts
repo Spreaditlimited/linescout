@@ -123,12 +123,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
     }
 
-    // 2) Optional guard: if assigned_agent_id exists, only that agent or admin can send
-    if (assignedAgentId && auth.role !== "admin") {
-      // internal_users.id is what we have as auth.userId
+    // 2) Guard: agents can send only if assigned to them (admin bypass)
+    if (auth.role !== "admin") {
+      if (!assignedAgentId) {
+        await conn.rollback();
+        return NextResponse.json(
+          { ok: false, error: "This chat is unassigned. Claim it first." },
+          { status: 403 }
+        );
+      }
+
       if (auth.userId !== assignedAgentId) {
         await conn.rollback();
-        return NextResponse.json({ ok: false, error: "You are not assigned to this conversation." }, { status: 403 });
+        return NextResponse.json(
+          { ok: false, error: "You are not assigned to this conversation." },
+          { status: 403 }
+        );
       }
     }
 
