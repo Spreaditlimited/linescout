@@ -463,7 +463,7 @@ export async function POST(req: Request) {
         ok: true,
         purpose,
         route_type: routeType,
-        token,
+        receipt_token: token,
         paystack_ref: reference,
         amount: amountNaira,
         currency,
