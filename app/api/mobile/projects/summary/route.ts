@@ -1,3 +1,4 @@
+// app/api/mobile/projects/summary/route.ts
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -8,7 +9,10 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/mobile/projects/summary?conversation_id=123
  * - Signed-in users only
- * - Returns a short, safe summary for user confidence (not full AI transcript)
+ * - Returns a short, safe summary STRING for user confidence (not full transcript)
+ *
+ * Response:
+ * { ok: true, conversation_id: number, stage: string, summary: string | null }
  */
 export async function GET(req: Request) {
   try {
@@ -26,7 +30,7 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
-      // 1) Confirm ownership and paid project
+      // 1) Confirm ownership + paid project
       const [rows]: any = await conn.query(
         `
         SELECT
@@ -51,7 +55,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
 
-      // We only show summaries for paid projects (keeps UX consistent and avoids leaking AI thread intent)
+      // Keep your rule: summary is only for paid projects
       if (c.chat_mode !== "paid_human" || c.payment_status !== "paid" || !c.handoff_id) {
         return NextResponse.json(
           { ok: false, error: "Summary is only available for paid projects." },
@@ -59,43 +63,54 @@ export async function GET(req: Request) {
         );
       }
 
-      // 2) Pull a lightweight snapshot from messages:
-      // last user message + last agent message + first user message
+      // 2) Pull a lightweight snapshot from messages (first user + last user + last agent)
       const [msgs]: any = await conn.query(
         `
         SELECT sender_type, message_text, created_at
         FROM linescout_messages
         WHERE conversation_id = ?
         ORDER BY id ASC
-        LIMIT 80
+        LIMIT 200
         `,
         [conversationId]
       );
 
       const items = Array.isArray(msgs) ? msgs : [];
 
-      const firstUser = items.find((m) => m.sender_type === "user")?.message_text || "";
-      const lastUser = [...items].reverse().find((m) => m.sender_type === "user")?.message_text || "";
-      const lastAgent = [...items].reverse().find((m) => m.sender_type === "agent")?.message_text || "";
+      const firstUser =
+        items.find((m) => m?.sender_type === "user")?.message_text || "";
 
-      // 3) Produce a safe, compact summary (no AI transcript dump)
+      const lastUser =
+        [...items].reverse().find((m) => m?.sender_type === "user")?.message_text || "";
+
+      const lastAgent =
+        [...items].reverse().find((m) => m?.sender_type === "agent")?.message_text || "";
+
       const clip = (t: string, max = 220) => {
         const s = String(t || "").trim().replace(/\s+/g, " ");
         if (!s) return "";
         return s.length > max ? s.slice(0, max).trim() + "…" : s;
       };
 
-      const summary = {
-        conversation_id: conversationId,
-        handoff_id: Number(c.handoff_id),
-        route_type: c.route_type,
-        stage: String(c.handoff_status || "").trim() || "pending",
-        customer_goal: clip(firstUser, 240) || null,
-        latest_customer_message: clip(lastUser, 240) || null,
-        latest_agent_update: clip(lastAgent, 240) || null,
-      };
+      const stage = String(c.handoff_status || "").trim() || "pending";
 
-      return NextResponse.json({ ok: true, summary });
+      const goal = clip(firstUser, 240);
+      const lastC = clip(lastUser, 240);
+      const lastA = clip(lastAgent, 240);
+
+      const parts: string[] = [];
+      if (goal) parts.push(`Customer goal: ${goal}`);
+      if (lastA) parts.push(`Latest agent update: ${lastA}`);
+      if (lastC && lastC !== goal) parts.push(`Latest customer note: ${lastC}`);
+
+      const summaryText = parts.join("\n\n") || null;
+
+      return NextResponse.json({
+        ok: true,
+        conversation_id: conversationId,
+        stage,
+        summary: summaryText,
+      });
     } finally {
       conn.release();
     }
