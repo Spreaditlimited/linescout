@@ -1,3 +1,4 @@
+// app/api/internal/paid-chat/messages/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
@@ -5,10 +6,6 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Same internal auth rule:
- * Admin OR agent with can_view_leads=1
- */
 async function requireInternalAccess() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -21,7 +18,6 @@ async function requireInternalAccess() {
 
   const cookieStore = await cookies();
   const token = cookieStore.get(cookieName)?.value;
-
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
@@ -42,17 +38,13 @@ async function requireInternalAccess() {
       [token]
     );
 
-    if (!rows?.length) {
-      return { ok: false as const, status: 401 as const, error: "Invalid session" };
-    }
+    if (!rows?.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
 
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
     const canViewLeads = !!rows[0].can_view_leads;
 
-    if (role === "admin" || canViewLeads) {
-      return { ok: true as const, userId, role };
-    }
+    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
 
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
@@ -60,22 +52,9 @@ async function requireInternalAccess() {
   }
 }
 
-/**
- * GET /api/internal/paid-chat/messages?conversation_id=123&after_id=0&limit=80
- *
- * Returns messages for a paid conversation.
- * Admin: can read any
- * Agent: can read only if assigned_agent_id = agent OR unassigned
- *
- * Also returns assignment info:
- * - assigned_agent_id
- * - assigned_agent_username
- */
 export async function GET(req: Request) {
   const auth = await requireInternalAccess();
-  if (!auth.ok) {
-    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  }
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const url = new URL(req.url);
   const conversationId = Number(url.searchParams.get("conversation_id") || 0);
@@ -89,7 +68,7 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
-    // 1) Ensure paid conversation + permission
+    // 1) Conversation + project stage (handoff)
     const [convRows]: any = await conn.query(
       `
       SELECT
@@ -98,9 +77,12 @@ export async function GET(req: Request) {
         c.payment_status,
         c.project_status,
         c.assigned_agent_id,
-        iu.username AS assigned_agent_username
+        iu.username AS assigned_agent_username,
+        c.handoff_id,
+        h.status AS handoff_status
       FROM linescout_conversations c
       LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
+      LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
       WHERE c.id = ?
       LIMIT 1
       `,
@@ -116,10 +98,15 @@ export async function GET(req: Request) {
     const paymentStatus = String(conv.payment_status || "");
     const projectStatus = String(conv.project_status || "");
     const assignedAgentId = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
+
     const assignedAgentUsername =
       typeof conv.assigned_agent_username === "string" && conv.assigned_agent_username.trim()
         ? String(conv.assigned_agent_username).trim()
         : null;
+
+    const handoffId = conv.handoff_id == null ? null : Number(conv.handoff_id);
+    const handoffStatusRaw = String(conv.handoff_status || "").trim();
+    const handoffStatus = handoffStatusRaw ? handoffStatusRaw : null;
 
     if (chatMode !== "paid_human" || paymentStatus !== "paid") {
       return NextResponse.json({ ok: false, error: "Paid chat is not enabled." }, { status: 403 });
@@ -129,9 +116,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
     }
 
-    // Agent restriction (admin bypass)
+    // 2) Agent restriction (admin bypass): allow assigned-to-me OR unassigned
     if (auth.role !== "admin") {
-      // allow assigned-to-me OR unassigned
       if (assignedAgentId && assignedAgentId !== auth.userId) {
         return NextResponse.json(
           { ok: false, error: "You are not assigned to this conversation." },
@@ -140,7 +126,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // 2) Fetch messages
+    // 3) Messages
     const [rows]: any = await conn.query(
       `SELECT
          id,
@@ -159,6 +145,42 @@ export async function GET(req: Request) {
 
     const lastId = rows?.length ? Number(rows[rows.length - 1].id) : afterId;
 
+    // 4) Attachments for returned messages only
+    const ids = (rows || [])
+      .map((r: any) => Number(r.id))
+      .filter((n: number) => Number.isFinite(n) && n > 0);
+
+    let attachments: any[] = [];
+    if (ids.length) {
+      const [attRows]: any = await conn.query(
+        `
+        SELECT
+          id,
+          conversation_id,
+          message_id,
+          sender_type,
+          sender_id,
+          kind,
+          original_filename,
+          mime_type,
+          bytes,
+          cloudinary_public_id,
+          cloudinary_resource_type,
+          cloudinary_format,
+          secure_url,
+          width,
+          height,
+          created_at
+        FROM linescout_message_attachments
+        WHERE conversation_id = ?
+          AND message_id IN (?)
+        ORDER BY id ASC
+        `,
+        [conversationId, ids]
+      );
+      attachments = attRows || [];
+    }
+
     return NextResponse.json({
       ok: true,
       conversation_id: conversationId,
@@ -166,7 +188,16 @@ export async function GET(req: Request) {
       assigned_agent_username: assignedAgentUsername,
       items: rows || [],
       last_id: lastId,
+      attachments,
+      meta: {
+        project_status: projectStatus || null,
+        handoff_id: handoffId,
+        handoff_status: handoffStatus,
+      },
     });
+  } catch (e: any) {
+    console.error("GET /api/internal/paid-chat/messages error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to load messages" }, { status: 500 });
   } finally {
     conn.release();
   }

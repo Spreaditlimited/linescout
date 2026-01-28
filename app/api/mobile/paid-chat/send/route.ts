@@ -5,9 +5,44 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type IncomingUploadFile = {
+  url: string; // from your upload route
+  public_id: string;
+  mime?: string | null;
+  bytes?: number | null;
+  original_name?: string | null;
+};
+
+type IncomingAttachment = {
+  // accept both url and secure_url for safety
+  url?: string | null;
+  secure_url?: string | null;
+
+  public_id: string;
+
+  mime?: string | null;
+  bytes?: number | null;
+
+  original_name?: string | null;
+  original_filename?: string | null;
+
+  // optional extras if you later include them
+  resource_type?: "image" | "raw" | "video" | string;
+  format?: string | null;
+  width?: number | null;
+  height?: number | null;
+  kind?: "image" | "pdf" | "file" | string;
+};
+
 /**
  * POST /api/mobile/paid-chat/send
- * body: { conversation_id: number, message_text: string }
+ * body:
+ * {
+ *   conversation_id: number,
+ *   message_text?: string,
+ *   attachment?: IncomingAttachment,
+ *   file?: IncomingUploadFile // exact upload response
+ * }
  */
 export async function POST(req: Request) {
   try {
@@ -18,14 +53,66 @@ export async function POST(req: Request) {
     const conversationId = Number(body?.conversation_id || 0);
     const messageText = String(body?.message_text || "").trim();
 
+    const attachmentRaw: IncomingAttachment | null =
+      body?.attachment && typeof body.attachment === "object" ? body.attachment : null;
+
+    const fileRaw: IncomingUploadFile | null =
+      body?.file && typeof body.file === "object" ? body.file : null;
+
+    // Normalize attachment from either "attachment" or "file"
+    const publicId = String(
+      (attachmentRaw?.public_id ?? fileRaw?.public_id ?? "") || ""
+    ).trim();
+
+    const url =
+      String(attachmentRaw?.secure_url || attachmentRaw?.url || fileRaw?.url || "").trim() || "";
+
+    const mime = String(attachmentRaw?.mime ?? fileRaw?.mime ?? "").trim() || null;
+    const bytesNum = Number(attachmentRaw?.bytes ?? fileRaw?.bytes ?? 0) || null;
+
+    const originalName =
+      String(
+        attachmentRaw?.original_filename ||
+          attachmentRaw?.original_name ||
+          fileRaw?.original_name ||
+          ""
+      ).trim() || null;
+
+    const hasAttachment = Boolean(publicId && url);
+    const hasText = messageText.length > 0;
+
     if (!conversationId) {
-      return NextResponse.json({ ok: false, error: "conversation_id is required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "conversation_id is required" },
+        { status: 400 }
+      );
     }
-    if (!messageText) {
-      return NextResponse.json({ ok: false, error: "message_text is required" }, { status: 400 });
+
+    // Must have either text OR attachment OR both
+    if (!hasText && !hasAttachment) {
+      return NextResponse.json(
+        { ok: false, error: "message_text or attachment is required" },
+        { status: 400 }
+      );
     }
+
     if (messageText.length > 8000) {
-      return NextResponse.json({ ok: false, error: "message_text too long" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "message_text too long" },
+        { status: 400 }
+      );
+    }
+
+    // Optional: keep limits consistent with upload route (defensive)
+    if (hasAttachment && bytesNum) {
+      const m = String(mime || "").toLowerCase();
+      const max = m === "application/pdf" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+      if (bytesNum > max) {
+        return NextResponse.json(
+          { ok: false, error: `File too large. Max ${Math.floor(max / (1024 * 1024))}MB` },
+          { status: 400 }
+        );
+      }
     }
 
     const allowDevUnpaid = process.env.ALLOW_DEV_UNPAID_PAID_CHAT === "1";
@@ -105,7 +192,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Insert user message
+      // Insert message (allow blank if attachment exists)
       const [ins]: any = await conn.query(
         `
         INSERT INTO linescout_messages
@@ -113,12 +200,62 @@ export async function POST(req: Request) {
         VALUES
           (?, 'user', ?, ?)
         `,
-        [conversationId, userId, messageText]
+        [conversationId, userId, hasText ? messageText : ""]
       );
 
       const messageId = Number(ins?.insertId || 0);
 
-      // Touch conversation to bump it in lists / agent inbox
+      // Insert attachment row if present
+      if (hasAttachment) {
+        const m = String(mime || "").toLowerCase();
+        const isImage = m === "image/jpeg" || m === "image/jpg" || m === "image/png";
+        const isPdf = m === "application/pdf";
+
+        const kind = isImage ? "image" : isPdf ? "pdf" : "file";
+        const resourceType = isImage ? "image" : "raw";
+        const format = isPdf ? "pdf" : null;
+
+        await conn.query(
+          `
+          INSERT INTO linescout_message_attachments
+            (
+              conversation_id,
+              message_id,
+              sender_type,
+              sender_id,
+              kind,
+              original_filename,
+              mime_type,
+              bytes,
+              cloudinary_public_id,
+              cloudinary_resource_type,
+              cloudinary_format,
+              secure_url,
+              width,
+              height
+            )
+          VALUES
+            (?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            conversationId,
+            messageId,
+            userId,
+            kind,
+            originalName ? String(originalName).slice(0, 255) : null,
+            mime ? String(mime).slice(0, 120) : null,
+            bytesNum ? Number(bytesNum) : null,
+            publicId.slice(0, 200),
+            resourceType,
+            format,
+            url,
+            null,
+            null,
+          ]
+        );
+      }
+
+      // Touch conversation
       await conn.query(
         `UPDATE linescout_conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [conversationId]
@@ -140,15 +277,44 @@ export async function POST(req: Request) {
         [messageId]
       );
 
+      const [attRows]: any = await conn.query(
+        `
+        SELECT
+          id,
+          kind,
+          original_filename,
+          mime_type,
+          bytes,
+          cloudinary_public_id,
+          cloudinary_resource_type,
+          cloudinary_format,
+          secure_url,
+          width,
+          height,
+          created_at
+        FROM linescout_message_attachments
+        WHERE message_id = ?
+        ORDER BY id ASC
+        `,
+        [messageId]
+      );
+
       await conn.commit();
 
-      return NextResponse.json({ ok: true, item: rows?.[0] || null });
+      return NextResponse.json({
+        ok: true,
+        item: rows?.[0] || null,
+        attachments: attRows || [],
+      });
     } catch (e: any) {
       try {
         await conn.rollback();
       } catch {}
       console.error("POST /api/mobile/paid-chat/send error:", e?.message || e);
-      return NextResponse.json({ ok: false, error: "Failed to send message" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "Failed to send message" },
+        { status: 500 }
+      );
     } finally {
       conn.release();
     }

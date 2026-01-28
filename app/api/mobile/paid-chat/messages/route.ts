@@ -127,15 +127,63 @@ export async function GET(req: Request) {
         [conversationId, afterId, limit]
       );
 
-      const lastId = rows && rows.length ? Number(rows[rows.length - 1].id) : afterId;
+      const items = Array.isArray(rows) ? rows : [];
+      const lastId = items.length ? Number(items[items.length - 1].id) : afterId;
+
+      // Fetch attachments for these messages (if any)
+      let attachments: any[] = [];
+      const messageIds = items.map((m: any) => Number(m.id)).filter((n: number) => Number.isFinite(n) && n > 0);
+
+      if (messageIds.length) {
+        const [attRows]: any = await conn.query(
+          `
+          SELECT
+            id,
+            conversation_id,
+            message_id,
+            sender_type,
+            sender_id,
+            kind,
+            original_filename,
+            mime_type,
+            bytes,
+            cloudinary_public_id,
+            cloudinary_resource_type,
+            cloudinary_format,
+            secure_url,
+            width,
+            height,
+            created_at
+          FROM linescout_message_attachments
+          WHERE conversation_id = ?
+            AND message_id IN (?)
+          ORDER BY id ASC
+          `,
+          [conversationId, messageIds]
+        );
+
+        attachments = Array.isArray(attRows) ? attRows : [];
+      }
+
+      // Group attachments by message_id for easy UI rendering
+      const attachmentsByMessageId: Record<string, any[]> = {};
+      for (const a of attachments) {
+        const mid = String(a.message_id);
+        if (!attachmentsByMessageId[mid]) attachmentsByMessageId[mid] = [];
+        attachmentsByMessageId[mid].push(a);
+      }
 
       return NextResponse.json({
         ok: true,
         conversation_id: Number(c.id),
-        items: rows || [],
+        items,
         last_id: lastId,
 
-        // Include project meta so UI can render status inside the chat later
+        // NEW: attachments
+        attachments, // optional flat list
+        attachments_by_message_id: attachmentsByMessageId, // easiest for UI
+
+        // Include project meta so UI can render status
         meta: {
           handoff_id: c.handoff_id ? Number(c.handoff_id) : null,
           project_status: String(c.project_status || ""),

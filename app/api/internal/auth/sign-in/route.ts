@@ -1,72 +1,89 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import mysql from "mysql2/promise";
+import crypto from "crypto";
+import { db } from "@/lib/db";
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function clean(s: any) {
+  return String(s || "").trim();
+}
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  const username = body?.email?.trim(); // frontend sends `email`
-  const password = body?.password;
+  const body = await req.json().catch(() => ({}));
 
-  if (!username || !password) {
-    return NextResponse.json({ message: "Missing credentials" }, { status: 400 });
+  const login = clean(body?.login || body?.email || body?.username);
+  const password = clean(body?.password);
+
+  if (!login || !password) {
+    return NextResponse.json({ ok: false, error: "Missing credentials" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
+  const cookieName = clean(process.env.INTERNAL_AUTH_COOKIE_NAME);
+  if (!cookieName) {
+    return NextResponse.json({ ok: false, error: "Missing INTERNAL_AUTH_COOKIE_NAME" }, { status: 500 });
+  }
+
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
-      `SELECT id, username, password_hash, role, is_active
-       FROM internal_users
-       WHERE username = ?
-       LIMIT 1`,
-      [username]
+      `
+      SELECT id, username, email, password_hash, role, is_active
+      FROM internal_users
+      WHERE username = ? OR email = ?
+      LIMIT 1
+      `,
+      [login, login]
     );
 
-    if (!rows.length) {
-      return NextResponse.json({ message: "Invalid credentials" }, { status: 401 });
+    if (!rows?.length) {
+      return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
     }
 
     const user = rows[0];
 
     if (!user.is_active) {
-      return NextResponse.json({ message: "Account disabled" }, { status: 403 });
+      return NextResponse.json({ ok: false, error: "Account disabled" }, { status: 403 });
     }
 
-    const ok = await bcrypt.compare(password, user.password_hash);
+    const ok = await bcrypt.compare(password, String(user.password_hash || ""));
     if (!ok) {
-      return NextResponse.json({ message: "Invalid credentials" }, { status: 401 });
+      return NextResponse.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
     }
 
-    // 64-hex token (cookie will store this)
-    const sessionToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32)))
-      .toString("hex");
+    const sessionToken = crypto.randomBytes(32).toString("hex");
 
-    // Create session record (no expiry for now)
     await conn.query(
-      `INSERT INTO internal_sessions (user_id, session_token)
-       VALUES (?, ?)`,
-      [user.id, sessionToken]
+      `INSERT INTO internal_sessions (user_id, session_token) VALUES (?, ?)`,
+      [Number(user.id), sessionToken]
     );
 
-    const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-    const res = NextResponse.json({ ok: true });
+    const res = NextResponse.json({
+      ok: true,
+      session_token: sessionToken, // ✅ mobile will store this
+      user: {
+        id: Number(user.id),
+        role: String(user.role || "agent"),
+        username: String(user.username || ""),
+        email: user.email ? String(user.email) : null,
+      },
+    });
 
+    // ✅ web admin still works (cookie)
     res.cookies.set({
-  name: cookieName,
-  value: sessionToken,
-  httpOnly: true,
-  path: "/",
-  sameSite: "lax",
-  secure: process.env.NODE_ENV === "production", // IMPORTANT
-});
+      name: cookieName,
+      value: sessionToken,
+      httpOnly: true,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
 
     return res;
+  } catch (e: any) {
+    console.error("POST /api/internal/auth/sign-in error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to sign in" }, { status: 500 });
   } finally {
     conn.release();
   }
