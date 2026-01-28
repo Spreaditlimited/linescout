@@ -1,3 +1,4 @@
+// app/api/mobile/conversations/list/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -11,11 +12,22 @@ function isValidRouteType(v: any): v is RouteType {
   return v === "machine_sourcing" || v === "white_label";
 }
 
+function defaultTitle(chat_mode: string, route_type: RouteType) {
+  // Your rule:
+  // - Paid conversations: "Machine Sourcing" / "White Label"
+  // - AI conversations: "AI Conversation"
+  if (chat_mode === "paid_human") {
+    return route_type === "white_label" ? "White Label" : "Machine Sourcing";
+  }
+  return "AI Conversation";
+}
+
 /**
  * GET /api/mobile/conversations/list?route_type=machine_sourcing
  *
  * Returns the user's conversation threads (ChatGPT-style).
  * Includes AI + Limited + Paid conversations for the given route_type.
+ * Adds `title` (uses DB title if set, otherwise defaultTitle()).
  */
 export async function GET(req: Request) {
   try {
@@ -40,6 +52,7 @@ export async function GET(req: Request) {
         SELECT
           c.id,
           c.route_type,
+          c.title,
           c.chat_mode,
           c.payment_status,
           c.project_status,
@@ -70,7 +83,18 @@ export async function GET(req: Request) {
         [userId, routeType]
       );
 
-      return NextResponse.json({ ok: true, items: rows || [] });
+      const items = (rows || []).map((r: any) => {
+        const rt = (r.route_type || routeType) as RouteType;
+        const chatMode = String(r.chat_mode || "");
+        const rawTitle = String(r.title || "").trim();
+
+        return {
+          ...r,
+          title: rawTitle || defaultTitle(chatMode, rt),
+        };
+      });
+
+      return NextResponse.json({ ok: true, items });
     } finally {
       conn.release();
     }
