@@ -1,97 +1,159 @@
+// app/api/mobile/paid-chat/upload/route.ts
 import { NextResponse } from "next/server";
-import { v2 as cloudinary } from "cloudinary";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { v2 as cloudinary } from "cloudinary";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Cloudinary config (server only)
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME!,
-  api_key: process.env.CLOUDINARY_API_KEY!,
-  api_secret: process.env.CLOUDINARY_API_SECRET!,
-});
+function safeName(s: string) {
+  return String(s || "")
+    .trim()
+    .replace(/[^\w.\-]+/g, "_")
+    .slice(0, 80);
+}
 
-const MAX_FILE_MB = 5;
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+function isAllowedMime(m: string) {
+  const t = String(m || "").toLowerCase().trim();
+  return (
+    t === "image/jpeg" ||
+    t === "image/jpg" ||
+    t === "image/png" ||
+    t === "application/pdf"
+  );
+}
+
+function maxBytesForMime(m: string) {
+  const t = String(m || "").toLowerCase().trim();
+  if (t === "application/pdf") return 5 * 1024 * 1024; // 5MB
+  return 3 * 1024 * 1024; // 3MB images
+}
+
+function requireEnv(name: string) {
+  const v = String(process.env[name] || "").trim();
+  if (!v) throw new Error(`Missing ${name}`);
+  return v;
+}
+
+// Configure once per runtime
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+});
 
 export async function POST(req: Request) {
   try {
+    // Ensure env exists (fails loudly)
+    requireEnv("CLOUDINARY_CLOUD_NAME");
+    requireEnv("CLOUDINARY_API_KEY");
+    requireEnv("CLOUDINARY_API_SECRET");
+
     const user = await requireUser(req);
 
     const form = await req.formData();
-    const file = form.get("file") as File | null;
-    const conversationId = Number(form.get("conversation_id") || 0);
 
-    if (!file || !conversationId) {
+    const conversationId = Number(String(form.get("conversation_id") || "").trim() || 0);
+    const file = form.get("file");
+
+    if (!conversationId) {
+      return NextResponse.json({ ok: false, error: "conversation_id is required" }, { status: 400 });
+    }
+
+    if (!file || !(file instanceof File)) {
+      return NextResponse.json({ ok: false, error: "file is required" }, { status: 400 });
+    }
+
+    const mime = String(file.type || "").toLowerCase().trim();
+    if (!isAllowedMime(mime)) {
       return NextResponse.json(
-        { ok: false, error: "file and conversation_id are required" },
+        { ok: false, error: "Only JPG, PNG, and PDF are allowed" },
         { status: 400 }
       );
     }
 
-    if (!ALLOWED_TYPES.includes(file.type)) {
+    const maxBytes = maxBytesForMime(mime);
+    if (file.size > maxBytes) {
       return NextResponse.json(
-        { ok: false, error: "Unsupported file type" },
+        { ok: false, error: `File too large. Max ${Math.floor(maxBytes / (1024 * 1024))}MB` },
         { status: 400 }
       );
     }
 
-    if (file.size > MAX_FILE_MB * 1024 * 1024) {
-      return NextResponse.json(
-        { ok: false, error: "File too large (max 5MB)" },
-        { status: 400 }
+    // Security: confirm user owns this paid conversation
+    const conn = await db.getConnection();
+    try {
+      const [rows]: any = await conn.query(
+        `
+        SELECT id
+        FROM linescout_conversations
+        WHERE id = ?
+          AND user_id = ?
+          AND chat_mode = 'paid_human'
+          AND payment_status = 'paid'
+        LIMIT 1
+        `,
+        [conversationId, user.id]
       );
+
+      if (!rows?.length) {
+        return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+      }
+    } finally {
+      conn.release();
     }
 
-    // Confirm paid conversation ownership
-    const [rows]: any = await db.query(
-      `
-      SELECT id
-      FROM linescout_conversations
-      WHERE id = ?
-        AND user_id = ?
-        AND chat_mode = 'paid_human'
-        AND payment_status = 'paid'
-      LIMIT 1
-      `,
-      [conversationId, user.id]
-    );
+    const ab = await file.arrayBuffer();
+    const buf = Buffer.from(ab);
 
-    if (!rows?.length) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid or unpaid conversation" },
-        { status: 403 }
-      );
-    }
+    const originalName = safeName(file.name || "upload");
+    const isPdf = mime === "application/pdf";
 
-    // Convert file → buffer
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const folder = `linescout/paid/${conversationId}`;
 
-    // Upload
-    const result = await new Promise<any>((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
+    const uploadResult: any = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
         {
+          folder,
           resource_type: "auto",
-          folder: `linescout/paid/${conversationId}`,
+          public_id: `${Date.now()}_${originalName}`.replace(/\.[a-z0-9]+$/i, ""),
+          overwrite: false,
+          use_filename: true,
+          unique_filename: true,
+          format: isPdf ? "pdf" : undefined,
         },
         (err, res) => {
-          if (err) reject(err);
-          else resolve(res);
+          if (err) return reject(err);
+          resolve(res);
         }
-      ).end(buffer);
+      );
+
+      stream.end(buf);
     });
+
+    const secureUrl = String(uploadResult?.secure_url || "").trim();
+    const publicId = String(uploadResult?.public_id || "").trim();
+
+    if (!secureUrl || !publicId) {
+      return NextResponse.json({ ok: false, error: "Upload failed" }, { status: 500 });
+    }
 
     return NextResponse.json({
       ok: true,
-      url: result.secure_url,
-      public_id: result.public_id,
-      resource_type: result.resource_type,
+      file: {
+        url: secureUrl,
+        public_id: publicId,
+        mime,
+        bytes: Number(uploadResult?.bytes || file.size || 0),
+        original_name: originalName,
+      },
     });
   } catch (e: any) {
+    console.error("POST /api/mobile/paid-chat/upload error:", e);
     return NextResponse.json(
-      { ok: false, error: e?.message || "Upload failed" },
+      { ok: false, error: e?.message || "Server error" },
       { status: 500 }
     );
   }
