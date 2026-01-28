@@ -71,7 +71,11 @@ export async function POST(req: Request) {
     } finally {
       conn.release();
     }
-  } catch {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
+  } catch (e: any) {
+  console.error("POST /api/mobile/conversations/delete error:", e);
+  return NextResponse.json(
+    { ok: false, error: e?.message || "Server error" },
+    { status: 500 }
+  );
+}
 }
