@@ -11,7 +11,9 @@ const pool = mysql.createPool({
 
 export async function GET() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-  const hdrs = headers(); // ❗ do NOT await
+
+  // ✅ headers() IS async in your Next version
+  const hdrs = await headers();
   const cookieHeader = hdrs.get("cookie") || "";
 
   const token =
@@ -21,7 +23,7 @@ export async function GET() {
       .find((c) => c.startsWith(`${cookieName}=`))
       ?.slice(cookieName.length + 1) || null;
 
-  // 🔴 LOG 1: raw cookie + extracted token
+  // 🔴 LOG 1
   console.log("AUTH_ME cookie header:", cookieHeader);
   console.log("AUTH_ME extracted token:", token);
 
@@ -34,7 +36,7 @@ export async function GET() {
 
   const conn = await pool.getConnection();
   try {
-    // 🔴 LOG 2: recent sessions
+    // 🔴 LOG 2
     const [sessions]: any = await conn.query(
       `SELECT session_token, revoked_at
        FROM internal_sessions
