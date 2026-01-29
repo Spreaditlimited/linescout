@@ -11,22 +11,39 @@ const pool = mysql.createPool({
 
 export async function GET() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-  const hdrs = await headers();
-const cookieHeader = hdrs.get("cookie") || "";
+  const hdrs = headers(); // ❗ do NOT await
+  const cookieHeader = hdrs.get("cookie") || "";
 
-const token =
-  cookieHeader
-    .split(";")
-    .map(c => c.trim())
-    .find(c => c.startsWith(`${cookieName}=`))
-    ?.split("=")[1] || null;
+  const token =
+    cookieHeader
+      .split(";")
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || null;
+
+  // 🔴 LOG 1: raw cookie + extracted token
+  console.log("AUTH_ME cookie header:", cookieHeader);
+  console.log("AUTH_ME extracted token:", token);
 
   if (!token) {
-    return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "Not signed in" },
+      { status: 401 }
+    );
   }
 
   const conn = await pool.getConnection();
   try {
+    // 🔴 LOG 2: recent sessions
+    const [sessions]: any = await conn.query(
+      `SELECT session_token, revoked_at
+       FROM internal_sessions
+       ORDER BY created_at DESC
+       LIMIT 5`
+    );
+
+    console.log("AUTH_ME recent sessions:", sessions);
+
     const [rows]: any = await conn.query(
       `SELECT
          u.id,
@@ -44,7 +61,11 @@ const token =
     );
 
     if (!rows.length) {
-      return NextResponse.json({ ok: false, error: "Invalid session" }, { status: 401 });
+      console.log("AUTH_ME lookup failed for token:", token);
+      return NextResponse.json(
+        { ok: false, error: "Invalid session" },
+        { status: 401 }
+      );
     }
 
     const r = rows[0];
