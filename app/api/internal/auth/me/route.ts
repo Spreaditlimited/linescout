@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import mysql from "mysql2/promise";
 
 const pool = mysql.createPool({
@@ -11,8 +11,15 @@ const pool = mysql.createPool({
 
 export async function GET() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-  const cookieStore = await cookies();
-  const token = cookieStore.get(cookieName)?.value;
+  const hdrs = await headers();
+const cookieHeader = hdrs.get("cookie") || "";
+
+const token =
+  cookieHeader
+    .split(";")
+    .map(c => c.trim())
+    .find(c => c.startsWith(`${cookieName}=`))
+    ?.split("=")[1] || null;
 
   if (!token) {
     return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
