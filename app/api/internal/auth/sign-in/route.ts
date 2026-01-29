@@ -62,6 +62,7 @@ export async function POST(req: Request) {
     const res = NextResponse.json({
       ok: true,
       session_token: sessionToken, // ✅ mobile will store this
+      cookie_name: cookieName,
       user: {
         id: Number(user.id),
         role: String(user.role || "agent"),
