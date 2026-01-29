@@ -10,7 +10,7 @@ function clean(v: any) {
 }
 
 function normPhone(v: any) {
-  // Expecting China phone in E.164 ideally: +86XXXXXXXXXXX
+  // Expecting China phone in E.164 ideally: +44XXXXXXXXXXX
   const s = clean(v);
   return s.replace(/\s+/g, "");
 }
@@ -27,9 +27,9 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ ok: false, error: "user_id is required" }, { status: 400 });
   if (!phone) return NextResponse.json({ ok: false, error: "phone is required" }, { status: 400 });
 
-  // Minimal sanity: must start with +86 (you can relax later)
-  if (!phone.startsWith("+86") || phone.length < 10) {
-    return NextResponse.json({ ok: false, error: "China phone must be in +86 format" }, { status: 400 });
+  // Minimal sanity: must start with +44 (you can relax later)
+  if (!phone.startsWith("+44") || phone.length < 10) {
+    return NextResponse.json({ ok: false, error: "China phone must be in +44 format" }, { status: 400 });
   }
 
   const conn = await db.getConnection();
