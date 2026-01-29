@@ -49,6 +49,30 @@ export async function POST(req: Request) {
     const salt = crypto.randomBytes(16).toString("hex");
     const otpHash = hashOtp(otp, salt);
 
+    await conn.beginTransaction();
+
+    // Ensure agent profile exists in canonical table
+    const [pRows]: any = await conn.query(
+      `SELECT id FROM linescout_agent_profiles WHERE internal_user_id = ? LIMIT 1`,
+      [userId]
+    );
+
+    if (!pRows?.length) {
+      await conn.rollback();
+      return NextResponse.json({ ok: false, error: "Agent profile not found" }, { status: 400 });
+    }
+
+    // ✅ Important: phone edit or fresh OTP request makes phone "pending" until verify-otp succeeds
+    await conn.query(
+      `
+      UPDATE linescout_agent_profiles
+      SET china_phone = ?, china_phone_verified_at = NULL, updated_at = NOW()
+      WHERE internal_user_id = ?
+      LIMIT 1
+      `,
+      [phone, userId]
+    );
+
     // expires in 10 mins
     await conn.query(
       `
@@ -58,17 +82,22 @@ export async function POST(req: Request) {
       [userId, phone, `${salt}:${otpHash}`]
     );
 
+    await conn.commit();
+
     // Dev convenience: only reveal OTP when explicitly enabled
-      const revealOtp =
-        process.env.NODE_ENV !== "production" ||
-        String(process.env.REVEAL_AGENT_PHONE_OTP || "") === "1";
+    const revealOtp =
+      process.env.NODE_ENV !== "production" ||
+      String(process.env.REVEAL_AGENT_PHONE_OTP || "") === "1";
 
-      return NextResponse.json({
-        ok: true,
-        dev_otp: revealOtp ? otp : undefined,
-      });
-
+    return NextResponse.json({
+      ok: true,
+      dev_otp: revealOtp ? otp : undefined,
+    });
   } catch (e: any) {
+    try {
+      await conn.rollback();
+    } catch {}
+
     console.error("POST /api/internal/agent/phone/request-otp error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to request OTP" }, { status: 500 });
   } finally {
