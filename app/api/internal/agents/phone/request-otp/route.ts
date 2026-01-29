@@ -58,13 +58,16 @@ export async function POST(req: Request) {
       [userId, phone, `${salt}:${otpHash}`]
     );
 
-    // TODO (production): send OTP via SMS provider here.
-    // For now: in prod we do not reveal otp.
-    const isProd = process.env.NODE_ENV === "production";
+    // Dev convenience: only reveal OTP when explicitly enabled
+      const revealOtp =
+        process.env.NODE_ENV !== "production" ||
+        String(process.env.REVEAL_AGENT_PHONE_OTP || "") === "1";
 
-    return NextResponse.json(
-  isProd ? { ok: true } : { ok: true, dev_otp: otp }
-);
+      return NextResponse.json({
+        ok: true,
+        dev_otp: revealOtp ? otp : undefined,
+      });
+
   } catch (e: any) {
     console.error("POST /api/internal/agent/phone/request-otp error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to request OTP" }, { status: 500 });
