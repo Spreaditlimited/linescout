@@ -16,12 +16,12 @@ export async function GET() {
   const hdrs = await headers();
   const cookieHeader = hdrs.get("cookie") || "";
 
-  const token =
-    cookieHeader
-      .split(";")
-      .map((c) => c.trim())
-      .find((c) => c.startsWith(`${cookieName}=`))
-      ?.slice(cookieName.length + 1) || null;
+ const token =
+  cookieHeader
+    .split(/[;,]/) // ✅ split on BOTH ';' and ',' because your cookie header has commas
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${cookieName}=`))
+    ?.slice(cookieName.length + 1) || null;
 
   // 🔴 LOG 1
   console.log("AUTH_ME cookie header:", cookieHeader);
