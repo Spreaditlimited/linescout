@@ -62,10 +62,9 @@ export async function POST(req: Request) {
     // For now: in prod we do not reveal otp.
     const isProd = process.env.NODE_ENV === "production";
 
-    return NextResponse.json({
-      ok: true,
-      dev_otp: isProd ? undefined : otp,
-    });
+    return NextResponse.json(
+  isProd ? { ok: true } : { ok: true, dev_otp: otp }
+);
   } catch (e: any) {
     console.error("POST /api/internal/agent/phone/request-otp error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to request OTP" }, { status: 500 });
