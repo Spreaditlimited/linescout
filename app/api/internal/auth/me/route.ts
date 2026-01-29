@@ -1,3 +1,4 @@
+// app/api/internal/auth/me/route.ts
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import mysql from "mysql2/promise";
@@ -11,19 +12,16 @@ const pool = mysql.createPool({
 
 export async function GET() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-
-  // ✅ headers() IS async in your Next version
   const hdrs = await headers();
   const cookieHeader = hdrs.get("cookie") || "";
 
   const token =
     cookieHeader
-      .split(/[;,]/) // ✅ split on BOTH ';' and ',' because your cookie header has commas
+      .split(/[;,]/) // split on BOTH ';' and ','
       .map((c) => c.trim())
       .find((c) => c.startsWith(`${cookieName}=`))
       ?.slice(cookieName.length + 1) || null;
 
-  // 🔴 LOG 1
   console.log("AUTH_ME cookie header:", cookieHeader);
   console.log("AUTH_ME extracted token:", token);
 
@@ -50,7 +48,7 @@ export async function GET() {
       [token]
     );
 
-    if (!rows.length) {
+    if (!rows?.length) {
       console.log("AUTH_ME lookup failed for token:", token);
       return NextResponse.json({ ok: false, error: "Invalid session" }, { status: 401 });
     }
@@ -61,9 +59,15 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: "Account disabled" }, { status: 403 });
     }
 
-    // ✅ Phone verification: latest OTP record decides current phone + verified state
-    const [otpRows]: any = await conn.query(
-      `SELECT phone, used_at
+    // Durable phone verification logic:
+    // - Admins bypass OTP entirely (always treated as verified for routing purposes)
+    // - Agents are "verified" if ANY OTP has been successfully used (used_at IS NOT NULL)
+    let phone = "";
+    let phone_verified = r.role === "admin" ? true : false;
+
+    // Pull latest phone (if any) so UI can display it.
+    const [latestOtpRows]: any = await conn.query(
+      `SELECT phone
        FROM internal_agent_phone_otps
        WHERE user_id = ?
        ORDER BY created_at DESC
@@ -71,8 +75,22 @@ export async function GET() {
       [r.id]
     );
 
-    const phone = otpRows?.length ? String(otpRows[0].phone || "") : "";
-    const phone_verified = otpRows?.length ? !!otpRows[0].used_at : false;
+    if (latestOtpRows?.length) {
+      phone = String(latestOtpRows[0].phone || "");
+    }
+
+    // For agents, verification is durable: existence of any used OTP record
+    if (r.role === "agent") {
+      const [usedOtpRows]: any = await conn.query(
+        `SELECT id
+         FROM internal_agent_phone_otps
+         WHERE user_id = ?
+           AND used_at IS NOT NULL
+         LIMIT 1`,
+        [r.id]
+      );
+      phone_verified = !!usedOtpRows?.length;
+    }
 
     return NextResponse.json({
       ok: true,
