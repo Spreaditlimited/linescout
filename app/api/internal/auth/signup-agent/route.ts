@@ -50,7 +50,10 @@ export async function POST(req: Request) {
   }
 
   if (password.length < 8) {
-    return NextResponse.json({ ok: false, error: "Password must be at least 8 characters" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "Password must be at least 8 characters" },
+      { status: 400 }
+    );
   }
 
   // Optional secret gate (enterprise safety)
@@ -73,8 +76,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Username already exists" }, { status: 409 });
     }
 
+    // ✅ Check email uniqueness in the new canonical profile table
     const [eRows]: any = await conn.query(
-      `SELECT id FROM internal_agent_profiles WHERE email = ? LIMIT 1`,
+      `SELECT id FROM linescout_agent_profiles WHERE email = ? LIMIT 1`,
       [email]
     );
     if (eRows?.length) {
@@ -99,15 +103,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Failed to create user" }, { status: 500 });
     }
 
-    // Create agent profile (your chosen design: separate table)
+    // ✅ Create agent profile in linescout_agent_profiles
+    // NOTE: table has NOT NULL fields, so we set safe placeholders.
+    // These will be completed in Profile later.
     await conn.query(
       `
-      INSERT INTO internal_agent_profiles
-        (user_id, first_name, last_name, email, onboarding_status)
+      INSERT INTO linescout_agent_profiles
+        (internal_user_id, first_name, last_name, email, china_phone, china_city, nationality, payout_status)
       VALUES
-        (?, ?, ?, ?, 'signup')
+        (?, ?, ?, ?, ?, ?, ?, 'pending')
       `,
-      [userId, firstName, lastName, email]
+      [userId, firstName, lastName, email, "", "pending", "Nigeria"]
     );
 
     await conn.commit();
@@ -118,7 +124,6 @@ export async function POST(req: Request) {
       await conn.rollback();
     } catch {}
 
-    // Handle any unexpected dup that slips through
     const msg = String(e?.message || "");
     if (msg.toLowerCase().includes("duplicate")) {
       return NextResponse.json({ ok: false, error: "Username or email already exists" }, { status: 409 });

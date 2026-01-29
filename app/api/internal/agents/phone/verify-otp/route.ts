@@ -23,7 +23,8 @@ export async function POST(req: Request) {
 
   if (!userId) return NextResponse.json({ ok: false, error: "user_id is required" }, { status: 400 });
   if (!phone) return NextResponse.json({ ok: false, error: "phone is required" }, { status: 400 });
-  if (!otp || otp.length !== 6) return NextResponse.json({ ok: false, error: "otp must be 6 digits" }, { status: 400 });
+  if (!otp || otp.length !== 6)
+    return NextResponse.json({ ok: false, error: "otp must be 6 digits" }, { status: 400 });
 
   const conn = await db.getConnection();
   try {
@@ -59,10 +60,7 @@ export async function POST(req: Request) {
     }
 
     // increment attempts first (prevents brute force)
-    await conn.query(
-      `UPDATE internal_agent_phone_otps SET attempts = attempts + 1 WHERE id = ?`,
-      [otpRowId]
-    );
+    await conn.query(`UPDATE internal_agent_phone_otps SET attempts = attempts + 1 WHERE id = ?`, [otpRowId]);
 
     const stored = String(row.otp_hash || ""); // format: salt:hash
     const [salt, hash] = stored.split(":");
@@ -78,34 +76,53 @@ export async function POST(req: Request) {
     }
 
     // mark used
-    await conn.query(
-      `UPDATE internal_agent_phone_otps SET used_at = NOW() WHERE id = ?`,
-      [otpRowId]
-    );
+    await conn.query(`UPDATE internal_agent_phone_otps SET used_at = NOW() WHERE id = ?`, [otpRowId]);
 
-    // update agent profile
-    await conn.query(
+    // ✅ update canonical agent profile (linescout_agent_profiles)
+    const [upd]: any = await conn.query(
       `
-      UPDATE internal_agent_profiles
+      UPDATE linescout_agent_profiles
       SET
         china_phone = ?,
-        china_phone_verified = 1,
-        onboarding_status = CASE
-          WHEN onboarding_status = 'signup' THEN 'phone_verified'
-          ELSE onboarding_status
-        END,
+        china_phone_verified_at = NOW(),
         updated_at = CURRENT_TIMESTAMP
-      WHERE user_id = ?
+      WHERE internal_user_id = ?
       LIMIT 1
       `,
       [phone, userId]
     );
 
+    // If profile row doesn't exist (edge case), create it so verification is durable
+    if (!upd?.affectedRows) {
+      await conn.query(
+        `
+        INSERT INTO linescout_agent_profiles
+          (internal_user_id, first_name, last_name, email, china_phone, china_phone_verified_at, china_city, nationality, payout_status)
+        SELECT
+          u.id,
+          COALESCE(u.first_name, ''),
+          COALESCE(u.last_name, ''),
+          COALESCE(u.email, ''),
+          ?,
+          NOW(),
+          'pending',
+          'Nigeria',
+          'pending'
+        FROM internal_users u
+        WHERE u.id = ?
+        LIMIT 1
+        `,
+        [phone, userId]
+      );
+    }
+
     await conn.commit();
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    try { await conn.rollback(); } catch {}
+    try {
+      await conn.rollback();
+    } catch {}
     console.error("POST /api/internal/agent/phone/verify-otp error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to verify OTP" }, { status: 500 });
   } finally {
