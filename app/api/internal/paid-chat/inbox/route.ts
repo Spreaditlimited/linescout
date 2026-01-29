@@ -30,7 +30,7 @@ const conn = await db.getConnection();
          u.id,
          u.role,
          u.is_active,
-         COALESCE(p.can_view_leads, 0) AS can_view_leads
+         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
        LEFT JOIN internal_user_permissions p ON p.user_id = u.id
@@ -45,10 +45,19 @@ const conn = await db.getConnection();
 
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
-    const canViewLeads = !!rows[0].can_view_leads;
+    const canViewHandoffs = !!rows[0].can_view_handoffs;
 
-    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
-    return { ok: false as const, status: 403 as const, error: "Forbidden" };
+    if (role === "admin" || canViewHandoffs) {
+  return { ok: true as const, userId, role };
+}
+
+return {
+  ok: false as const,
+  status: 403 as const,
+  error: "ACCOUNT_APPROVAL_REQUIRED",
+  message:
+    "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.",
+};
   } finally {
     conn.release();
   }
@@ -60,8 +69,15 @@ const conn = await db.getConnection();
 export async function GET(req: Request) {
   const auth = await requireInternalAccess();
   if (!auth.ok) {
-    return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
-  }
+  return NextResponse.json(
+    {
+      ok: false,
+      error: auth.error,
+      message: (auth as any).message || auth.error,
+    },
+    { status: auth.status }
+  );
+}
 
   const url = new URL(req.url);
   const limitRaw = Number(url.searchParams.get("limit") || 50);
