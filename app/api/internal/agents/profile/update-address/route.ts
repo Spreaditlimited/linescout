@@ -16,7 +16,6 @@ async function requireInternalSession() {
   }
 
   const h = await headers();
-
   const bearer = h.get("authorization") || "";
   const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
@@ -29,17 +28,13 @@ async function requireInternalSession() {
       ?.slice(cookieName.length + 1) || "";
 
   const token = headerToken || cookieToken;
-
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `
-      SELECT
-        u.id,
-        u.role,
-        u.is_active
+      SELECT u.id, u.role, u.is_active
       FROM internal_sessions s
       JOIN internal_users u ON u.id = s.user_id
       WHERE s.session_token = ?
@@ -50,15 +45,9 @@ async function requireInternalSession() {
     );
 
     if (!rows?.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
+    if (!rows[0].is_active) return { ok: false as const, status: 403 as const, error: "Account disabled" };
 
-    const r = rows[0];
-    if (!r.is_active) return { ok: false as const, status: 403 as const, error: "Account disabled" };
-
-    return {
-      ok: true as const,
-      userId: Number(r.id),
-      role: String(r.role || ""),
-    };
+    return { ok: true as const, userId: Number(rows[0].id), role: String(rows[0].role || "") };
   } finally {
     conn.release();
   }
@@ -70,22 +59,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
   }
 
-  // Agents only (admin can set later via internal tools if needed)
   if (auth.role !== "agent") {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
-  const nin = clean(body?.nin);
+  const fullAddress = clean(body?.full_address);
+  const chinaCity = clean(body?.china_city);
+  const country = clean(body?.country || "China");
 
-  // Nigeria NIN is 11 digits. Keep it strict to prevent junk.
-  if (!/^\d{11}$/.test(nin)) {
-    return NextResponse.json({ ok: false, error: "NIN must be 11 digits" }, { status: 400 });
+  if (!fullAddress || !chinaCity) {
+    return NextResponse.json({ ok: false, error: "Address and city are required" }, { status: 400 });
+  }
+
+  if (country && country.toLowerCase() !== "china") {
+    return NextResponse.json({ ok: false, error: "Address must be in China" }, { status: 400 });
   }
 
   const conn = await db.getConnection();
   try {
-    // Ensure profile exists
     const pendingPhone = `pending:${auth.userId}`;
     await conn.query(
       `
@@ -107,15 +99,14 @@ export async function POST(req: Request) {
       [pendingPhone, auth.userId]
     );
 
-    // Save NIN, reset verification stamp (manual verification later)
     await conn.query(
       `
       UPDATE linescout_agent_profiles
-      SET nin = ?, nin_verified_at = NULL, updated_at = CURRENT_TIMESTAMP
+      SET full_address = ?, china_city = ?, updated_at = CURRENT_TIMESTAMP
       WHERE internal_user_id = ?
       LIMIT 1
       `,
-      [nin, auth.userId]
+      [fullAddress, chinaCity, auth.userId]
     );
 
     return NextResponse.json({ ok: true });
