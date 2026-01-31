@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { headers, cookies } from "next/headers";
+import { headers } from "next/headers";
 import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -11,14 +11,28 @@ async function requireInternalSession() {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
+  // ✅ headers() is async in your Next version
   const h = await headers();
+
+  // Support Bearer too (keep)
   const bearer = h.get("authorization") || "";
   const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
-  const cookieStore = await cookies();
-  const cookieToken = cookieStore.get(cookieName)?.value || "";
+  // ✅ Robust cookie parsing (same fix style as /auth/me)
+  const cookieHeader = h.get("cookie") || "";
+  const cookieToken =
+    cookieHeader
+      .split(/[;,]/)
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || "";
 
   const token = headerToken || cookieToken;
+
+  // (Optional debug if needed later)
+  // console.log("PROFILE_ME cookie header:", cookieHeader);
+  // console.log("PROFILE_ME extracted token:", token);
+
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
@@ -30,9 +44,7 @@ async function requireInternalSession() {
         u.username,
         u.role,
         u.is_active,
-
         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
-
       FROM internal_sessions s
       JOIN internal_users u ON u.id = s.user_id
       LEFT JOIN internal_user_permissions p ON p.user_id = u.id

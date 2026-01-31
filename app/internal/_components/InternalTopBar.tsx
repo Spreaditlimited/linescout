@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 
@@ -21,6 +21,144 @@ type MeResponse =
   | { ok: false; error: string };
 
 type NavItem = { label: string; href: string };
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function Dropdown({
+  label,
+  items,
+  activeHref,
+}: {
+  label: string;
+  items: NavItem[];
+  activeHref: string;
+}) {
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  // Close on escape
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  // Recompute position when opened (and on resize/scroll)
+  useEffect(() => {
+    if (!open) return;
+
+    const compute = () => {
+      const el = btnRef.current;
+      if (!el) return;
+
+      const r = el.getBoundingClientRect();
+      const desiredWidth = Math.max(260, Math.round(r.width));
+      const margin = 12;
+
+      const vw = window.innerWidth;
+      const left = clamp(r.left, margin, vw - desiredWidth - margin);
+
+      setPos({
+        top: Math.round(r.bottom + 10),
+        left: Math.round(left),
+        width: desiredWidth,
+      });
+    };
+
+    compute();
+
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [open]);
+
+  const btnBase =
+    "inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap";
+  const btnIdle =
+    "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900";
+  const btnActive = "border-neutral-600 bg-neutral-100 text-neutral-950";
+
+  const anyActive = items.some((i) => i.href === activeHref);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`${btnBase} ${anyActive ? btnActive : btnIdle}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {label}
+        <span className="text-xs opacity-80">▼</span>
+      </button>
+
+      {mounted && open && pos
+        ? createPortal(
+            <div className="fixed inset-0 z-[99999]">
+              {/* Click outside */}
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/55"
+                aria-label="Close menu"
+                onClick={() => setOpen(false)}
+              />
+
+              <div
+                className="absolute overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+                style={{
+                  top: pos.top,
+                  left: pos.left,
+                  width: pos.width,
+                }}
+              >
+                <div className="border-b border-neutral-800 px-4 py-3">
+                  <div className="text-xs font-semibold tracking-widest text-neutral-400 uppercase">
+                    {label}
+                  </div>
+                </div>
+
+                <div className="p-2">
+                  {items.map((item) => {
+                    const active = item.href === activeHref;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        className={`block rounded-xl px-4 py-3 text-sm font-medium ${
+                          active
+                            ? "bg-neutral-100 text-neutral-950"
+                            : "text-neutral-200 hover:bg-neutral-900"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
 
 export default function InternalTopBar() {
   const pathname = usePathname();
@@ -67,7 +205,7 @@ export default function InternalTopBar() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
 
-  const authed = useMemo(() => !!(me && "ok" in me && me.ok), [me]);
+  const authed = !!(me && "ok" in me && me.ok);
   const user = authed ? (me as any).user : null;
 
   const isAdmin = user?.role === "admin";
@@ -80,32 +218,23 @@ export default function InternalTopBar() {
     window.location.href = "/internal/sign-in";
   }
 
-  function isActive(href: string) {
-    return pathname === href;
+  // Build groups WITHOUT hooks (so no hook-order issues)
+  const operationsItems: NavItem[] = [];
+  if (canLeads) operationsItems.push({ label: "Leads", href: "/internal/leads" });
+  if (canHandoffs) {
+    operationsItems.push({ label: "Sourcing Projects", href: "/internal/agent-handoffs" });
+    operationsItems.push({ label: "Paid Chat", href: "/internal/paid-chat" });
   }
+  if (canAnalytics) operationsItems.push({ label: "Analytics", href: "/internal/analytics" });
 
-  const navItems: NavItem[] = useMemo(() => {
-    const items: NavItem[] = [];
-
-    if (canLeads) {
-      items.push({ label: "Leads", href: "/internal/leads" });
-    }
-
-    if (canHandoffs) {
-      items.push({ label: "Sourcing Projects", href: "/internal/agent-handoffs" });
-      items.push({ label: "Paid Chat", href: "/internal/paid-chat" });
-    }
-
-    if (canAnalytics) {
-      items.push({ label: "Analytics", href: "/internal/analytics" });
-    }
-
-    if (isAdmin) {
-      items.push({ label: "Settings", href: "/internal/settings" });
-    }
-
-    return items;
-  }, [canLeads, canHandoffs, canAnalytics, isAdmin]);
+  const adminItems: NavItem[] = [];
+  if (isAdmin) {
+    adminItems.push({ label: "Agents", href: "/internal/agents" });
+    adminItems.push({ label: "App Users", href: "/internal/admin/app-users" });
+    adminItems.push({ label: "Agent Approval", href: "/internal/admin/agent-approval" });
+    adminItems.push({ label: "Payout Requests", href: "/internal/admin/payouts" });
+    adminItems.push({ label: "Settings", href: "/internal/settings" });
+  }
 
   if (hide) return null;
   if (!authed || !user) return null;
@@ -114,8 +243,6 @@ export default function InternalTopBar() {
     "rounded-xl border px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap";
   const linkIdle =
     "border-neutral-800 bg-neutral-900/60 text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900";
-  const linkActive =
-    "border-neutral-600 bg-neutral-100 text-neutral-950";
 
   return (
     <div className="mb-6">
@@ -129,41 +256,28 @@ export default function InternalTopBar() {
           />
 
           <div className="hidden sm:block min-w-0">
-            <div className="text-sm font-semibold text-neutral-100">
-              Internal Dashboard
-            </div>
-            <div className="text-xs text-neutral-400 truncate">
-              Signed in as {user.username}
-            </div>
+            <div className="text-sm font-semibold text-neutral-100">Internal Dashboard</div>
+            <div className="text-xs text-neutral-400 truncate">Signed in as {user.username}</div>
           </div>
 
           <div className="sm:hidden min-w-0">
-            <div className="text-sm font-semibold text-neutral-100 truncate">
-              {user.username}
-            </div>
+            <div className="text-sm font-semibold text-neutral-100 truncate">{user.username}</div>
           </div>
         </div>
 
         {/* Desktop nav */}
         <div className="hidden sm:flex items-center gap-2">
           <nav className="flex items-center gap-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`${linkBase} ${
-                  isActive(item.href) ? linkActive : linkIdle
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {operationsItems.length > 0 ? (
+              <Dropdown label="Operations" items={operationsItems} activeHref={pathname} />
+            ) : null}
+
+            {adminItems.length > 0 ? (
+              <Dropdown label="Admin" items={adminItems} activeHref={pathname} />
+            ) : null}
           </nav>
 
-          <button
-            onClick={signOut}
-            className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:border-neutral-700"
-          >
+          <button onClick={signOut} className={`ml-2 ${linkBase} ${linkIdle}`}>
             Sign out
           </button>
         </div>
@@ -195,9 +309,7 @@ export default function InternalTopBar() {
 
               <div className="absolute right-3 top-3 w-[min(94vw,360px)] overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-                  <div className="text-sm font-semibold text-neutral-100">
-                    Menu
-                  </div>
+                  <div className="text-sm font-semibold text-neutral-100">Menu</div>
                   <button
                     type="button"
                     onClick={() => setMenuOpen(false)}
@@ -208,21 +320,49 @@ export default function InternalTopBar() {
                 </div>
 
                 <div className="p-2">
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`block rounded-xl px-4 py-3 text-sm font-medium ${
-                        isActive(item.href)
-                          ? "bg-neutral-100 text-neutral-950"
-                          : "text-neutral-200 hover:bg-neutral-900/60"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
+                  {operationsItems.length > 0 ? (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold tracking-widest text-neutral-500 uppercase">
+                        Operations
+                      </div>
+                      {operationsItems.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`block rounded-xl px-4 py-3 text-sm font-medium ${
+                            pathname === item.href
+                              ? "bg-neutral-100 text-neutral-950"
+                              : "text-neutral-200 hover:bg-neutral-900/60"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                      <div className="my-2 h-px bg-neutral-800" />
+                    </>
+                  ) : null}
 
-                  <div className="my-2 h-px bg-neutral-800" />
+                  {adminItems.length > 0 ? (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold tracking-widest text-neutral-500 uppercase">
+                        Admin
+                      </div>
+                      {adminItems.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`block rounded-xl px-4 py-3 text-sm font-medium ${
+                            pathname === item.href
+                              ? "bg-neutral-100 text-neutral-950"
+                              : "text-neutral-200 hover:bg-neutral-900/60"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                      <div className="my-2 h-px bg-neutral-800" />
+                    </>
+                  ) : null}
 
                   <button
                     onClick={signOut}

@@ -1,131 +1,143 @@
 // app/api/mobile/limited-human/start/route.ts
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { queryOne } from "@/lib/db";
+import { queryOne, exec } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
 
 type RouteType = "machine_sourcing" | "white_label";
-
 function isRouteType(x: any): x is RouteType {
   return x === "machine_sourcing" || x === "white_label";
 }
 
-type ConversationRow = RowDataPacket & {
+const HUMAN_LIMIT = 6; // you can adjust
+const HUMAN_WINDOW_MINUTES = 30; // you can adjust
+const COOLDOWN_HOURS = 48;
+
+type ExistingQuick = RowDataPacket & {
   id: number;
-  user_id: number;
-  route_type: RouteType;
   chat_mode: "ai_only" | "limited_human" | "paid_human";
   human_message_limit: number;
   human_message_used: number;
   human_access_expires_at: string | null;
-  updated_at: string; // existing column
+  created_at: string;
 };
-
-// Tune these as you like
-const HUMAN_MESSAGE_LIMIT = 6;
-const HUMAN_ACCESS_MINUTES = 15;
-
-// Cooldown: one limited human session per route every 48 hours
-const COOLDOWN_MS = 48 * 60 * 60 * 1000;
-const BLOG_URL = "https://www.sureimports.com/blog";
 
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
     const body = await req.json().catch(() => null);
+
     const route_type = body?.route_type;
+    const source_conversation_id =
+      body?.source_conversation_id != null ? Number(body.source_conversation_id) : null;
 
     if (!isRouteType(route_type)) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid route_type" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
     }
 
-    const conv = await queryOne<ConversationRow>(
-      `SELECT id, user_id, route_type, chat_mode,
-              human_message_limit, human_message_used, human_access_expires_at,
-              updated_at
-       FROM linescout_conversations
-       WHERE user_id = ? AND route_type = ?
-       LIMIT 1`,
+    // 1) Cooldown check (latest quick_human within 48 hours)
+    const cooldown = await queryOne<RowDataPacket & { last_at: string | null }>(
+      `
+      SELECT MAX(created_at) AS last_at
+      FROM linescout_conversations
+      WHERE user_id = ?
+        AND route_type = ?
+        AND conversation_kind = 'quick_human'
+      `,
       [user.id, route_type]
     );
 
-    if (!conv) {
-      return NextResponse.json(
-        { ok: false, error: "Conversation not found" },
-        { status: 404 }
-      );
+    if (cooldown?.last_at) {
+      const last = Date.parse(String(cooldown.last_at));
+      if (!Number.isNaN(last)) {
+        const diffMs = Date.now() - last;
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours < COOLDOWN_HOURS) {
+          const retryAfterHours = Math.ceil(COOLDOWN_HOURS - diffHours);
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "LIMITED_HUMAN_COOLDOWN",
+              retry_after_hours: retryAfterHours,
+              error: "Quick specialist chat is temporarily unavailable due to cooldown.",
+            },
+            { status: 429 }
+          );
+        }
+      }
     }
 
-    // If already in limited human, just return current state (no new session created)
-    if (conv.chat_mode === "limited_human") {
-      return NextResponse.json({
-        ok: true,
+    // 2) Reuse an existing active quick_human if it exists and still valid
+    const existing = await queryOne<ExistingQuick>(
+      `
+      SELECT id, chat_mode, human_message_limit, human_message_used, human_access_expires_at, created_at
+      FROM linescout_conversations
+      WHERE user_id = ?
+        AND route_type = ?
+        AND conversation_kind = 'quick_human'
+        AND project_status = 'active'
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [user.id, route_type]
+    );
+
+    if (existing) {
+      const limit = Number(existing.human_message_limit || 0);
+      const used = Number(existing.human_message_used || 0);
+      const exp = existing.human_access_expires_at ? Date.parse(existing.human_access_expires_at) : NaN;
+      const expired = Number.isFinite(exp) ? Date.now() > exp : false;
+
+      const exhausted = limit > 0 && used >= limit;
+
+      if (!expired && !exhausted && existing.chat_mode === "limited_human") {
+        return NextResponse.json({
+          ok: true,
+          route_type,
+          conversation_id: existing.id,
+          chat_mode: "limited_human",
+          human_message_limit: limit,
+          human_message_used: used,
+          human_access_expires_at: existing.human_access_expires_at,
+        });
+      }
+    }
+
+    // 3) Create a new quick_human conversation
+    const expiresAt = new Date(Date.now() + HUMAN_WINDOW_MINUTES * 60 * 1000);
+
+    const insertRes: any = await exec(
+      `
+      INSERT INTO linescout_conversations
+        (user_id, route_type, conversation_kind, source_conversation_id,
+         chat_mode, human_message_limit, human_message_used, human_access_expires_at,
+         payment_status, project_status, created_at, updated_at)
+      VALUES
+        (?, ?, 'quick_human', ?, 'limited_human', ?, 0, ?, 'unpaid', 'active', NOW(), NOW())
+      `,
+      [
+        user.id,
         route_type,
-        chat_mode: "limited_human",
-        human_message_limit: conv.human_message_limit,
-        human_message_used: conv.human_message_used,
-        human_access_expires_at: conv.human_access_expires_at,
-      });
-    }
-
-    // 48-hour cooldown enforcement:
-    // We treat "updated_at" as the timestamp of the last mode reset/end,
-    // because consume/refresh set updated_at = NOW() when dropping to ai_only.
-    const updatedAtMs = Date.parse(conv.updated_at);
-    const withinCooldown =
-      Number.isFinite(updatedAtMs) && Date.now() - updatedAtMs < COOLDOWN_MS;
-
-    if (withinCooldown) {
-      const remainingMs = COOLDOWN_MS - (Date.now() - updatedAtMs);
-      const retryAfterHours = Math.max(1, Math.ceil(remainingMs / (60 * 60 * 1000)));
-
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "LIMITED_HUMAN_COOLDOWN",
-          retry_after_hours: retryAfterHours,
-          blog_url: BLOG_URL,
-          error:
-            "Quick specialist chat is temporarily unavailable. You recently spoke with a sourcing specialist for this project. " +
-            "To keep our specialists available for everyone, we allow one quick human chat per project every 48 hours. " +
-            "You can continue chatting with LineScout AI, or learn more here: https://www.sureimports.com/blog",
-        },
-        { status: 403 }
-      );
-    }
-
-    // Enable limited human
-    await queryOne<RowDataPacket>(
-      `UPDATE linescout_conversations
-       SET chat_mode = 'limited_human',
-           human_message_limit = ?,
-           human_message_used = 0,
-           human_access_expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE),
-           updated_at = NOW()
-       WHERE id = ? AND user_id = ?`,
-      [HUMAN_MESSAGE_LIMIT, HUMAN_ACCESS_MINUTES, conv.id, user.id]
+        source_conversation_id && Number.isFinite(source_conversation_id) ? source_conversation_id : null,
+        HUMAN_LIMIT,
+        expiresAt,
+      ]
     );
 
-    const refreshed = await queryOne<ConversationRow>(
-      `SELECT id, user_id, route_type, chat_mode,
-              human_message_limit, human_message_used, human_access_expires_at,
-              updated_at
-       FROM linescout_conversations
-       WHERE id = ? AND user_id = ?
-       LIMIT 1`,
-      [conv.id, user.id]
-    );
+    const newId = Number(insertRes?.insertId || 0);
+    if (!newId) {
+      return NextResponse.json({ ok: false, error: "Could not start quick specialist chat." }, { status: 500 });
+    }
 
     return NextResponse.json({
       ok: true,
       route_type,
-      chat_mode: refreshed?.chat_mode ?? "limited_human",
-      human_message_limit: refreshed?.human_message_limit ?? HUMAN_MESSAGE_LIMIT,
-      human_message_used: refreshed?.human_message_used ?? 0,
-      human_access_expires_at: refreshed?.human_access_expires_at ?? null,
+      conversation_id: newId,
+      chat_mode: "limited_human",
+      human_message_limit: HUMAN_LIMIT,
+      human_message_used: 0,
+      human_access_expires_at: expiresAt.toISOString(),
     });
   } catch (e: any) {
     const msg = e?.message || "Server error";

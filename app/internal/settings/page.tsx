@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import AgentsPanel from "../_components/AgentsPanel";
 import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
 
 type MeResponse =
@@ -269,7 +268,6 @@ export default function InternalSettingsPage() {
         </div>
       </div>
 
-      <AgentsPanel />
       <ShippingCompaniesPanel />
 
       {/* Banks panel */}

@@ -1,10 +1,11 @@
+// app/internal/_components/AgentsPanel.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import ConfirmModal from "./ConfirmModal";
 import PasswordModal from "./PasswordModal";
 
-type InternalUser = {
+type UserPermRow = {
   id: number;
   username: string;
   role: "admin" | "agent";
@@ -15,54 +16,158 @@ type InternalUser = {
   created_at: string;
 };
 
+type AgentProfile = {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  china_phone: string | null;
+  china_phone_verified_at: string | null;
+  china_city: string | null;
+  nationality: string | null;
+  nin: string | null;
+  nin_verified_at: string | null;
+  full_address: string | null;
+  payout_status: string | null;
+};
+
+type AgentPayoutAccount = {
+  bank_code: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  status: string | null;
+  verified_at: string | null;
+} | null;
+
+type AgentChecklist = {
+  phone_verified: boolean;
+  nin_provided: boolean;
+  nin_verified: boolean;
+  bank_provided: boolean;
+  bank_verified: boolean;
+  address_provided: boolean;
+  approved_to_claim: boolean;
+};
+
+type AgentsRouteItem = {
+  internal_user_id: number;
+  username: string;
+  is_active: boolean;
+  created_at: string;
+  can_view_handoffs: boolean;
+  profile: AgentProfile | null;
+  payout_account: AgentPayoutAccount;
+  checklist: AgentChecklist;
+};
+
+type UiAgent = {
+  id: number; // internal_users.id
+  username: string;
+  is_active: 0 | 1;
+  created_at: string;
+
+  can_view_leads: 0 | 1;
+  can_view_handoffs: 0 | 1;
+  can_view_analytics: 0 | 1;
+
+  profile: AgentProfile | null;
+  payout_account: AgentPayoutAccount;
+  checklist: AgentChecklist | null;
+};
+
+function safeName(p?: AgentProfile | null) {
+  const fn = (p?.first_name || "").trim();
+  const ln = (p?.last_name || "").trim();
+  const full = `${fn} ${ln}`.trim();
+  return full || "–";
+}
+
+function boolBadge(ok: boolean) {
+  return ok ? "Yes" : "No";
+}
+
 export default function AgentsPanel() {
-  const [items, setItems] = useState<InternalUser[]>([]);
+  const [items, setItems] = useState<UiAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-
   const [err, setErr] = useState<string | null>(null);
-  const [createdMsg, setCreatedMsg] = useState<string | null>(null);
-
-  // Create agent form
-  const [newUsername, setNewUsername] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [canLeads, setCanLeads] = useState(false);
-  const [canHandoffs, setCanHandoffs] = useState(true);
-  const [canAnalytics, setCanAnalytics] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   // Deactivate/reactivate modal
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmUser, setConfirmUser] = useState<InternalUser | null>(null);
+  const [confirmUser, setConfirmUser] = useState<UiAgent | null>(null);
 
   // Reset password flow: confirm -> password modal
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [resetUser, setResetUser] = useState<InternalUser | null>(null);
+  const [resetUser, setResetUser] = useState<UiAgent | null>(null);
 
   const [pwOpen, setPwOpen] = useState(false);
-  const [pwUser, setPwUser] = useState<InternalUser | null>(null);
+  const [pwUser, setPwUser] = useState<UiAgent | null>(null);
 
   // Edit access modal
   const [accessOpen, setAccessOpen] = useState(false);
-  const [accessUser, setAccessUser] = useState<InternalUser | null>(null);
+  const [accessUser, setAccessUser] = useState<UiAgent | null>(null);
   const [accessLeads, setAccessLeads] = useState(false);
-  const [accessHandoffs, setAccessHandoffs] = useState(true);
+  const [accessHandoffs, setAccessHandoffs] = useState(false);
   const [accessAnalytics, setAccessAnalytics] = useState(false);
 
   const accessDescription = useMemo(() => {
     if (!accessUser) return "";
-    return `Set page access for "${accessUser.username}".`;
+    return `Set access for "${accessUser.username}".`;
   }, [accessUser]);
 
   async function load() {
     setLoading(true);
     setErr(null);
+    setMsg(null);
+
     try {
-      const res = await fetch("/api/internal/users", { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to load users");
-      setItems(data.items || []);
+      // 1) Rich agent list (profile + checklist)
+      const [agentsRes, usersRes] = await Promise.all([
+        fetch("/api/internal/agents", { cache: "no-store" }),
+        fetch("/api/internal/users", { cache: "no-store" }),
+      ]);
+
+      const agentsData = await agentsRes.json().catch(() => ({}));
+      const usersData = await usersRes.json().catch(() => ({}));
+
+      if (!agentsRes.ok || !agentsData?.ok) {
+        throw new Error(agentsData?.error || "Failed to load agents");
+      }
+      if (!usersRes.ok || !usersData?.ok) {
+        throw new Error(usersData?.error || "Failed to load user permissions");
+      }
+
+      const agents: AgentsRouteItem[] = agentsData.items || [];
+      const perms: UserPermRow[] = usersData.items || [];
+
+      const permById = new Map<number, UserPermRow>();
+      for (const u of perms) permById.set(Number(u.id), u);
+
+      const merged: UiAgent[] = agents.map((a) => {
+        const id = Number(a.internal_user_id);
+        const p = permById.get(id);
+
+        return {
+          id,
+          username: String(a.username || p?.username || ""),
+          is_active: p ? p.is_active : a.is_active ? 1 : 0,
+          created_at: String(p?.created_at || a.created_at || ""),
+
+          can_view_leads: p ? p.can_view_leads : 0,
+          can_view_handoffs: p ? p.can_view_handoffs : a.can_view_handoffs ? 1 : 0,
+          can_view_analytics: p ? p.can_view_analytics : 0,
+
+          profile: a.profile || null,
+          payout_account: a.payout_account ?? null,
+          checklist: a.checklist || null,
+        };
+      });
+
+      // newest first
+      merged.sort((x, y) => y.id - x.id);
+
+      setItems(merged);
     } catch (e: any) {
-      setErr(e.message || "Failed to load users");
+      setErr(e?.message || "Failed to load agents");
     } finally {
       setLoading(false);
     }
@@ -72,63 +177,9 @@ export default function AgentsPanel() {
     load();
   }, []);
 
-  function generatePassword() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
-    let pw = "";
-    for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
-    setNewPassword(pw);
-    setCreatedMsg("Generated a new password. Copy it before you create the agent.");
-  }
-
-  async function createAgent() {
-    setCreatedMsg(null);
+  async function toggleActive(u: UiAgent) {
     setErr(null);
-
-    const u = newUsername.trim();
-    if (u.length < 3) {
-      setErr("Username must be at least 3 characters.");
-      return;
-    }
-    if (newPassword.trim().length < 8) {
-      setErr("Password must be at least 8 characters.");
-      return;
-    }
-
-    setCreating(true);
-    try {
-      const res = await fetch("/api/internal/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: u,
-          password: newPassword,
-          can_view_leads: canLeads,
-          can_view_handoffs: canHandoffs,
-          can_view_analytics: canAnalytics,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to create agent");
-
-      setNewUsername("");
-      setNewPassword("");
-      setCanLeads(false);
-      setCanHandoffs(true);
-      setCanAnalytics(false);
-
-      setCreatedMsg(`Created agent "${u}". Share credentials securely.`);
-      await load();
-    } catch (e: any) {
-      setErr(e.message || "Failed to create agent");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function toggleActive(u: InternalUser) {
-    setErr(null);
-    setCreatedMsg(null);
+    setMsg(null);
 
     const nextActive = u.is_active ? 0 : 1;
 
@@ -146,15 +197,16 @@ export default function AgentsPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to update user");
 
+      setMsg(`Updated "${u.username}".`);
       await load();
     } catch (e: any) {
-      setErr(e.message || "Failed to update user");
+      setErr(e?.message || "Failed to update user");
     }
   }
 
   async function updatePermissions(userId: number, leads: boolean, handoffs: boolean, analytics: boolean) {
     setErr(null);
-    setCreatedMsg(null);
+    setMsg(null);
 
     try {
       const res = await fetch("/api/internal/users", {
@@ -172,16 +224,16 @@ export default function AgentsPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to update permissions");
 
-      setCreatedMsg("Access updated.");
+      setMsg("Access updated.");
       await load();
     } catch (e: any) {
-      setErr(e.message || "Failed to update permissions");
+      setErr(e?.message || "Failed to update permissions");
     }
   }
 
   async function resetPasswordApi(userId: number, password: string, username: string) {
     setErr(null);
-    setCreatedMsg(null);
+    setMsg(null);
 
     try {
       const res = await fetch("/api/internal/users", {
@@ -197,14 +249,14 @@ export default function AgentsPanel() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to reset password");
 
-      setCreatedMsg(`Password reset for "${username}". Share securely.`);
+      setMsg(`Password reset for "${username}". Share securely.`);
       await load();
     } catch (e: any) {
-      setErr(e.message || "Failed to reset password");
+      setErr(e?.message || "Failed to reset password");
     }
   }
 
-  function openAccessModal(u: InternalUser) {
+  function openAccessModal(u: UiAgent) {
     setAccessUser(u);
     setAccessLeads(!!u.can_view_leads);
     setAccessHandoffs(!!u.can_view_handoffs);
@@ -214,102 +266,33 @@ export default function AgentsPanel() {
 
   return (
     <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-neutral-100">Agents</h3>
-          <p className="text-xs text-neutral-400">Create agents, manage access, and reset credentials.</p>
+          <p className="text-xs text-neutral-400">
+            Review registrations, approve (handoffs access), deactivate accounts, and reset credentials.
+          </p>
         </div>
 
-        <div className="w-full lg:max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-neutral-100">Create agent</div>
-            <button
-              type="button"
-              onClick={generatePassword}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
-            >
-              Generate Password
-            </button>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-1">
-              <label className="text-xs text-neutral-400">Username</label>
-              <input
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="agent2"
-              />
-            </div>
-
-            <div className="sm:col-span-1">
-              <label className="text-xs text-neutral-400">Temporary password</label>
-              <input
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                type="text"
-                className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Min 8 characters"
-              />
-            </div>
-
-            <div className="sm:col-span-2 flex flex-wrap items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input type="checkbox" checked={canLeads} onChange={(e) => setCanLeads(e.target.checked)} />
-                Can view Leads
-              </label>
-
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={canHandoffs}
-                  onChange={(e) => setCanHandoffs(e.target.checked)}
-                />
-                Can view Handoffs
-              </label>
-
-              <label className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={canAnalytics}
-                  onChange={(e) => setCanAnalytics(e.target.checked)}
-                />
-                Can view Analytics
-              </label>
-            </div>
-
-            <div className="sm:col-span-2 flex items-center gap-2">
-              <button
-                onClick={createAgent}
-                disabled={creating}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60"
-              >
-                {creating ? "Creating..." : "Create agent"}
-              </button>
-
-              <button
-                onClick={load}
-                className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
-              >
-                Refresh
-              </button>
-            </div>
-
-            {createdMsg ? (
-              <div className="sm:col-span-2 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
-                {createdMsg}
-              </div>
-            ) : null}
-
-            {err ? (
-              <div className="sm:col-span-2 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
-                {err}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <button
+          onClick={load}
+          className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+        >
+          Refresh
+        </button>
       </div>
+
+      {msg ? (
+        <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+          {msg}
+        </div>
+      ) : null}
+
+      {err ? (
+        <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+          {err}
+        </div>
+      ) : null}
 
       <div className="mt-4">
         {loading ? <p className="text-sm text-neutral-400">Loading...</p> : null}
@@ -320,64 +303,97 @@ export default function AgentsPanel() {
               <thead className="bg-neutral-900/70 text-neutral-300">
                 <tr>
                   <th className="px-3 py-2 text-left">Username</th>
+                  <th className="px-3 py-2 text-left">Name</th>
                   <th className="px-3 py-2 text-left">Active</th>
-                  <th className="px-3 py-2 text-left">Leads</th>
-                  <th className="px-3 py-2 text-left">Handoffs</th>
-                  <th className="px-3 py-2 text-left">Analytics</th>
+                  <th className="px-3 py-2 text-left">Approved</th>
+                  <th className="px-3 py-2 text-left">Phone</th>
+                  <th className="px-3 py-2 text-left">Bank</th>
+                  <th className="px-3 py-2 text-left">NIN</th>
+                  <th className="px-3 py-2 text-left">Address</th>
                   <th className="px-3 py-2 text-left">Created</th>
                   <th className="px-3 py-2 text-left">Actions</th>
                 </tr>
               </thead>
 
               <tbody className="bg-neutral-950">
-                {items.map((u) => (
-                  <tr key={u.id} className="border-t border-neutral-800">
-                    <td className="px-3 py-2 text-neutral-100">{u.username}</td>
-                    <td className="px-3 py-2 text-neutral-200">{u.is_active ? "Yes" : "No"}</td>
-                    <td className="px-3 py-2 text-neutral-200">{u.can_view_leads ? "Yes" : "No"}</td>
-                    <td className="px-3 py-2 text-neutral-200">{u.can_view_handoffs ? "Yes" : "No"}</td>
-                    <td className="px-3 py-2 text-neutral-200">{u.can_view_analytics ? "Yes" : "No"}</td>
-                    <td className="px-3 py-2 text-neutral-400">
-                      {new Date(u.created_at).toLocaleDateString()}
-                    </td>
+                {items.map((u) => {
+                  const c = u.checklist;
 
-                    <td className="px-3 py-2">
-                      <button
-                        className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
-                        onClick={() => {
-                          setConfirmUser(u);
-                          setConfirmOpen(true);
-                        }}
-                      >
-                        {u.is_active ? "Deactivate" : "Reactivate"}
-                      </button>
+                  const approved = !!u.can_view_handoffs; // this is the gate for projects/chats
+                  const phoneOk = c ? c.phone_verified : false;
+                  const bankOk = c ? c.bank_verified : false;
+                  const ninOk = c ? c.nin_provided : false;
+                  const addrOk = c ? c.address_provided : false;
 
-                      <button
-                        className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
-                        onClick={() => {
-                          setResetUser(u);
-                          setResetConfirmOpen(true);
-                        }}
-                      >
-                        Reset password
-                      </button>
+                  return (
+                    <tr key={u.id} className="border-t border-neutral-800">
+                      <td className="px-3 py-2 text-neutral-100">{u.username}</td>
+                      <td className="px-3 py-2 text-neutral-200">{safeName(u.profile)}</td>
+                      <td className="px-3 py-2 text-neutral-200">{u.is_active ? "Yes" : "No"}</td>
+                      <td className="px-3 py-2 text-neutral-200">{approved ? "Yes" : "No"}</td>
+                      <td className="px-3 py-2 text-neutral-200">{boolBadge(phoneOk)}</td>
+                      <td className="px-3 py-2 text-neutral-200">{boolBadge(bankOk)}</td>
+                      <td className="px-3 py-2 text-neutral-200">{boolBadge(ninOk)}</td>
+                      <td className="px-3 py-2 text-neutral-200">{boolBadge(addrOk)}</td>
+                      <td className="px-3 py-2 text-neutral-400">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString() : "–"}
+                      </td>
 
-                      <button
-                        className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
-                        onClick={() => openAccessModal(u)}
-                      >
-                        Edit access
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <button
+                          className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                          onClick={() => {
+                            setConfirmUser(u);
+                            setConfirmOpen(true);
+                          }}
+                        >
+                          {u.is_active ? "Deactivate" : "Reactivate"}
+                        </button>
+
+                        <button
+                          className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                          onClick={() => {
+                            setResetUser(u);
+                            setResetConfirmOpen(true);
+                          }}
+                        >
+                          Reset password
+                        </button>
+
+                        <button
+                          className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                          onClick={() => openAccessModal(u)}
+                        >
+                          Edit access
+                        </button>
+
+                        {/* Quick approve / revoke shortcut */}
+                        <button
+                          className="ml-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                          onClick={async () => {
+                            const next = !approved;
+                            await updatePermissions(
+                              u.id,
+                              !!u.can_view_leads,
+                              next,
+                              !!u.can_view_analytics
+                            );
+                          }}
+                          title="This controls whether the agent can claim projects and access paid chats."
+                        >
+                          {approved ? "Revoke approval" : "Approve"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         ) : null}
       </div>
 
-      {/* Modals (top-level, not inside table) */}
+      {/* Modals */}
       <ConfirmModal
         open={confirmOpen}
         title={confirmUser?.is_active ? "Deactivate agent?" : "Reactivate agent?"}
@@ -445,9 +461,7 @@ export default function AgentsPanel() {
 
       {/* Access modal */}
       <div
-        className={`fixed inset-0 z-50 ${
-          accessOpen ? "flex" : "hidden"
-        } items-center justify-center bg-black/60 backdrop-blur-sm`}
+        className={`fixed inset-0 z-50 ${accessOpen ? "flex" : "hidden"} items-center justify-center bg-black/60 backdrop-blur-sm`}
       >
         <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
           <h3 className="text-lg font-semibold text-neutral-100">Edit access</h3>
@@ -455,11 +469,7 @@ export default function AgentsPanel() {
 
           <div className="mt-4 space-y-3">
             <label className="flex items-center gap-2 text-sm text-neutral-200">
-              <input
-                type="checkbox"
-                checked={accessLeads}
-                onChange={(e) => setAccessLeads(e.target.checked)}
-              />
+              <input type="checkbox" checked={accessLeads} onChange={(e) => setAccessLeads(e.target.checked)} />
               Allow Leads
             </label>
 
@@ -469,7 +479,7 @@ export default function AgentsPanel() {
                 checked={accessHandoffs}
                 onChange={(e) => setAccessHandoffs(e.target.checked)}
               />
-              Allow Handoffs
+              Allow Handoffs (Approved to claim projects)
             </label>
 
             <label className="flex items-center gap-2 text-sm text-neutral-200">

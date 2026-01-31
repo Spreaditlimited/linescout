@@ -16,8 +16,13 @@ const h = await headers();
 const bearer = h.get("authorization") || "";
 const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
-const cookieStore = await cookies();
-const cookieToken = cookieStore.get(cookieName)?.value || "";
+const cookieHeader = h.get("cookie") || "";
+const cookieToken =
+  cookieHeader
+    .split(/[;,]/)
+    .map((c) => c.trim())
+    .find((c) => c.startsWith(`${cookieName}=`))
+    ?.slice(cookieName.length + 1) || "";
 
 const token = headerToken || cookieToken;
 

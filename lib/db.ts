@@ -1,5 +1,6 @@
 // lib/db.ts
 import mysql, { RowDataPacket } from "mysql2/promise";
+import type { ResultSetHeader } from "mysql2/promise";
 
 export const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -24,4 +25,13 @@ export async function queryOne<T extends RowDataPacket>(
 ): Promise<T | null> {
   const rows = await queryRows<T>(sql, params);
   return rows[0] ?? null;
+}
+
+export async function exec(
+  sql: string,
+  params: any[] = []
+): Promise<{ insertId?: number; affectedRows?: number }> {
+  const [res] = await db.query(sql, params);
+  // mysql2 returns ResultSetHeader for INSERT/UPDATE/DELETE
+  return res as any;
 }

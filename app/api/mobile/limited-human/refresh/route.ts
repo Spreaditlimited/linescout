@@ -1,18 +1,16 @@
+// app/api/mobile/limited-human/refresh/route.ts
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { queryOne } from "@/lib/db";
+import { queryOne, exec } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
 
 type RouteType = "machine_sourcing" | "white_label";
-
 function isRouteType(x: any): x is RouteType {
   return x === "machine_sourcing" || x === "white_label";
 }
 
-type ConversationRow = RowDataPacket & {
+type QuickRow = RowDataPacket & {
   id: number;
-  user_id: number;
-  route_type: RouteType;
   chat_mode: "ai_only" | "limited_human" | "paid_human";
   human_message_limit: number;
   human_message_used: number;
@@ -29,71 +27,75 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
     }
 
-    const conv = await queryOne<ConversationRow>(
-      `SELECT id, user_id, route_type, chat_mode,
-              human_message_limit, human_message_used, human_access_expires_at
-       FROM linescout_conversations
-       WHERE user_id = ? AND route_type = ?
-       LIMIT 1`,
+    const conv = await queryOne<QuickRow>(
+      `
+      SELECT id, chat_mode, human_message_limit, human_message_used, human_access_expires_at
+      FROM linescout_conversations
+      WHERE user_id = ?
+        AND route_type = ?
+        AND conversation_kind = 'quick_human'
+        AND project_status = 'active'
+      ORDER BY id DESC
+      LIMIT 1
+      `,
       [user.id, route_type]
     );
 
     if (!conv) {
-      return NextResponse.json({ ok: false, error: "Conversation not found" }, { status: 404 });
-    }
-
-    // If not in limited_human, nothing to do
-    if (conv.chat_mode !== "limited_human") {
       return NextResponse.json({
         ok: true,
         route_type,
-        chat_mode: conv.chat_mode,
-        human_message_limit: conv.human_message_limit,
-        human_message_used: conv.human_message_used,
-        human_access_expires_at: conv.human_access_expires_at,
-        ended: false,
+        conversation_id: null,
+        chat_mode: "ai_only",
+        human_message_limit: 0,
+        human_message_used: 0,
+        human_access_expires_at: null,
+        ended: true,
       });
     }
 
     const limit = Number(conv.human_message_limit || 0);
     const used = Number(conv.human_message_used || 0);
-    const exhausted = limit > 0 && used >= limit;
-
     const exp = conv.human_access_expires_at ? Date.parse(conv.human_access_expires_at) : NaN;
     const expired = Number.isFinite(exp) ? Date.now() > exp : false;
+    const exhausted = limit > 0 && used >= limit;
 
-    if (!expired && !exhausted) {
+    if (expired || exhausted || conv.chat_mode !== "limited_human") {
+      await exec(
+        `
+        UPDATE linescout_conversations
+        SET chat_mode = 'ai_only',
+            human_message_limit = 0,
+            human_message_used = 0,
+            human_access_expires_at = NULL,
+            project_status = 'cancelled',
+            updated_at = NOW()
+        WHERE id = ? AND user_id = ?
+        `,
+        [conv.id, user.id]
+      );
+
       return NextResponse.json({
         ok: true,
         route_type,
-        chat_mode: "limited_human",
-        human_message_limit: limit,
-        human_message_used: used,
-        human_access_expires_at: conv.human_access_expires_at,
-        ended: false,
+        conversation_id: conv.id,
+        chat_mode: "ai_only",
+        human_message_limit: 0,
+        human_message_used: 0,
+        human_access_expires_at: null,
+        ended: true,
       });
     }
-
-    // Drop back to AI mode
-    await queryOne<RowDataPacket>(
-      `UPDATE linescout_conversations
-       SET chat_mode = 'ai_only',
-           human_message_limit = 0,
-           human_message_used = 0,
-           human_access_expires_at = NULL,
-           updated_at = NOW()
-       WHERE id = ? AND user_id = ?`,
-      [conv.id, user.id]
-    );
 
     return NextResponse.json({
       ok: true,
       route_type,
-      chat_mode: "ai_only",
-      human_message_limit: 0,
-      human_message_used: 0,
-      human_access_expires_at: null,
-      ended: true,
+      conversation_id: conv.id,
+      chat_mode: "limited_human",
+      human_message_limit: limit,
+      human_message_used: used,
+      human_access_expires_at: conv.human_access_expires_at,
+      ended: false,
     });
   } catch (e: any) {
     const msg = e?.message || "Server error";
