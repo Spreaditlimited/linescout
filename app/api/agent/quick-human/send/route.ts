@@ -1,14 +1,42 @@
 // app/api/agent/quick-human/send/route.ts
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, queryOne } from "@/lib/db";
+import type { RowDataPacket } from "mysql2/promise";
 import { requireAgent } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const APPROVAL_MESSAGE =
+  "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.";
+
+type PermissionRow = RowDataPacket & { can_view_handoffs: number };
+
+async function ensureApprovedAgent(userId: number, role: string) {
+  if (role === "admin") return true;
+  const row = await queryOne<PermissionRow>(
+    `
+    SELECT COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
+    FROM internal_users u
+    LEFT JOIN internal_user_permissions p ON p.user_id = u.id
+    WHERE u.id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
+  return !!row?.can_view_handoffs;
+}
+
 export async function POST(req: Request) {
   try {
     const agent = await requireAgent(req);
+    const approved = await ensureApprovedAgent(Number(agent.id), String(agent.role || ""));
+    if (!approved) {
+      return NextResponse.json(
+        { ok: false, error: "ACCOUNT_APPROVAL_REQUIRED", message: APPROVAL_MESSAGE },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const conversationId = Number(body?.conversation_id || 0);
