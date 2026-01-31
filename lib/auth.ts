@@ -3,7 +3,13 @@ import { queryOne } from "./db";
 import type { RowDataPacket } from "mysql2/promise";
 
 type UserRow = RowDataPacket & { id: number; email: string };
-type AgentRow = RowDataPacket & { id: number; name: string; is_active: 0 | 1 };
+
+type StaffRow = RowDataPacket & {
+  id: number;
+  username: string;
+  role: "admin" | "agent" | string;
+  is_active: 0 | 1;
+};
 
 export async function requireUser(req: Request) {
   const auth = req.headers.get("authorization") || "";
@@ -25,29 +31,30 @@ export async function requireUser(req: Request) {
 }
 
 /**
- * TEMP agent auth:
- * Your DB currently shows linescout_agents has no session/token column.
- * So for now, we accept Bearer <agent_id> (numeric) and verify agent is active.
- * This unblocks build + routes. When agent auth is finalized, we swap this.
+ * Staff auth for Agent App + Admin (role-based).
+ * Agent app must send: Authorization: Bearer <internal_sessions.session_token>
  */
 export async function requireAgent(req: Request) {
   const auth = req.headers.get("authorization") || "";
-  const raw = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!token) throw new Error("Unauthorized");
 
-  if (!raw) throw new Error("Unauthorized");
-
-  const agentId = Number(raw);
-  if (!Number.isFinite(agentId) || agentId <= 0) throw new Error("Unauthorized");
-
-  const agent = await queryOne<AgentRow>(
-    `SELECT id, name, is_active
-     FROM linescout_agents
-     WHERE id = ?
+  const staff = await queryOne<StaffRow>(
+    `SELECT u.id, u.username, u.role, u.is_active
+     FROM internal_sessions s
+     JOIN internal_users u ON u.id = s.user_id
+     WHERE s.session_token = ?
+       AND s.revoked_at IS NULL
+       AND u.is_active = 1
      LIMIT 1`,
-    [agentId]
+    [token]
   );
 
-  if (!agent || Number(agent.is_active) !== 1) throw new Error("Unauthorized");
+  if (!staff) throw new Error("Unauthorized");
 
-  return { id: Number(agent.id), name: String(agent.name) };
+  const role = String(staff.role || "");
+  if (role !== "admin" && role !== "agent") throw new Error("Unauthorized");
+
+  // return shape compatible with existing routes
+  return { id: Number(staff.id), name: String(staff.username || ""), role };
 }
