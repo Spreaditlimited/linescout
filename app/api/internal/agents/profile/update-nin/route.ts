@@ -111,7 +111,7 @@ export async function POST(req: Request) {
     await conn.query(
       `
       UPDATE linescout_agent_profiles
-      SET nin = ?, nin_verified_at = NULL, updated_at = CURRENT_TIMESTAMP
+      SET nin = ?, nin_verified_at = NOW(), updated_at = CURRENT_TIMESTAMP
       WHERE internal_user_id = ?
       LIMIT 1
       `,
