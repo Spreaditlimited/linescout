@@ -99,17 +99,14 @@ export async function GET(req: Request) {
         ap.approved_at,
         ap.approved_by_internal_user_id,
 
-        EXISTS(
-          SELECT 1
-          FROM linescout_agent_payout_accounts pa
-          WHERE pa.internal_user_id = ap.internal_user_id
-          LIMIT 1
-        ) AS has_bank_account,
+        pa.status AS bank_status,
+        pa.verified_at AS bank_verified_at,
 
         ap.created_at,
         ap.updated_at
       FROM linescout_agent_profiles ap
       JOIN internal_users iu ON iu.id = ap.internal_user_id
+      LEFT JOIN linescout_agent_payout_accounts pa ON pa.internal_user_id = ap.internal_user_id
       ORDER BY ap.created_at DESC
       LIMIT ? OFFSET ?
       `,
@@ -164,13 +161,10 @@ export async function POST(req: Request) {
         ap.nin,
         ap.nin_verified_at,
         ap.full_address,
-        EXISTS(
-          SELECT 1
-          FROM linescout_agent_payout_accounts pa
-          WHERE pa.internal_user_id = ap.internal_user_id
-          LIMIT 1
-        ) AS has_bank_account
+        pa.status AS bank_status,
+        pa.verified_at AS bank_verified_at
       FROM linescout_agent_profiles ap
+      LEFT JOIN linescout_agent_payout_accounts pa ON pa.internal_user_id = ap.internal_user_id
       WHERE ap.internal_user_id = ?
       LIMIT 1
       `,
@@ -188,7 +182,9 @@ export async function POST(req: Request) {
     const ninProvided = !!(p.nin && String(p.nin).trim());
     const ninOk = !!p.nin_verified_at;
     const addressOk = !!(p.full_address && String(p.full_address).trim());
-    const bankOk = !!p.has_bank_account;
+    const bankVerifiedAt = p.bank_verified_at ? String(p.bank_verified_at) : "";
+    const bankStatus = String(p.bank_status || "").toLowerCase();
+    const bankOk = !!bankVerifiedAt || bankStatus === "verified";
 
     const ready = phoneOk && ninProvided && ninOk && addressOk && bankOk;
 
@@ -198,7 +194,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Cannot approve agent. Missing readiness requirements (phone verify, NIN provided + verified, address, bank).",
+            "Cannot approve agent. Missing readiness requirements (phone verify, NIN provided + verified, address, bank verified).",
         },
         { status: 400 }
       );
@@ -272,12 +268,8 @@ export async function POST(req: Request) {
         ap.approved_at,
         ap.approved_by_internal_user_id,
 
-        EXISTS(
-          SELECT 1
-          FROM linescout_agent_payout_accounts pa
-          WHERE pa.internal_user_id = ap.internal_user_id
-          LIMIT 1
-        ) AS has_bank_account,
+        pa.status AS bank_status,
+        pa.verified_at AS bank_verified_at,
 
         ap.created_at,
         ap.updated_at

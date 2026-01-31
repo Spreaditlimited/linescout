@@ -25,7 +25,8 @@ type AgentRow = {
   nin_verified_at: string | null;
   full_address: string | null;
 
-  has_bank_account?: 0 | 1 | null;
+  bank_status?: string | null;
+  bank_verified_at?: string | null;
 
   approval_status: ApprovalStatus;
   approved_at?: string | null;
@@ -72,14 +73,16 @@ function readiness(a: AgentRow) {
   const ninProvided = !!(a.nin && String(a.nin).trim());
   const ninOk = !!a.nin_verified_at;
   const addressOk = !!(a.full_address && String(a.full_address).trim());
-  const bankOk = !!a.has_bank_account;
+  const bankVerifiedAt = a.bank_verified_at ? String(a.bank_verified_at) : "";
+  const bankStatus = String(a.bank_status || "").toLowerCase();
+  const bankOk = !!bankVerifiedAt || bankStatus === "verified";
 
   const missing: string[] = [];
   if (!phoneOk) missing.push("China phone not verified");
   if (!ninProvided) missing.push("NIN not provided");
   if (ninProvided && !ninOk) missing.push("NIN not verified");
   if (!addressOk) missing.push("Address not provided");
-  if (!bankOk) missing.push("Bank account not set");
+  if (!bankOk) missing.push("Bank account not verified");
 
   return {
     phoneOk,
