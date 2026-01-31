@@ -146,6 +146,14 @@ export default function AgentsAgreementPage() {
           </aside>
         </div>
       </div>
+
+      <footer className="border-t border-neutral-800 bg-neutral-950">
+        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-8 text-xs text-neutral-500">
+          <div>LineScout is a registered trademark of Sure Importers Limited in Nigeria.</div>
+          <div>Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.</div>
+          <div>Email: hello@sureimports.com</div>
+        </div>
+      </footer>
     </main>
   );
 }

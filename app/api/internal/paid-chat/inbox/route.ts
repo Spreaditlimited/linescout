@@ -39,6 +39,7 @@ async function requireInternalAccess() {
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
        LEFT JOIN internal_user_permissions p ON p.user_id = u.id
+       LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
        WHERE s.session_token = ?
          AND s.revoked_at IS NULL
          AND u.is_active = 1
@@ -50,9 +51,28 @@ async function requireInternalAccess() {
 
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
-    const canViewHandoffs = !!rows[0].can_view_handoffs;
+    let canViewHandoffs = !!rows[0].can_view_handoffs;
+    const approvalStatus = String(rows[0].approval_status || "").toLowerCase();
 
-    if (role === "admin" || canViewHandoffs) {
+    if (role === "admin") {
+      return { ok: true as const, userId, role };
+    }
+
+    if (approvalStatus === "approved" && !canViewHandoffs) {
+      await conn.query(
+        `
+        INSERT INTO internal_user_permissions (user_id, can_view_handoffs, can_view_leads)
+        VALUES (?, 1, 1)
+        ON DUPLICATE KEY UPDATE
+          can_view_handoffs = VALUES(can_view_handoffs),
+          can_view_leads = VALUES(can_view_leads)
+        `,
+        [userId]
+      );
+      canViewHandoffs = true;
+    }
+
+    if (canViewHandoffs) {
       return { ok: true as const, userId, role };
     }
 
