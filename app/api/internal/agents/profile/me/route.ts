@@ -95,7 +95,8 @@ export async function GET() {
           nin,
           nin_verified_at,
           full_address,
-          payout_status
+          payout_status,
+          approval_status
         FROM linescout_agent_profiles
         WHERE internal_user_id = ?
         LIMIT 1
@@ -124,6 +125,23 @@ export async function GET() {
       return rows?.length ? rows[0] : null;
     })();
 
+    const approvalStatus = String(profile?.approval_status || "").toLowerCase();
+    let canViewHandoffs = auth.can_view_handoffs;
+
+    if (auth.role === "agent" && approvalStatus === "approved" && !canViewHandoffs) {
+      await conn.query(
+        `
+        INSERT INTO internal_user_permissions (user_id, can_view_handoffs, can_view_leads)
+        VALUES (?, 1, 1)
+        ON DUPLICATE KEY UPDATE
+          can_view_handoffs = VALUES(can_view_handoffs),
+          can_view_leads = VALUES(can_view_leads)
+        `,
+        [auth.userId]
+      );
+      canViewHandoffs = true;
+    }
+
     const phoneVerified = !!profile?.china_phone_verified_at;
     const ninProvided = !!(profile?.nin && String(profile.nin).trim().length > 0);
     const ninVerified = !!profile?.nin_verified_at;
@@ -138,7 +156,7 @@ export async function GET() {
         id: auth.userId,
         username: auth.username,
         role: auth.role,
-        can_view_handoffs: auth.can_view_handoffs,
+        can_view_handoffs: canViewHandoffs,
       },
       profile: profile
         ? {
@@ -153,6 +171,7 @@ export async function GET() {
             nin_verified_at: profile.nin_verified_at,
             full_address: profile.full_address ? String(profile.full_address) : null,
             payout_status: String(profile.payout_status || "pending"),
+            approval_status: String(profile.approval_status || "pending"),
           }
         : null,
       payout_account: payout
@@ -171,7 +190,7 @@ export async function GET() {
         bank_provided: bankProvided,
         bank_verified: bankVerified,
         address_provided: addressProvided,
-        approved_to_claim: auth.role === "admin" ? true : auth.can_view_handoffs,
+        approved_to_claim: auth.role === "admin" ? true : canViewHandoffs,
       },
     });
   } finally {

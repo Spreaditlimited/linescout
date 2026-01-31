@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 "use client";
 
 type ConfirmModalProps = {
@@ -7,6 +9,7 @@ type ConfirmModalProps = {
   confirmText?: string;
   cancelText?: string;
   danger?: boolean;
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -18,6 +21,7 @@ export default function ConfirmModal({
   confirmText = "Confirm",
   cancelText = "Cancel",
   danger = false,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -31,6 +35,8 @@ export default function ConfirmModal({
         {description ? (
           <p className="mt-2 text-sm text-neutral-400">{description}</p>
         ) : null}
+
+        {children ? <div className="mt-3">{children}</div> : null}
 
         <div className="mt-6 flex justify-end gap-2">
           <button

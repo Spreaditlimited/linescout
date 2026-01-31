@@ -31,6 +31,7 @@ type AgentRow = {
   approval_status: ApprovalStatus;
   approved_at?: string | null;
   approved_by_internal_user_id?: number | null;
+  rejection_reason?: string | null;
 
   created_at: string;
   updated_at: string;
@@ -52,6 +53,10 @@ function pill(ok: boolean, yes: string, no: string) {
   return ok
     ? `${base} border-emerald-700/60 bg-emerald-500/10 text-emerald-200`
     : `${base} border-amber-700/60 bg-amber-500/10 text-amber-200`;
+}
+
+function statusLabel(s: ApprovalStatus) {
+  return s === "blocked" ? "rejected" : s;
 }
 
 function statusPill(s: ApprovalStatus) {
@@ -117,6 +122,8 @@ export default function AdminAgentApprovalPage() {
   const [confirmUserId, setConfirmUserId] = useState<number | null>(null);
   const [confirmLabel, setConfirmLabel] = useState<string>("");
   const [confirmDisabledReason, setConfirmDisabledReason] = useState<string>("");
+  const [rejectReason, setRejectReason] = useState<string>("");
+  const [rejectReasonError, setRejectReasonError] = useState<string>("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 200);
@@ -181,6 +188,7 @@ export default function AdminAgentApprovalPage() {
         a.approval_status,
         a.is_active,
         a.nin,
+        a.rejection_reason,
         r.ready ? "ready" : "not_ready",
         ...r.missing,
       ]
@@ -206,6 +214,7 @@ export default function AdminAgentApprovalPage() {
     setConfirmUserId(a.internal_user_id);
     setConfirmAction(action);
     setConfirmDisabledReason("");
+    setRejectReasonError("");
 
     const name = `${a.first_name} ${a.last_name}`.trim();
     if (action === "approve") {
@@ -213,10 +222,13 @@ export default function AdminAgentApprovalPage() {
       if (!r.ready) {
         setConfirmDisabledReason(`Cannot approve. Missing: ${r.missing.join(", ")}.`);
       }
+      setRejectReason("");
       setConfirmLabel(`Approve ${name}?`);
     } else if (action === "block") {
-      setConfirmLabel(`Block ${name}?`);
+      setRejectReason(String(a.rejection_reason || ""));
+      setConfirmLabel(`Reject ${name}?`);
     } else {
+      setRejectReason("");
       setConfirmLabel(`Set ${name} back to pending?`);
     }
 
@@ -230,6 +242,10 @@ export default function AdminAgentApprovalPage() {
       setConfirmOpen(false);
       return;
     }
+    if (confirmAction === "block" && !rejectReason.trim()) {
+      setRejectReasonError("Rejection reason is required.");
+      return;
+    }
 
     setBusy(true);
     setBanner(null);
@@ -238,7 +254,11 @@ export default function AdminAgentApprovalPage() {
       const res = await fetch("/api/internal/admin/agent-approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ internal_user_id: confirmUserId, action: confirmAction }),
+        body: JSON.stringify({
+          internal_user_id: confirmUserId,
+          action: confirmAction,
+          ...(confirmAction === "block" ? { reason: rejectReason.trim() } : {}),
+        }),
       });
 
       const data = await res.json().catch(() => null);
@@ -279,8 +299,8 @@ export default function AdminAgentApprovalPage() {
   const smallSecondary = `${smallBtn} border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700`;
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-neutral-100">Agent Approval</h2>
@@ -334,7 +354,7 @@ export default function AdminAgentApprovalPage() {
                 onClick={() => setTab("blocked")}
                 className={`${tabBtn} ${tab === "blocked" ? tabActive : tabIdle}`}
               >
-                Blocked <span className="text-xs opacity-80">({counts.blocked})</span>
+                Rejected <span className="text-xs opacity-80">({counts.blocked})</span>
               </button>
               <button
                 type="button"
@@ -400,7 +420,7 @@ export default function AdminAgentApprovalPage() {
       return (
         <div
           key={a.internal_user_id}
-          className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4"
+          className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3 sm:p-4"
         >
           {/* Header */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -420,12 +440,16 @@ export default function AdminAgentApprovalPage() {
 
             {/* Status */}
             <div className="shrink-0">
-              <span className={statusPill(a.approval_status)}>{a.approval_status}</span>
+              <span className={statusPill(a.approval_status)}>{statusLabel(a.approval_status)}</span>
 
               {a.approval_status === "approved" ? (
                 <div className="mt-2 text-[11px] text-neutral-500">
                   Approved: {a.approved_at ? fmt(a.approved_at) : "N/A"}
                 </div>
+              ) : null}
+
+              {a.approval_status === "blocked" && a.rejection_reason ? (
+                <div className="mt-2 text-[11px] text-red-300">Reason: {a.rejection_reason}</div>
               ) : null}
             </div>
           </div>
@@ -473,7 +497,7 @@ export default function AdminAgentApprovalPage() {
           </div>
 
           {/* Actions */}
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
               className={`${smallPrimary} ${approveDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
               disabled={approveDisabled}
@@ -488,7 +512,7 @@ export default function AdminAgentApprovalPage() {
               disabled={blockDisabled}
               onClick={() => openConfirm(a, "block")}
             >
-              Block
+              Reject
             </button>
 
             <button
@@ -528,7 +552,7 @@ export default function AdminAgentApprovalPage() {
         description={confirmDisabledReason ? confirmDisabledReason : confirmLabel || "Continue?"}
         confirmText={
           confirmAction === "block"
-            ? "Yes, block"
+            ? "Yes, reject"
             : confirmAction === "approve"
             ? "Yes, approve"
             : "Yes, set pending"
@@ -537,7 +561,26 @@ export default function AdminAgentApprovalPage() {
         danger={confirmAction === "block"}
         onCancel={() => setConfirmOpen(false)}
         onConfirm={runAction}
-      />
+      >
+        {confirmAction === "block" ? (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-neutral-300">Rejection reason</label>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => {
+                setRejectReason(e.target.value);
+                if (rejectReasonError) setRejectReasonError("");
+              }}
+              rows={3}
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="Explain why this application is rejected..."
+            />
+            {rejectReasonError ? (
+              <div className="text-xs text-red-300">{rejectReasonError}</div>
+            ) : null}
+          </div>
+        ) : null}
+      </ConfirmModal>
     </div>
   );
 }
