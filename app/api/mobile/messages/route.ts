@@ -41,12 +41,36 @@ async function callN8nChat(body: any) {
   const rawText = await res.text().catch(() => "");
   if (!res.ok) throw new Error(`n8n error ${res.status}: ${rawText}`);
 
-  // n8n sometimes returns JSON, sometimes plain text
   const unwrapped = tryUnwrapReplyText(rawText);
   const reply = stripLeadingEquals(unwrapped || rawText);
 
   if (!reply.trim()) throw new Error("n8n returned empty reply");
   return reply;
+}
+
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  // Expo accepts an array of messages
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  // Fire-and-forget is ok, but we still await to avoid silent failures during dev
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
 }
 
 /**
@@ -101,8 +125,10 @@ export async function GET(req: Request) {
 /**
  * POST /api/mobile/messages
  * Body: { conversation_id, message_text, route_type }
- * Saves user message, calls n8n, saves AI reply.
- * Agents can also write to linescout_messages with sender_type='agent' via your internal tools.
+ *
+ * - ai conversations: user msg -> n8n -> ai msg
+ * - quick_human: user msg only + push to agents (NO n8n)
+ * - paid: user msg only + push to assigned agent (NO n8n)
  */
 export async function POST(req: Request) {
   try {
@@ -123,10 +149,18 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
-      // Ensure user owns conversation, and fetch chat_mode for context
+      // Fetch conversation context + guard ownership
       const [crows]: any = await conn.query(
         `
-        SELECT id, route_type, chat_mode
+        SELECT
+          id,
+          user_id,
+          route_type,
+          chat_mode,
+          payment_status,
+          project_status,
+          conversation_kind,
+          assigned_agent_id
         FROM linescout_conversations
         WHERE id = ? AND user_id = ?
         LIMIT 1
@@ -138,7 +172,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Conversation not found" }, { status: 404 });
       }
 
-      const chatMode = String(crows[0].chat_mode || "ai_only");
+      const conv = crows[0];
+      const chatMode = String(conv.chat_mode || "ai_only");
+      const paymentStatus = String(conv.payment_status || "unpaid");
+      const projectStatus = String(conv.project_status || "active");
+      const conversationKind = String(conv.conversation_kind || "ai"); // ai | quick_human | paid
+      const assignedAgentId = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
+
+      if (projectStatus === "cancelled") {
+        return NextResponse.json({ ok: false, error: "This conversation is cancelled." }, { status: 403 });
+      }
 
       // 1) Save user message
       const [insUser]: any = await conn.query(
@@ -148,13 +191,103 @@ export async function POST(req: Request) {
         `,
         [conversationId, userId, messageText.trim()]
       );
-
       const userMessageId = Number(insUser?.insertId || 0);
 
-      // 2) Call n8n for AI reply (works for ai_only and limited_human; agent replies can also appear)
+      // Touch conversation updated_at
+      await conn.query(
+        `UPDATE linescout_conversations SET updated_at = NOW() WHERE id = ? LIMIT 1`,
+        [conversationId]
+      );
+
+      // QUICK HUMAN: no n8n. Push to agents.
+      if (conversationKind === "quick_human") {
+        // must be limited_human to allow messaging
+        if (chatMode !== "limited_human") {
+          return NextResponse.json(
+            { ok: false, error: "Quick specialist chat has ended." },
+            { status: 403 }
+          );
+        }
+
+        // notify ALL active agents (unclaimed pool)
+        const [trows]: any = await conn.query(
+          `
+          SELECT token
+          FROM linescout_agent_device_tokens
+          WHERE is_active = 1
+          `,
+          []
+        );
+
+        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+
+        await sendExpoPush(tokens, {
+          title: "New quick question",
+          body: messageText.trim().slice(0, 120),
+          data: {
+            kind: "quick_human",
+            conversation_id: conversationId,
+            route_type: routeType,
+          },
+        });
+
+        return NextResponse.json({
+          ok: true,
+          user_message_id: userMessageId,
+          mode: "quick_human",
+        });
+      }
+
+      // PAID: no n8n. Push to assigned agent (or all if unassigned).
+      if (conversationKind === "paid" || chatMode === "paid_human") {
+        if (paymentStatus !== "paid" || chatMode !== "paid_human") {
+          return NextResponse.json({ ok: false, error: "Paid chat is not enabled." }, { status: 403 });
+        }
+
+        let tokens: string[] = [];
+
+        if (assignedAgentId) {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token
+            FROM linescout_agent_device_tokens
+            WHERE is_active = 1 AND agent_id = ?
+            `,
+            [assignedAgentId]
+          );
+          tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        } else {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token
+            FROM linescout_agent_device_tokens
+            WHERE is_active = 1
+            `,
+            []
+          );
+          tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        }
+
+        await sendExpoPush(tokens, {
+          title: "New paid message",
+          body: messageText.trim().slice(0, 120),
+          data: {
+            kind: "paid",
+            conversation_id: conversationId,
+            route_type: routeType,
+          },
+        });
+
+        return NextResponse.json({
+          ok: true,
+          user_message_id: userMessageId,
+          mode: "paid",
+        });
+      }
+
+      // AI: keep existing n8n flow
       let aiText = "";
       try {
-        // Minimal payload n8n already understands from your web flow
         aiText = await callN8nChat({
           sessionId: `conv_${conversationId}`,
           message: messageText.trim(),
@@ -163,7 +296,6 @@ export async function POST(req: Request) {
           conversation_id: conversationId,
         });
       } catch (e: any) {
-        // If AI fails, still return user message saved
         return NextResponse.json({
           ok: true,
           user_message_id: userMessageId,
@@ -187,6 +319,7 @@ export async function POST(req: Request) {
         user_message_id: userMessageId,
         ai_message_id: aiMessageId,
         ai_saved: true,
+        mode: "ai",
       });
     } finally {
       conn.release();

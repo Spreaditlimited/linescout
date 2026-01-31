@@ -1,5 +1,5 @@
+// app/api/internal/paid-chat/inbox/route.ts
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import { headers } from "next/headers";
 
@@ -12,23 +12,23 @@ async function requireInternalAccess() {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
-const h = await headers();
-const bearer = h.get("authorization") || "";
-const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
+  const h = await headers();
+  const bearer = h.get("authorization") || "";
+  const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
-const cookieHeader = h.get("cookie") || "";
-const cookieToken =
-  cookieHeader
-    .split(/[;,]/)
-    .map((c) => c.trim())
-    .find((c) => c.startsWith(`${cookieName}=`))
-    ?.slice(cookieName.length + 1) || "";
+  const cookieHeader = h.get("cookie") || "";
+  const cookieToken =
+    cookieHeader
+      .split(/[;,]/)
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || "";
 
-const token = headerToken || cookieToken;
+  const token = headerToken || cookieToken;
 
-if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
- 
-const conn = await db.getConnection();
+  if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
+
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT
@@ -53,51 +53,63 @@ const conn = await db.getConnection();
     const canViewHandoffs = !!rows[0].can_view_handoffs;
 
     if (role === "admin" || canViewHandoffs) {
-  return { ok: true as const, userId, role };
-}
+      return { ok: true as const, userId, role };
+    }
 
-return {
-  ok: false as const,
-  status: 403 as const,
-  error: "ACCOUNT_APPROVAL_REQUIRED",
-  message:
-    "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.",
-};
+    return {
+      ok: false as const,
+      status: 403 as const,
+      error: "ACCOUNT_APPROVAL_REQUIRED",
+      message:
+        "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.",
+    };
   } finally {
     conn.release();
   }
 }
 
 /**
- * GET /api/internal/paid-chat/inbox?limit=50&cursor=0
+ * GET /api/internal/paid-chat/inbox?limit=50&cursor=0&kind=paid|quick_human
+ * - kind=paid (default): paid inbox (existing behavior)
+ * - kind=quick_human: quick human inbox
  */
 export async function GET(req: Request) {
   const auth = await requireInternalAccess();
   if (!auth.ok) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: auth.error,
-      message: (auth as any).message || auth.error,
-    },
-    { status: auth.status }
-  );
-}
+    return NextResponse.json(
+      { ok: false, error: auth.error, message: (auth as any).message || auth.error },
+      { status: auth.status }
+    );
+  }
 
   const url = new URL(req.url);
   const limitRaw = Number(url.searchParams.get("limit") || 50);
   const limit = Math.max(10, Math.min(200, limitRaw));
   const cursor = Number(url.searchParams.get("cursor") || 0);
+  const kind = String(url.searchParams.get("kind") || "paid"); // "paid" | "quick_human"
 
   const conn = await db.getConnection();
   try {
     const params: any[] = [];
 
-    let where = `
-      c.chat_mode = 'paid_human'
-      AND c.payment_status = 'paid'
-      AND c.project_status = 'active'
-    `;
+    // Base filters + agent restriction
+    let where = "";
+
+    if (kind === "quick_human") {
+      // Quick human chats: NOT paid, NOT handoffs
+      where = `
+        c.conversation_kind = 'quick_human'
+        AND c.chat_mode = 'limited_human'
+        AND c.project_status = 'active'
+      `;
+    } else {
+      // Paid chats: original behavior
+      where = `
+        c.chat_mode = 'paid_human'
+        AND c.payment_status = 'paid'
+        AND c.project_status = 'active'
+      `;
+    }
 
     if (auth.role !== "admin") {
       where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
@@ -120,6 +132,7 @@ export async function GET(req: Request) {
         c.chat_mode,
         c.payment_status,
         c.project_status,
+        c.conversation_kind,
 
         c.assigned_agent_id,
         ia.username AS assigned_agent_username,
@@ -173,6 +186,9 @@ export async function GET(req: Request) {
     const nextCursor = rows?.length ? Number(rows[rows.length - 1].conversation_id) : null;
 
     return NextResponse.json({ ok: true, items: rows || [], next_cursor: nextCursor });
+  } catch (e: any) {
+    console.error("GET /api/internal/paid-chat/inbox error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to load inbox" }, { status: 500 });
   } finally {
     conn.release();
   }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAgent } from "@/lib/auth";
-import { queryOne } from "@/lib/db";
+import { db } from "@/lib/db";
 
 type Platform = "ios" | "android" | "web";
 
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid token" }, { status: 400 });
     }
 
-    await queryOne(
+    await db.query(
       `
       INSERT INTO linescout_agent_device_tokens
         (agent_id, platform, token, device_id, app_version, locale, is_active, last_seen_at)
