@@ -56,12 +56,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // Optional secret gate (enterprise safety)
-  const requiredSecret = clean(process.env.INTERNAL_AGENT_SIGNUP_SECRET);
-  if (requiredSecret && signupSecret !== requiredSecret) {
-    return NextResponse.json({ ok: false, error: "Invalid admin code" }, { status: 403 });
-  }
-
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
@@ -106,6 +100,7 @@ export async function POST(req: Request) {
     // ✅ Create agent profile in linescout_agent_profiles
     // NOTE: table has NOT NULL fields, so we set safe placeholders.
     // These will be completed in Profile later.
+    const pendingPhone = `pending:${userId}`;
     await conn.query(
       `
       INSERT INTO linescout_agent_profiles
@@ -113,7 +108,7 @@ export async function POST(req: Request) {
       VALUES
         (?, ?, ?, ?, ?, ?, ?, 'pending')
       `,
-      [userId, firstName, lastName, email, "", "pending", "Nigeria"]
+      [userId, firstName, lastName, email, pendingPhone, "pending", "Nigeria"]
     );
 
     await conn.commit();
