@@ -29,12 +29,14 @@ export async function POST(req: Request) {
   try {
     const [rows]: any = await conn.query(
       `
-      SELECT id, username, email, password_hash, role, is_active
-      FROM internal_users
-      WHERE username = ? OR email = ?
+      SELECT u.id, u.username, u.email, u.password_hash, u.role, u.is_active,
+             ap.email AS profile_email
+      FROM internal_users u
+      LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+      WHERE u.username = ? OR u.email = ? OR ap.email = ?
       LIMIT 1
       `,
-      [login, login]
+      [login, login, login]
     );
 
     if (!rows?.length) {
@@ -67,7 +69,7 @@ export async function POST(req: Request) {
         id: Number(user.id),
         role: String(user.role || "agent"),
         username: String(user.username || ""),
-        email: user.email ? String(user.email) : null,
+        email: user.email ? String(user.email) : user.profile_email ? String(user.profile_email) : null,
       },
     });
 

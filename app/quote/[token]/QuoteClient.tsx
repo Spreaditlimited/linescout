@@ -128,6 +128,7 @@ export default function QuoteClient({
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
   const [payOption, setPayOption] = useState<"product_only" | "product_plus_shipping">("product_plus_shipping");
   const productOnlyDue = totals.totalProductNgn + totals.totalMarkupNgn;
+  const productTotalDisplay = totals.totalProductNgn + totals.totalMarkupNgn;
   const totalDueNgn = payOption === "product_only" ? productOnlyDue : totals.totalDueNgn;
 
   return (
@@ -229,14 +230,14 @@ export default function QuoteClient({
               </button>
             </div>
             <p className="mt-3 text-xs text-neutral-500">
-              Product only includes product cost + local transport + markup. Shipping can be paid later.
+              Product only includes product cost + local transport. Shipping can be paid later.
             </p>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-xs text-neutral-500">Product total (NGN)</div>
-              <div className="text-lg font-semibold">{fmtNaira(totals.totalProductNgn)}</div>
+              <div className="text-lg font-semibold">{fmtNaira(productTotalDisplay)}</div>
             </div>
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-xs text-neutral-500">Shipping (USD)</div>
@@ -245,10 +246,6 @@ export default function QuoteClient({
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-xs text-neutral-500">Shipping (NGN)</div>
               <div className="text-lg font-semibold">{fmtNaira(totals.totalShippingNgn)}</div>
-            </div>
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-xs text-neutral-500">Markup (NGN)</div>
-              <div className="text-lg font-semibold">{fmtNaira(totals.totalMarkupNgn)}</div>
             </div>
           </div>
 

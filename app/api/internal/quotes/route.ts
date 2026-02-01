@@ -168,24 +168,44 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const handoffId = Number(searchParams.get("handoff_id") || 0);
+  const scope = String(searchParams.get("scope") || "").trim().toLowerCase();
   if (!handoffId) {
-    return NextResponse.json({ ok: false, error: "handoff_id is required" }, { status: 400 });
+    if (scope !== "mine") {
+      return NextResponse.json({ ok: false, error: "handoff_id is required" }, { status: 400 });
+    }
   }
 
   const conn = await db.getConnection();
   try {
-    const allowed = await canAccessHandoff(conn, auth.user, handoffId);
-    if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    if (handoffId) {
+      const allowed = await canAccessHandoff(conn, auth.user, handoffId);
+      if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    }
 
-    const [rows]: any = await conn.query(
-      `SELECT q.*, u.username AS created_by_name
-       FROM linescout_quotes q
-       LEFT JOIN internal_users u ON u.id = q.created_by
-       WHERE q.handoff_id = ?
-       ${auth.user.role === "admin" ? "" : "AND q.created_by = ?"}
-       ORDER BY q.id DESC`,
-      auth.user.role === "admin" ? [handoffId] : [handoffId, auth.user.id]
-    );
+    let rows: any = [];
+    if (handoffId) {
+      const [list]: any = await conn.query(
+        `SELECT q.*, u.username AS created_by_name
+         FROM linescout_quotes q
+         LEFT JOIN internal_users u ON u.id = q.created_by
+         WHERE q.handoff_id = ?
+         ${auth.user.role === "admin" ? "" : "AND q.created_by = ?"}
+         ORDER BY q.id DESC`,
+        auth.user.role === "admin" ? [handoffId] : [handoffId, auth.user.id]
+      );
+      rows = list || [];
+    } else if (scope === "mine") {
+      const [list]: any = await conn.query(
+        `SELECT q.*, u.username AS created_by_name
+         FROM linescout_quotes q
+         LEFT JOIN internal_users u ON u.id = q.created_by
+         WHERE q.created_by = ?
+         ORDER BY q.id DESC
+         LIMIT 200`,
+        [auth.user.id]
+      );
+      rows = list || [];
+    }
 
     return NextResponse.json({ ok: true, items: rows || [] });
   } finally {

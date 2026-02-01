@@ -76,7 +76,7 @@ export default function AgentsAgreementPage() {
               <ul className="mt-3 space-y-2 text-sm text-neutral-300">
                 <li>Itemize product name, quantity, unit price (RMB), and total price.</li>
                 <li>Include unit and total weight (kg) and unit and total CBM.</li>
-                <li>Apply the latest LineScout shipping and markup policies.</li>
+                <li>Apply the latest LineScout shipping policies.</li>
               </ul>
             </div>
 
@@ -88,7 +88,7 @@ export default function AgentsAgreementPage() {
               </p>
               <ul className="mt-3 space-y-2 text-sm text-neutral-300">
                 <li>Do not request direct payment from customers.</li>
-                <li>Commissions and markups are set by LineScout and may change.</li>
+                <li>Commissions and pricing policies are set by LineScout and may change.</li>
                 <li>Wallet balances may be withheld for investigation of violations or disputes.</li>
               </ul>
             </div>
