@@ -201,7 +201,7 @@ export async function POST(req: Request) {
       if (!claimedBy || String(claimedBy).trim() === "") {
         await conn.end();
         return NextResponse.json(
-          { ok: false, error: "This handoff must be claimed before updating manufacturer details." },
+          { ok: false, error: "This project must be claimed before updating manufacturer details." },
           { status: 400 }
         );
       }
@@ -209,7 +209,7 @@ export async function POST(req: Request) {
       if (!claimedBy || String(claimedBy).trim() === "") {
         await conn.end();
         return NextResponse.json(
-          { ok: false, error: "This handoff must be claimed before updating milestones." },
+          { ok: false, error: "This project must be claimed before updating milestones." },
           { status: 400 }
         );
       }
