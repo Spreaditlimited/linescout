@@ -179,6 +179,24 @@ export async function POST(req: Request) {
     const actor = await getInternalUser(conn);
     if (!target) target = current;
 
+    let hasClaim = !!(claimedBy && String(claimedBy).trim() !== "");
+    let assignedUsername: string | null = null;
+    if (!hasClaim) {
+      const [assignRows]: any = await conn.execute(
+        `SELECT c.assigned_agent_id, u.username
+         FROM linescout_conversations c
+         LEFT JOIN internal_users u ON u.id = c.assigned_agent_id
+         WHERE c.handoff_id = ?
+           AND c.assigned_agent_id IS NOT NULL
+         LIMIT 1`,
+        [id]
+      );
+      if (assignRows?.length) {
+        hasClaim = true;
+        assignedUsername = assignRows[0].username ? String(assignRows[0].username) : null;
+      }
+    }
+
     const prevManufacturer = {
       manufacturer_name: rows[0].manufacturer_name ?? null,
       manufacturer_address: rows[0].manufacturer_address ?? null,
@@ -198,7 +216,7 @@ export async function POST(req: Request) {
 
     // Must be claimed before updates (except cancel/pending)
     if (manufacturerUpdateOnly) {
-      if (!claimedBy || String(claimedBy).trim() === "") {
+      if (!hasClaim) {
         await conn.end();
         return NextResponse.json(
           { ok: false, error: "This project must be claimed before updating manufacturer details." },
@@ -206,7 +224,7 @@ export async function POST(req: Request) {
         );
       }
     } else if (target !== "cancelled" && target !== "pending") {
-      if (!claimedBy || String(claimedBy).trim() === "") {
+      if (!hasClaim) {
         await conn.end();
         return NextResponse.json(
           { ok: false, error: "This project must be claimed before updating milestones." },
@@ -429,6 +447,15 @@ export async function POST(req: Request) {
       } else {
         setParts.push("manufacturer_details_updated_by = NULL");
       }
+    }
+
+    if (!claimedBy && assignedUsername) {
+      await conn.execute(
+        `UPDATE linescout_handoffs
+         SET claimed_by = ?, claimed_at = COALESCE(claimed_at, NOW())
+         WHERE id = ?`,
+        [assignedUsername, id]
+      );
     }
 
     if (!setParts.length) {
