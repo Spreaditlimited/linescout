@@ -82,17 +82,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Security: confirm user owns this paid conversation
+    // Security: confirm user owns this paid or quick-human conversation
     const conn = await db.getConnection();
     try {
       const [rows]: any = await conn.query(
         `
-        SELECT id
+        SELECT id, chat_mode, payment_status, conversation_kind, project_status
         FROM linescout_conversations
         WHERE id = ?
           AND user_id = ?
-          AND chat_mode = 'paid_human'
-          AND payment_status = 'paid'
         LIMIT 1
         `,
         [conversationId, user.id]
@@ -100,6 +98,21 @@ export async function POST(req: Request) {
 
       if (!rows?.length) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+      }
+      const conv = rows[0];
+      const kind = String(conv.conversation_kind || "");
+      const chatMode = String(conv.chat_mode || "");
+      const paymentStatus = String(conv.payment_status || "");
+      const projectStatus = String(conv.project_status || "");
+
+      const isPaid = kind === "paid" && chatMode === "paid_human" && paymentStatus === "paid";
+      const isQuick = kind === "quick_human" && chatMode === "limited_human" && projectStatus === "active";
+
+      if (!isPaid && !isQuick) {
+        return NextResponse.json(
+          { ok: false, error: "Chat is not active for uploads." },
+          { status: 403 }
+        );
       }
     } finally {
       conn.release();

@@ -7,14 +7,29 @@ import { v2 as cloudinary } from "cloudinary";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function requireInternalAccess() {
+function readSessionToken(req: Request, cookieName: string) {
+  const bearer = req.headers.get("authorization") || "";
+  const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
+
+  const cookieHeader = req.headers.get("cookie") || "";
+  const cookieToken =
+    cookieHeader
+      .split(/[;,]/)
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || "";
+
+  return headerToken || cookieToken;
+}
+
+async function requireInternalAccess(req: Request) {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(cookieName)?.value;
+  const token =
+    readSessionToken(req, cookieName) || (await cookies()).get(cookieName)?.value || "";
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
@@ -81,7 +96,7 @@ cloudinary.config({
 });
 
 export async function POST(req: Request) {
-  const auth = await requireInternalAccess();
+  const auth = await requireInternalAccess(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   try {
@@ -116,7 +131,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1) Ensure paid conversation + permission
+    // 1) Ensure conversation + permission
     const conn = await db.getConnection();
     try {
       const [convRows]: any = await conn.query(
@@ -126,7 +141,8 @@ export async function POST(req: Request) {
           c.chat_mode,
           c.payment_status,
           c.project_status,
-          c.assigned_agent_id
+          c.assigned_agent_id,
+          c.conversation_kind
         FROM linescout_conversations c
         WHERE c.id = ?
         LIMIT 1
@@ -143,9 +159,13 @@ export async function POST(req: Request) {
       const paymentStatus = String(conv.payment_status || "");
       const projectStatus = String(conv.project_status || "");
       const assignedAgentId = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
+      const conversationKind = String(conv.conversation_kind || "");
 
-      if (chatMode !== "paid_human" || paymentStatus !== "paid") {
-        return NextResponse.json({ ok: false, error: "Paid chat is not enabled." }, { status: 403 });
+      const isPaid = chatMode === "paid_human" && paymentStatus === "paid";
+      const isQuick = conversationKind === "quick_human" && chatMode === "limited_human";
+
+      if (!isPaid && !isQuick) {
+        return NextResponse.json({ ok: false, error: "Chat is not active." }, { status: 403 });
       }
 
       if (projectStatus === "cancelled") {

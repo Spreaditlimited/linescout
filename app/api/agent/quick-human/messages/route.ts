@@ -87,11 +87,55 @@ export async function GET(req: Request) {
 
       const lastId = rows?.length ? Number(rows[rows.length - 1].id) : afterId;
 
+      const ids = (rows || [])
+        .map((r: any) => Number(r.id))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+
+      let attachments: any[] = [];
+      if (ids.length) {
+        const [attRows]: any = await conn.query(
+          `
+          SELECT
+            id,
+            conversation_id,
+            message_id,
+            sender_type,
+            sender_id,
+            kind,
+            original_filename,
+            mime_type,
+            bytes,
+            cloudinary_public_id,
+            cloudinary_resource_type,
+            cloudinary_format,
+            secure_url,
+            width,
+            height,
+            created_at
+          FROM linescout_message_attachments
+          WHERE conversation_id = ?
+            AND message_id IN (?)
+          ORDER BY id ASC
+          `,
+          [conversationId, ids]
+        );
+        attachments = attRows || [];
+      }
+
+      const attachmentsByMessageId: Record<string, any[]> = {};
+      for (const a of attachments) {
+        const mid = String(a.message_id);
+        if (!attachmentsByMessageId[mid]) attachmentsByMessageId[mid] = [];
+        attachmentsByMessageId[mid].push(a);
+      }
+
       return NextResponse.json({
         ok: true,
         conversation_id: conversationId,
         items: rows || [],
         last_id: lastId,
+        attachments,
+        attachments_by_message_id: attachmentsByMessageId,
       });
     } catch (e: any) {
       console.error("GET /api/agent/quick-human/messages error:", e?.message || e);

@@ -40,6 +40,7 @@ export async function GET(req: Request) {
           c.payment_status,
           c.project_status,
           c.handoff_id,
+          c.assigned_agent_id,
 
           h.status AS handoff_status,
           h.claimed_by,
@@ -49,9 +50,16 @@ export async function GET(req: Request) {
           h.shipped_at,
           h.delivered_at,
           h.cancelled_at,
-          h.cancel_reason
+          h.cancel_reason,
+          h.customer_name,
+
+          iu.username AS assigned_agent_username,
+          ap.first_name AS assigned_agent_first_name,
+          ap.last_name AS assigned_agent_last_name
         FROM linescout_conversations c
         LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+        LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
+        LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = c.assigned_agent_id
         WHERE c.id = ?
           AND c.user_id = ?
         LIMIT 1
@@ -107,6 +115,13 @@ export async function GET(req: Request) {
           { status: 403 }
         );
       }
+
+      const assignedFirst = String(c.assigned_agent_first_name || "").trim();
+      const assignedLast = String(c.assigned_agent_last_name || "").trim();
+      const assignedAgentName =
+        `${assignedFirst} ${assignedLast}`.trim() ||
+        String(c.assigned_agent_username || "").trim() ||
+        null;
 
       // Fetch messages
       const [rows]: any = await conn.query(
@@ -188,6 +203,8 @@ export async function GET(req: Request) {
           handoff_id: c.handoff_id ? Number(c.handoff_id) : null,
           project_status: String(c.project_status || ""),
           handoff_status: handoffStatus || null,
+          customer_name: c.customer_name ?? null,
+          agent_name: assignedAgentName,
 
           claimed_by: c.claimed_by || null,
           claimed_at: c.claimed_at || null,

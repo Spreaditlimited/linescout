@@ -18,8 +18,35 @@ type QuickConvRow = {
   human_access_expires_at: string | null;
 };
 
+type IncomingUploadFile = {
+  url: string;
+  public_id: string;
+  mime?: string | null;
+  bytes?: number | null;
+  original_name?: string | null;
+};
+
 function isNonEmptyString(v: any): v is string {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+function normalizeFile(body: any): {
+  hasFile: boolean;
+  url: string | null;
+  publicId: string | null;
+  mime: string | null;
+  bytes: number | null;
+  originalName: string | null;
+} {
+  const f: IncomingUploadFile | null = body?.file && typeof body.file === "object" ? body.file : null;
+
+  const url = String(f?.url || "").trim() || null;
+  const publicId = String(f?.public_id || "").trim() || null;
+  const mime = String(f?.mime || "").trim() || null;
+  const bytes = Number(f?.bytes || 0) || null;
+  const originalName = String(f?.original_name || "").trim() || null;
+
+  return { hasFile: Boolean(url && publicId), url, publicId, mime, bytes, originalName };
 }
 
 export async function POST(req: Request) {
@@ -30,15 +57,29 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const conversationId = Number(body?.conversation_id || 0);
     const messageText = String(body?.message_text || "").trim();
+    const file = normalizeFile(body);
 
     if (!conversationId) {
       return NextResponse.json({ ok: false, error: "conversation_id is required" }, { status: 400 });
     }
-    if (!isNonEmptyString(messageText)) {
-      return NextResponse.json({ ok: false, error: "message_text is required" }, { status: 400 });
+    if (!isNonEmptyString(messageText) && !file.hasFile) {
+      return NextResponse.json(
+        { ok: false, error: "message_text or file is required" },
+        { status: 400 }
+      );
     }
     if (messageText.length > 8000) {
       return NextResponse.json({ ok: false, error: "message_text too long" }, { status: 400 });
+    }
+    if (file.hasFile && file.bytes) {
+      const m = String(file.mime || "").toLowerCase();
+      const max = m === "application/pdf" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+      if (file.bytes > max) {
+        return NextResponse.json(
+          { ok: false, error: `File too large. Max ${Math.floor(max / (1024 * 1024))}MB` },
+          { status: 400 }
+        );
+      }
     }
 
     const conn = await db.getConnection();
@@ -117,11 +158,59 @@ export async function POST(req: Request) {
         INSERT INTO linescout_messages (conversation_id, sender_type, sender_id, message_text)
         VALUES (?, 'user', ?, ?)
         `,
-        [conversationId, userId, messageText]
+        [conversationId, userId, messageText || ""]
       );
 
       const messageId = Number(insUser?.insertId || 0);
 
+      if (file.hasFile) {
+        const mime = String(file.mime || "").toLowerCase();
+        const isImage = mime === "image/jpeg" || mime === "image/jpg" || mime === "image/png";
+        const isPdf = mime === "application/pdf";
+
+        const kind = isImage ? "image" : isPdf ? "pdf" : "file";
+        const resourceType = isImage ? "image" : "raw";
+        const format = isPdf ? "pdf" : null;
+
+        await conn.query(
+          `
+          INSERT INTO linescout_message_attachments
+            (
+              conversation_id,
+              message_id,
+              sender_type,
+              sender_id,
+              kind,
+              original_filename,
+              mime_type,
+              bytes,
+              cloudinary_public_id,
+              cloudinary_resource_type,
+              cloudinary_format,
+              secure_url,
+              width,
+              height
+            )
+          VALUES
+            (?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            conversationId,
+            messageId,
+            userId,
+            kind,
+            file.originalName ? String(file.originalName).slice(0, 255) : null,
+            file.mime ? String(file.mime).slice(0, 120) : null,
+            file.bytes ? Number(file.bytes) : null,
+            String(file.publicId).slice(0, 200),
+            resourceType,
+            format,
+            String(file.url),
+            null,
+            null,
+          ]
+        );
+      }
       // Touch conversation ordering
       await conn.query(
         `UPDATE linescout_conversations SET updated_at = NOW() WHERE id = ?`,
@@ -169,6 +258,32 @@ export async function POST(req: Request) {
         [messageId]
       );
 
+      const [attRows]: any = await conn.query(
+        `
+        SELECT
+          id,
+          conversation_id,
+          message_id,
+          sender_type,
+          sender_id,
+          kind,
+          original_filename,
+          mime_type,
+          bytes,
+          cloudinary_public_id,
+          cloudinary_resource_type,
+          cloudinary_format,
+          secure_url,
+          width,
+          height,
+          created_at
+        FROM linescout_message_attachments
+        WHERE message_id = ?
+        ORDER BY id ASC
+        `,
+        [messageId]
+      );
+
       await conn.commit();
 
       const remaining = Math.max(limit - nextUsed, 0);
@@ -176,6 +291,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         item: msgRows?.[0] || null,
+        attachments: attRows || [],
         meta: {
           conversation_id: conversationId,
           ended: nowExhausted,

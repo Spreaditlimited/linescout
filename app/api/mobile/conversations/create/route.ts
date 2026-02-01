@@ -35,6 +35,33 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const [existingRows]: any = await conn.query(
+        `
+        SELECT c.*
+        FROM linescout_conversations c
+        LEFT JOIN linescout_messages m ON m.conversation_id = c.id
+        WHERE c.user_id = ?
+          AND c.route_type = ?
+          AND c.chat_mode = 'ai_only'
+          AND c.payment_status = 'unpaid'
+          AND c.handoff_id IS NULL
+          AND c.conversation_kind = 'ai'
+        GROUP BY c.id
+        HAVING COUNT(m.id) = 0
+        ORDER BY c.updated_at DESC, c.id DESC
+        LIMIT 1
+        `,
+        [userId, routeType]
+      );
+
+      if (existingRows?.length) {
+        return NextResponse.json({
+          ok: true,
+          conversation: existingRows[0],
+          reused: true,
+        });
+      }
+
       const [ins]: any = await conn.query(
         `
         INSERT INTO linescout_conversations

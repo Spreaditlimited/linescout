@@ -6,7 +6,22 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function requireInternalAccess() {
+function readSessionToken(req: Request, cookieName: string) {
+  const bearer = req.headers.get("authorization") || "";
+  const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
+
+  const cookieHeader = req.headers.get("cookie") || "";
+  const cookieToken =
+    cookieHeader
+      .split(/[;,]/)
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || "";
+
+  return headerToken || cookieToken;
+}
+
+async function requireInternalAccess(req: Request) {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
     return {
@@ -16,8 +31,8 @@ async function requireInternalAccess() {
     };
   }
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(cookieName)?.value;
+  const token =
+    readSessionToken(req, cookieName) || (await cookies()).get(cookieName)?.value || "";
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
@@ -53,7 +68,7 @@ async function requireInternalAccess() {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireInternalAccess();
+  const auth = await requireInternalAccess(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const url = new URL(req.url);
@@ -78,10 +93,14 @@ export async function GET(req: Request) {
         c.project_status,
         c.assigned_agent_id,
         iu.username AS assigned_agent_username,
+        ap.first_name AS assigned_agent_first_name,
+        ap.last_name AS assigned_agent_last_name,
         c.handoff_id,
-        h.status AS handoff_status
+        h.status AS handoff_status,
+        h.customer_name AS customer_name
       FROM linescout_conversations c
       LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
+      LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = c.assigned_agent_id
       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
       WHERE c.id = ?
       LIMIT 1
@@ -103,6 +122,10 @@ export async function GET(req: Request) {
       typeof conv.assigned_agent_username === "string" && conv.assigned_agent_username.trim()
         ? String(conv.assigned_agent_username).trim()
         : null;
+    const assignedFirst = String(conv.assigned_agent_first_name || "").trim();
+    const assignedLast = String(conv.assigned_agent_last_name || "").trim();
+    const assignedAgentName =
+      `${assignedFirst} ${assignedLast}`.trim() || assignedAgentUsername || null;
 
     const handoffId = conv.handoff_id == null ? null : Number(conv.handoff_id);
     const handoffStatusRaw = String(conv.handoff_status || "").trim();
@@ -181,6 +204,14 @@ export async function GET(req: Request) {
       attachments = attRows || [];
     }
 
+    // Group attachments by message_id for easy UI rendering
+    const attachmentsByMessageId: Record<string, any[]> = {};
+    for (const a of attachments) {
+      const mid = String(a.message_id);
+      if (!attachmentsByMessageId[mid]) attachmentsByMessageId[mid] = [];
+      attachmentsByMessageId[mid].push(a);
+    }
+
     return NextResponse.json({
       ok: true,
       conversation_id: conversationId,
@@ -189,10 +220,13 @@ export async function GET(req: Request) {
       items: rows || [],
       last_id: lastId,
       attachments,
+      attachments_by_message_id: attachmentsByMessageId,
       meta: {
         project_status: projectStatus || null,
         handoff_id: handoffId,
         handoff_status: handoffStatus,
+        customer_name: conv.customer_name ?? null,
+        agent_name: assignedAgentName,
       },
     });
   } catch (e: any) {

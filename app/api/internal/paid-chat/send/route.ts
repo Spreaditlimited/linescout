@@ -14,15 +14,29 @@ type IncomingUploadFile = {
   original_name?: string | null;
 };
 
-async function requireInternalAccess() {
+function readSessionToken(req: Request, cookieName: string) {
+  const bearer = req.headers.get("authorization") || "";
+  const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
+
+  const cookieHeader = req.headers.get("cookie") || "";
+  const cookieToken =
+    cookieHeader
+      .split(/[;,]/)
+      .map((c) => c.trim())
+      .find((c) => c.startsWith(`${cookieName}=`))
+      ?.slice(cookieName.length + 1) || "";
+
+  return headerToken || cookieToken;
+}
+
+async function requireInternalAccess(req: Request) {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
-  const cookieStore = await cookies();
-  const token = cookieStore.get(cookieName)?.value;
-
+  const token =
+    readSessionToken(req, cookieName) || (await cookies()).get(cookieName)?.value || "";
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
   const conn = await db.getConnection();
@@ -94,7 +108,7 @@ function normalizeFile(body: any): {
  * }
  */
 export async function POST(req: Request) {
-  const auth = await requireInternalAccess();
+  const auth = await requireInternalAccess(req);
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
