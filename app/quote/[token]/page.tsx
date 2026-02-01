@@ -30,22 +30,26 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     const exchangeUsd = Number(settings?.exchange_rate_usd || quote.exchange_rate_usd || 0);
     const markupPercent = Number(settings?.markup_percent || quote.markup_percent || 0);
 
-    const [rateRows]: any = await conn.query(
-      `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit, r.currency,
-              t.name AS shipping_type_name
-       FROM linescout_shipping_rates r
-       JOIN linescout_shipping_types t ON t.id = r.shipping_type_id
-       WHERE r.is_active = 1
-         AND r.id IN (
-           SELECT MAX(id)
+    let shippingRates: any[] = [];
+    try {
+      const [rateRows]: any = await conn.query(
+        `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit, r.currency,
+                t.name AS shipping_type_name
+         FROM linescout_shipping_rates r
+         JOIN linescout_shipping_types t ON t.id = r.shipping_type_id
+         JOIN (
+           SELECT shipping_type_id, MAX(id) AS max_id
            FROM linescout_shipping_rates
            WHERE is_active = 1
            GROUP BY shipping_type_id
-         )
-       ORDER BY t.name ASC, r.id DESC`
-    );
-
-    const shippingRates = Array.isArray(rateRows) ? rateRows : [];
+         ) latest ON latest.max_id = r.id
+         WHERE r.is_active = 1
+         ORDER BY t.name ASC, r.id DESC`
+      );
+      shippingRates = Array.isArray(rateRows) ? rateRows : [];
+    } catch {
+      shippingRates = [];
+    }
     if (!shippingRates.length && Number(quote.shipping_rate_usd || 0) > 0) {
       shippingRates.push({
         id: 0,

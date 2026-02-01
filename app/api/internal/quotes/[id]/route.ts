@@ -79,7 +79,17 @@ async function canAccessQuote(conn: any, user: { id: number; role: string }, quo
      LIMIT 1`,
     [quoteId, user.id]
   );
-  return !!rows?.length;
+  if (rows?.length) return true;
+
+  const [createdRows]: any = await conn.query(
+    `SELECT id
+     FROM linescout_quotes
+     WHERE id = ?
+       AND created_by = ?
+     LIMIT 1`,
+    [quoteId, user.id]
+  );
+  return !!createdRows?.length;
 }
 
 function num(v: any, fallback = 0) {
@@ -259,6 +269,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         quoteId,
       ]
     );
+
+    const [handoffRows]: any = await conn.query(
+      `SELECT handoff_id
+       FROM linescout_quotes
+       WHERE id = ?
+       LIMIT 1`,
+      [quoteId]
+    );
+    const handoffId = Number(handoffRows?.[0]?.handoff_id || 0);
+
+    if (handoffId) {
+      // Keep handoff financials in sync with latest estimated landing cost
+      await conn.query(
+        `INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
+         VALUES (?, 'NGN', ?)
+         ON DUPLICATE KEY UPDATE total_due = VALUES(total_due), currency = VALUES(currency)`,
+        [handoffId, totals.totalDueNgn]
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } finally {

@@ -126,6 +126,9 @@ export default function QuoteClient({
   }, [items, exchangeRmb, exchangeUsd, markupPercent, selectedRate]);
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
+  const [payOption, setPayOption] = useState<"product_only" | "product_plus_shipping">("product_plus_shipping");
+  const productOnlyDue = totals.totalProductNgn + totals.totalMarkupNgn;
+  const totalDueNgn = payOption === "product_only" ? productOnlyDue : totals.totalDueNgn;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -141,7 +144,7 @@ export default function QuoteClient({
             </div>
             <div className="text-right">
               <div className="text-xs text-neutral-400">Total due</div>
-              <div className="text-2xl font-semibold text-emerald-200">{fmtNaira(totals.totalDueNgn)}</div>
+              <div className="text-2xl font-semibold text-emerald-200">{fmtNaira(totalDueNgn)}</div>
             </div>
           </div>
 
@@ -199,6 +202,37 @@ export default function QuoteClient({
             ) : null}
           </div>
 
+          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-xs text-neutral-500">Payment option</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPayOption("product_only")}
+                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                  payOption === "product_only"
+                    ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
+                    : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                }`}
+              >
+                Pay product only
+              </button>
+              <button
+                type="button"
+                onClick={() => setPayOption("product_plus_shipping")}
+                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                  payOption === "product_plus_shipping"
+                    ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
+                    : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                }`}
+              >
+                Pay product + shipping
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-neutral-500">
+              Product only includes product cost + local transport + markup. Shipping can be paid later.
+            </p>
+          </div>
+
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-xs text-neutral-500">Product total (NGN)</div>
@@ -220,7 +254,7 @@ export default function QuoteClient({
 
           <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <div className="text-xs text-neutral-500">Total due (NGN)</div>
-            <div className="text-xl font-semibold text-emerald-200">{fmtNaira(totals.totalDueNgn)}</div>
+            <div className="text-xl font-semibold text-emerald-200">{fmtNaira(totalDueNgn)}</div>
             <p className="mt-2 text-xs text-neutral-500">
               Amounts are recalculated using current rates and settings. Payment link will be attached here once enabled.
             </p>

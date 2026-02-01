@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const NEXT_ALLOWED: Record<string, string[]> = {
   pending: ["claimed", "cancelled"],
   claimed: ["manufacturer_found", "cancelled"],
-  manufacturer_found: ["paid", "cancelled"],
+  manufacturer_found: ["paid", "shipped", "cancelled"],
   paid: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   delivered: [],

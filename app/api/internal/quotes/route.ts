@@ -72,7 +72,30 @@ async function requireInternalSession() {
 async function canAccessHandoff(conn: any, user: { id: number; role: string }, handoffId: number) {
   if (user.role === "admin") return true;
   const [rows]: any = await conn.query(
-    `SELECT id
+    `SELECT 1
+     FROM linescout_conversations
+     WHERE handoff_id = ?
+       AND assigned_agent_id = ?
+     LIMIT 1`,
+    [handoffId, user.id]
+  );
+  if (rows?.length) return true;
+
+  const [quoteRows]: any = await conn.query(
+    `SELECT 1
+     FROM linescout_quotes
+     WHERE handoff_id = ?
+       AND created_by = ?
+     LIMIT 1`,
+    [handoffId, user.id]
+  );
+  return !!quoteRows?.length;
+}
+
+async function canCreateQuote(conn: any, user: { id: number; role: string }, handoffId: number) {
+  if (user.role === "admin") return true;
+  const [rows]: any = await conn.query(
+    `SELECT 1
      FROM linescout_conversations
      WHERE handoff_id = ?
        AND assigned_agent_id = ?
@@ -159,8 +182,9 @@ export async function GET(req: Request) {
        FROM linescout_quotes q
        LEFT JOIN internal_users u ON u.id = q.created_by
        WHERE q.handoff_id = ?
+       ${auth.user.role === "admin" ? "" : "AND q.created_by = ?"}
        ORDER BY q.id DESC`,
-      [handoffId]
+      auth.user.role === "admin" ? [handoffId] : [handoffId, auth.user.id]
     );
 
     return NextResponse.json({ ok: true, items: rows || [] });
@@ -208,7 +232,7 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
-    const allowed = await canAccessHandoff(conn, auth.user, handoff_id);
+    const allowed = await canCreateQuote(conn, auth.user, handoff_id);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
     const [result]: any = await conn.query(
@@ -248,6 +272,14 @@ export async function POST(req: Request) {
         auth.user.id,
         auth.user.id,
       ]
+    );
+
+    // Keep handoff financials in sync with latest estimated landing cost
+    await conn.query(
+      `INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
+       VALUES (?, 'NGN', ?)
+       ON DUPLICATE KEY UPDATE total_due = VALUES(total_due), currency = VALUES(currency)`,
+      [handoff_id, totals.totalDueNgn]
     );
 
     return NextResponse.json({ ok: true, id: result.insertId, token });
