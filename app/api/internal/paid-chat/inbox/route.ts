@@ -107,6 +107,7 @@ export async function GET(req: Request) {
   const limit = Math.max(10, Math.min(200, limitRaw));
   const cursor = Number(url.searchParams.get("cursor") || 0);
   const kind = String(url.searchParams.get("kind") || "paid"); // "paid" | "quick_human"
+  const scope = String(url.searchParams.get("scope") || "").toLowerCase(); // "unclaimed" | "mine"
 
   const conn = await db.getConnection();
   try {
@@ -132,8 +133,23 @@ export async function GET(req: Request) {
     }
 
     if (auth.role !== "admin") {
-      where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
-      params.push(auth.userId);
+      if (kind === "paid") {
+        const wantMine = scope === "mine";
+        const wantUnclaimed = scope === "unclaimed" || !scope;
+
+        if (wantMine) {
+          where += ` AND c.assigned_agent_id = ?`;
+          params.push(auth.userId);
+        } else if (wantUnclaimed) {
+          where += ` AND c.assigned_agent_id IS NULL`;
+        } else {
+          where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
+          params.push(auth.userId);
+        }
+      } else {
+        where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
+        params.push(auth.userId);
+      }
     }
 
     if (cursor > 0) {
@@ -163,6 +179,7 @@ export async function GET(req: Request) {
         h.customer_name,
         h.email,
         h.whatsapp_number,
+        h.status AS handoff_status,
 
         lm.id AS last_message_id,
         lm.sender_type AS last_sender_type,

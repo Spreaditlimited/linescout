@@ -22,6 +22,34 @@ type Handoff = {
   claimed_at?: string | null;
 
   manufacturer_found_at?: string | null;
+  manufacturer_name?: string | null;
+  manufacturer_address?: string | null;
+  manufacturer_contact_name?: string | null;
+  manufacturer_contact_email?: string | null;
+  manufacturer_contact_phone?: string | null;
+  manufacturer_details_updated_at?: string | null;
+  manufacturer_details_updated_by?: number | null;
+  manufacturer_audit?: Array<{
+    id: number;
+    changed_by_id: number | null;
+    changed_by_name: string | null;
+    changed_by_role: string | null;
+    previous: {
+      manufacturer_name: string | null;
+      manufacturer_address: string | null;
+      manufacturer_contact_name: string | null;
+      manufacturer_contact_email: string | null;
+      manufacturer_contact_phone: string | null;
+    };
+    next: {
+      manufacturer_name: string | null;
+      manufacturer_address: string | null;
+      manufacturer_contact_name: string | null;
+      manufacturer_contact_email: string | null;
+      manufacturer_contact_phone: string | null;
+    };
+    created_at: string | null;
+  }>;
   paid_at?: string | null;
 
   shipped_at?: string | null;
@@ -627,6 +655,128 @@ export default function HandoffDetailPage() {
               <div className="mt-3 max-h-[320px] overflow-auto rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 text-xs text-neutral-200 whitespace-pre-wrap break-words leading-relaxed">
                 {handoff.context || "—"}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-neutral-100">Manufacturer details</div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                  {handoff.manufacturer_details_updated_at ? (
+                    <span>
+                      Updated: {fmt(handoff.manufacturer_details_updated_at)}
+                      {handoff.manufacturer_audit?.[0]?.changed_by_name
+                        ? ` · ${handoff.manufacturer_audit[0].changed_by_name}`
+                        : ""}
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const payload = [
+                        `Company: ${handoff.manufacturer_name || "N/A"}`,
+                        `Address: ${handoff.manufacturer_address || "N/A"}`,
+                        `Contact: ${handoff.manufacturer_contact_name || "N/A"}`,
+                        `Email: ${handoff.manufacturer_contact_email || "N/A"}`,
+                        `Phone: ${handoff.manufacturer_contact_phone || "N/A"}`,
+                      ].join("\n");
+                      navigator.clipboard.writeText(payload);
+                      setBanner({ type: "ok", msg: "Manufacturer details copied." });
+                    }}
+                    className="rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:text-white"
+                  >
+                    Copy details
+                  </button>
+                </div>
+              </div>
+
+              {handoff.manufacturer_name ? (
+                <div className="mt-3 space-y-3 text-sm text-neutral-200">
+                  <div>
+                    <div className="text-xs text-neutral-500">Company</div>
+                    <div className="text-sm text-neutral-200">{handoff.manufacturer_name}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-neutral-500">Address</div>
+                    <div className="text-sm text-neutral-200 whitespace-pre-wrap break-words">
+                      {handoff.manufacturer_address || "N/A"}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <div className="text-xs text-neutral-500">Contact person</div>
+                      <div className="text-sm text-neutral-200">{handoff.manufacturer_contact_name || "N/A"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-neutral-500">Phone</div>
+                      <div className="text-sm text-neutral-200">{handoff.manufacturer_contact_phone || "N/A"}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-neutral-500">Email</div>
+                      <div className="text-sm text-neutral-200">{handoff.manufacturer_contact_email || "N/A"}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-neutral-500">No manufacturer details yet.</div>
+              )}
+
+              {handoff.manufacturer_audit?.length ? (
+                <div className="mt-4">
+                  <div className="text-xs font-semibold text-neutral-300">Audit trail</div>
+                  <div className="mt-2 space-y-2">
+                    {handoff.manufacturer_audit.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3 text-xs text-neutral-300"
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                          <span>{entry.changed_by_name || "System"}</span>
+                          {entry.changed_by_role ? <span>· {entry.changed_by_role}</span> : null}
+                          {entry.created_at ? <span>· {fmt(entry.created_at)}</span> : null}
+                        </div>
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] text-neutral-500">Previous</div>
+                            <div className="text-neutral-200">
+                              {entry.previous?.manufacturer_name || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.previous?.manufacturer_address || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.previous?.manufacturer_contact_name || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.previous?.manufacturer_contact_email || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.previous?.manufacturer_contact_phone || "N/A"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-neutral-500">New</div>
+                            <div className="text-neutral-200">
+                              {entry.next?.manufacturer_name || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.next?.manufacturer_address || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.next?.manufacturer_contact_name || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.next?.manufacturer_contact_email || "N/A"}
+                            </div>
+                            <div className="text-[11px] text-neutral-500">
+                              {entry.next?.manufacturer_contact_phone || "N/A"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">

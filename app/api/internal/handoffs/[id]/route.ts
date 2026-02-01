@@ -100,10 +100,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       SELECT
         h.*,
         b.name AS bank_name,
-        sc.name AS shipping_company_name
+        sc.name AS shipping_company_name,
+        c.assigned_agent_id,
+        ia.username AS assigned_agent_username
       FROM linescout_handoffs h
       LEFT JOIN linescout_banks b ON b.id = h.bank_id
       LEFT JOIN linescout_shipping_companies sc ON sc.id = h.shipping_company_id
+      LEFT JOIN linescout_conversations c ON c.handoff_id = h.id
+      LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
       WHERE h.id = ?
       LIMIT 1
       `,
@@ -115,6 +119,20 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const item = rows[0];
+
+    const [auditRows]: any = await conn.query(
+      `SELECT id, changed_by_id, changed_by_name, changed_by_role,
+              previous_manufacturer_name, previous_manufacturer_address, previous_manufacturer_contact_name,
+              previous_manufacturer_contact_email, previous_manufacturer_contact_phone,
+              new_manufacturer_name, new_manufacturer_address, new_manufacturer_contact_name,
+              new_manufacturer_contact_email, new_manufacturer_contact_phone,
+              created_at
+       FROM linescout_handoff_manufacturer_audits
+       WHERE handoff_id = ?
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [handoffId]
+    );
 
     return NextResponse.json({
       ok: true,
@@ -135,6 +153,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         created_at: item.created_at ?? null,
         paid_at: item.paid_at ?? null,
         manufacturer_found_at: item.manufacturer_found_at ?? null,
+        manufacturer_name: item.manufacturer_name ?? null,
+        manufacturer_address: item.manufacturer_address ?? null,
+        manufacturer_contact_name: item.manufacturer_contact_name ?? null,
+        manufacturer_contact_email: item.manufacturer_contact_email ?? null,
+        manufacturer_contact_phone: item.manufacturer_contact_phone ?? null,
+        manufacturer_details_updated_at: item.manufacturer_details_updated_at ?? null,
+        manufacturer_details_updated_by: item.manufacturer_details_updated_by ?? null,
         shipped_at: item.shipped_at ?? null,
         delivered_at: item.delivered_at ?? null,
         cancelled_at: item.cancelled_at ?? null,
@@ -150,6 +175,30 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         tracking_number: item.tracking_number ?? null,
 
         conversation_id: item.conversation_id ?? null,
+        assigned_agent_id: item.assigned_agent_id ?? null,
+        assigned_agent_username: item.assigned_agent_username ?? null,
+
+        manufacturer_audit: (auditRows || []).map((row: any) => ({
+          id: Number(row.id),
+          changed_by_id: row.changed_by_id ?? null,
+          changed_by_name: row.changed_by_name ?? null,
+          changed_by_role: row.changed_by_role ?? null,
+          previous: {
+            manufacturer_name: row.previous_manufacturer_name ?? null,
+            manufacturer_address: row.previous_manufacturer_address ?? null,
+            manufacturer_contact_name: row.previous_manufacturer_contact_name ?? null,
+            manufacturer_contact_email: row.previous_manufacturer_contact_email ?? null,
+            manufacturer_contact_phone: row.previous_manufacturer_contact_phone ?? null,
+          },
+          next: {
+            manufacturer_name: row.new_manufacturer_name ?? null,
+            manufacturer_address: row.new_manufacturer_address ?? null,
+            manufacturer_contact_name: row.new_manufacturer_contact_name ?? null,
+            manufacturer_contact_email: row.new_manufacturer_contact_email ?? null,
+            manufacturer_contact_phone: row.new_manufacturer_contact_phone ?? null,
+          },
+          created_at: row.created_at ?? null,
+        })),
       },
     });
   } catch (e: any) {

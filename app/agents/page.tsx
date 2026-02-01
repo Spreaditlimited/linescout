@@ -1,32 +1,35 @@
+import FooterGate from "@/components/FooterGate";
+
 export const metadata = {
   title: "LineScout Agents Agreement",
 };
 
 export default function AgentsAgreementPage() {
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      <div className="relative overflow-hidden border-b border-neutral-800">
-        <div className="absolute -top-24 right-[-120px] h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
-        <div className="absolute -bottom-24 left-[-120px] h-72 w-72 rounded-full bg-amber-500/10 blur-3xl" />
-        <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-14">
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
-            LineScout Agents Agreement
+    <>
+      <main className="min-h-screen bg-neutral-950 text-neutral-100">
+        <div className="relative overflow-hidden border-b border-neutral-800">
+          <div className="absolute -top-24 right-[-120px] h-72 w-72 rounded-full bg-emerald-500/10 blur-3xl" />
+          <div className="absolute -bottom-24 left-[-120px] h-72 w-72 rounded-full bg-amber-500/10 blur-3xl" />
+          <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-14">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+              LineScout Agents Agreement
+            </div>
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              LineScout Agents Agreement & Operational Policy
+            </h1>
+            <p className="max-w-2xl text-sm text-neutral-300 sm:text-base">
+              This agreement governs participation in the LineScout Agent program. It outlines service standards,
+              workflow expectations, and compliance requirements for agents who source products on behalf of
+              LineScout customers.
+            </p>
+            <div className="text-xs text-neutral-400">Last updated: January 31, 2026</div>
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            LineScout Agents Agreement & Operational Policy
-          </h1>
-          <p className="max-w-2xl text-sm text-neutral-300 sm:text-base">
-            This agreement governs participation in the LineScout Agent program. It outlines service standards,
-            workflow expectations, and compliance requirements for agents who source products on behalf of
-            LineScout customers.
-          </p>
-          <div className="text-xs text-neutral-400">Last updated: January 31, 2026</div>
         </div>
-      </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-12">
-        <div className="grid gap-6 md:grid-cols-[1.4fr_0.9fr]">
-          <section className="space-y-6">
+        <div className="mx-auto max-w-5xl px-4 py-12">
+          <div className="grid gap-6 md:grid-cols-[1.4fr_0.9fr]">
+            <section className="space-y-6">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
               <h2 className="text-lg font-semibold">1. Eligibility & Scope</h2>
               <p className="mt-2 text-sm text-neutral-300">
@@ -143,17 +146,11 @@ export default function AgentsAgreementPage() {
               <p className="mt-2 text-sm text-neutral-300">hello@sureimports.com</p>
               <p className="mt-2 text-xs text-neutral-500">LineScout is a registered trademark of Sure Importers Limited in Nigeria.</p>
             </div>
-          </aside>
+            </aside>
+          </div>
         </div>
-      </div>
-
-      <footer className="border-t border-neutral-800 bg-neutral-950">
-        <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-8 text-xs text-neutral-500">
-          <div>LineScout is a registered trademark of Sure Importers Limited in Nigeria.</div>
-          <div>Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.</div>
-          <div>Email: hello@sureimports.com</div>
-        </div>
-      </footer>
-    </main>
+      </main>
+      <FooterGate />
+    </>
   );
 }

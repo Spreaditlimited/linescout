@@ -30,6 +30,7 @@ async function requireInternalAccess() {
     const [rows]: any = await conn.query(
       `SELECT
          u.id,
+         u.username,
          u.role,
          u.is_active,
          COALESCE(p.can_view_leads, 0) AS can_view_leads
@@ -48,11 +49,12 @@ async function requireInternalAccess() {
     }
 
     const userId = Number(rows[0].id);
+    const username = String(rows[0].username || "");
     const role = String(rows[0].role || "");
     const canViewLeads = !!rows[0].can_view_leads;
 
     if (role === "admin" || canViewLeads) {
-      return { ok: true as const, userId, role };
+      return { ok: true as const, userId, username, role };
     }
 
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
@@ -85,8 +87,32 @@ export async function POST(req: Request) {
   try {
     await conn.beginTransaction();
 
+    if (auth.role !== "admin") {
+      const [limitRows]: any = await conn.query(
+        `
+        SELECT COUNT(*) AS n
+        FROM linescout_conversations c
+        LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+        WHERE c.assigned_agent_id = ?
+          AND c.handoff_id IS NOT NULL
+          AND c.project_status = 'active'
+          AND (h.shipped_at IS NULL)
+        `,
+        [auth.userId]
+      );
+
+      const ongoing = Number(limitRows?.[0]?.n || 0);
+      if (ongoing >= 3) {
+        await conn.rollback();
+        return NextResponse.json(
+          { ok: false, error: "You already have 3 ongoing projects. Complete or ship one before claiming a new project." },
+          { status: 403 }
+        );
+      }
+    }
+
     const [rows]: any = await conn.query(
-      `SELECT id, assigned_agent_id, chat_mode, payment_status, project_status
+      `SELECT id, assigned_agent_id, chat_mode, payment_status, project_status, handoff_id
        FROM linescout_conversations
        WHERE id = ?
        LIMIT 1`,
@@ -142,6 +168,20 @@ export async function POST(req: Request) {
          AND assigned_agent_id IS NULL`,
       [auth.userId, conversationId]
     );
+
+    if (conv.handoff_id) {
+      await conn.query(
+        `
+        UPDATE linescout_handoffs
+        SET status = 'claimed',
+            claimed_by = ?,
+            claimed_at = NOW()
+        WHERE id = ?
+          AND (status = 'pending' OR status IS NULL)
+        `,
+        [auth.username || String(auth.userId), conv.handoff_id]
+      );
+    }
 
     // Re-read to confirm winner (handles race conditions)
     const [afterRows]: any = await conn.query(
