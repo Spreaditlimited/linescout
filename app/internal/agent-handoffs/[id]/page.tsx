@@ -123,6 +123,17 @@ type PaymentSummary = {
   balance: number;
 };
 
+type QuoteItem = {
+  id: number;
+  token: string;
+  status: string;
+  payment_purpose?: string | null;
+  total_due_ngn?: number | null;
+  created_at?: string | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
+};
+
 type PaymentRow = {
   id: number;
   amount: string;
@@ -237,6 +248,8 @@ export default function HandoffDetailPage() {
   const [paySummary, setPaySummary] = useState<PaymentSummary | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
 
+  const [quotes, setQuotes] = useState<QuoteItem[]>([]);
+
   // Update panel state
   const [action, setAction] = useState<NextAction | "">("");
   const [shipper, setShipper] = useState("");
@@ -269,6 +282,13 @@ export default function HandoffDetailPage() {
     } catch {
       setMe({ ok: false, error: "Failed to load session" });
     }
+  }
+
+  async function loadQuotesOnce(): Promise<QuoteItem[]> {
+    const res = await fetch(`/api/internal/quotes?handoff_id=${id}`, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) return [];
+    return (data.items || []) as QuoteItem[];
   }
 
   async function loadPaymentsOnce(): Promise<{
@@ -331,6 +351,9 @@ export default function HandoffDetailPage() {
 
       const h = await loadHandoffOnce(summary);
       setHandoff(h);
+
+      const qs = await loadQuotesOnce();
+      setQuotes(qs);
 
       if (showBanner) setBanner({ type: "ok", msg: "Refreshed." });
     } catch (e: any) {
@@ -777,6 +800,69 @@ export default function HandoffDetailPage() {
                   </div>
                 </div>
               ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-neutral-100">Quotes</div>
+                <Link
+                  href={"/internal/settings"}
+                  className="text-xs font-semibold text-neutral-400 hover:text-neutral-100"
+                >
+                  Manage settings
+                </Link>
+              </div>
+
+              {quotes.length ? (
+                <div className="mt-3 space-y-2">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-xs text-neutral-200">
+                    <div className="text-neutral-400">Latest quote summary</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-emerald-200">
+                        {fmtMoney(Number(quotes[0].total_due_ngn || 0), "NGN")}
+                      </span>
+                      <span className="text-neutral-500">· {quotes[0].payment_purpose || "payment"}</span>
+                    </div>
+                  </div>
+                  {quotes.map((q) => (
+                    <div
+                      key={q.id}
+                      className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-950/50 px-3 py-2 text-xs text-neutral-200 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold">Quote #{q.id}</div>
+                        <div className="text-neutral-400">
+                          {q.payment_purpose || "payment"} · {q.created_by_name || "Agent"}
+                        </div>
+                        {q.created_at ? (
+                          <div className="text-neutral-500">{fmt(q.created_at)}</div>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-200 font-semibold">
+                          {fmtMoney(Number(q.total_due_ngn || 0), "NGN")}
+                        </span>
+                        <Link
+                          href={`/internal/quotes/${q.id}`}
+                          className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Edit
+                        </Link>
+                        <a
+                          href={`/quote/${q.token}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Open link
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-neutral-500">No quotes yet.</div>
+              )}
             </div>
 
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">

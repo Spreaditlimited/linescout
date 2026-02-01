@@ -23,6 +23,28 @@ type ManualHandoffResponse =
 
 type BankItem = { id: number; name: string; is_active?: number };
 
+type SettingsItem = {
+  id: number;
+  commitment_due_ngn: number;
+  agent_percent: number;
+  agent_commitment_percent: number;
+  markup_percent: number;
+  exchange_rate_usd: number;
+  exchange_rate_rmb: number;
+};
+
+type ShippingTypeItem = { id: number; name: string; is_active?: number };
+
+type ShippingRateItem = {
+  id: number;
+  shipping_type_id: number;
+  shipping_type_name: string;
+  rate_value: number;
+  rate_unit: "per_kg" | "per_cbm";
+  currency: string;
+  is_active?: number;
+};
+
 export default function InternalSettingsPage() {
   const [me, setMe] = useState<MeResponse | null>(null);
 
@@ -41,6 +63,35 @@ export default function InternalSettingsPage() {
   const [creatingBank, setCreatingBank] = useState(false);
   const [bankMsg, setBankMsg] = useState<string | null>(null);
   const [bankCreateErr, setBankCreateErr] = useState<string | null>(null);
+
+  // Global settings
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsErr, setSettingsErr] = useState<string | null>(null);
+  const [settingsMsg, setSettingsMsg] = useState<string | null>(null);
+
+  const [commitmentDue, setCommitmentDue] = useState("0");
+  const [agentPercent, setAgentPercent] = useState("5");
+  const [agentCommitmentPercent, setAgentCommitmentPercent] = useState("40");
+  const [markupPercent, setMarkupPercent] = useState("20");
+  const [exchangeUsd, setExchangeUsd] = useState("0");
+  const [exchangeRmb, setExchangeRmb] = useState("0");
+
+  // Shipping types & rates
+  const [shippingTypes, setShippingTypes] = useState<ShippingTypeItem[]>([]);
+  const [shippingRates, setShippingRates] = useState<ShippingRateItem[]>([]);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingErr, setShippingErr] = useState<string | null>(null);
+  const [newShippingType, setNewShippingType] = useState("");
+  const [creatingShippingType, setCreatingShippingType] = useState(false);
+
+  const [newRateTypeId, setNewRateTypeId] = useState<number | null>(null);
+  const [newRateValue, setNewRateValue] = useState("");
+  const [newRateUnit, setNewRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
+  const [creatingRate, setCreatingRate] = useState(false);
+  const [editingRateId, setEditingRateId] = useState<number | null>(null);
+  const [editRateValue, setEditRateValue] = useState("");
+  const [editRateUnit, setEditRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
+  const [savingRate, setSavingRate] = useState(false);
 
   // Selected bank for initial payment inside manual handoff modal
   const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
@@ -74,6 +125,211 @@ export default function InternalSettingsPage() {
 
   const isAdmin = !!(me && "ok" in me && me.ok && me.user.role === "admin");
 
+  async function loadSettings() {
+    setSettingsLoading(true);
+    setSettingsErr(null);
+    setSettingsMsg(null);
+    try {
+      const res = await fetch("/api/internal/settings", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load settings");
+      const item = data.item as SettingsItem;
+      setCommitmentDue(String(item.commitment_due_ngn ?? 0));
+      setAgentPercent(String(item.agent_percent ?? 0));
+      setAgentCommitmentPercent(String(item.agent_commitment_percent ?? 0));
+      setMarkupPercent(String(item.markup_percent ?? 0));
+      setExchangeUsd(String(item.exchange_rate_usd ?? 0));
+      setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
+    } catch (e: any) {
+      setSettingsErr(e?.message || "Failed to load settings");
+    } finally {
+      setSettingsLoading(false);
+    }
+  }
+
+  async function saveSettings() {
+    setSettingsErr(null);
+    setSettingsMsg(null);
+    if (!settingsValidation.ok) {
+      setSettingsErr(settingsValidation.errors[0] || "Invalid settings.");
+      return;
+    }
+    setSettingsLoading(true);
+    try {
+      const payload = {
+        commitment_due_ngn: Number(commitmentDue),
+        agent_percent: Number(agentPercent),
+        agent_commitment_percent: Number(agentCommitmentPercent),
+        markup_percent: Number(markupPercent),
+        exchange_rate_usd: Number(exchangeUsd),
+        exchange_rate_rmb: Number(exchangeRmb),
+      };
+
+      const res = await fetch("/api/internal/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save settings");
+      setSettingsMsg("Settings saved.");
+    } catch (e: any) {
+      setSettingsErr(e?.message || "Failed to save settings");
+    } finally {
+      setSettingsLoading(false);
+    }
+  }
+
+  async function loadShippingData() {
+    setShippingLoading(true);
+    setShippingErr(null);
+    try {
+      const [typesRes, ratesRes] = await Promise.all([
+        fetch("/api/internal/shipping-types", { cache: "no-store" }),
+        fetch("/api/internal/shipping-rates", { cache: "no-store" }),
+      ]);
+      const typesData = await typesRes.json().catch(() => null);
+      const ratesData = await ratesRes.json().catch(() => null);
+      if (!typesRes.ok || !typesData?.ok) throw new Error(typesData?.error || "Failed to load shipping types");
+      if (!ratesRes.ok || !ratesData?.ok) throw new Error(ratesData?.error || "Failed to load shipping rates");
+
+      const types = (typesData.items || []) as ShippingTypeItem[];
+      setShippingTypes(types);
+      setShippingRates((ratesData.items || []) as ShippingRateItem[]);
+      if (!newRateTypeId && types.length) setNewRateTypeId(types[0].id);
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to load shipping data");
+    } finally {
+      setShippingLoading(false);
+    }
+  }
+
+  async function createShippingType() {
+    const name = newShippingType.trim();
+    if (name.length < 2) {
+      setShippingErr("Shipping type name is too short.");
+      return;
+    }
+    setCreatingShippingType(true);
+    try {
+      const res = await fetch("/api/internal/shipping-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create shipping type");
+      setNewShippingType("");
+      await loadShippingData();
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to create shipping type");
+    } finally {
+      setCreatingShippingType(false);
+    }
+  }
+
+  async function toggleShippingType(id: number, is_active: number) {
+    try {
+      await fetch("/api/internal/shipping-types", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, is_active }),
+      });
+      await loadShippingData();
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to update shipping type");
+    }
+  }
+
+  async function createShippingRate() {
+    if (!newRateTypeId) {
+      setShippingErr("Select a shipping type.");
+      return;
+    }
+    const rate = Number(newRateValue);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      setShippingErr("Rate must be a positive USD number.");
+      return;
+    }
+    const usdRate = Number(exchangeUsd);
+    if (!Number.isFinite(usdRate) || usdRate <= 0) {
+      setShippingErr("Set a valid USD → NGN exchange rate first.");
+      return;
+    }
+
+    setCreatingRate(true);
+    try {
+      const res = await fetch("/api/internal/shipping-rates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shipping_type_id: newRateTypeId,
+          rate_value: rate,
+          rate_unit: newRateUnit,
+          currency: "USD",
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create rate");
+      setNewRateValue("");
+      await loadShippingData();
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to create rate");
+    } finally {
+      setCreatingRate(false);
+    }
+  }
+
+  async function toggleShippingRate(id: number, is_active: number) {
+    try {
+      await fetch("/api/internal/shipping-rates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, is_active }),
+      });
+      await loadShippingData();
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to update shipping rate");
+    }
+  }
+
+  function startEditRate(rate: ShippingRateItem) {
+    setEditingRateId(rate.id);
+    setEditRateValue(String(rate.rate_value ?? ""));
+    setEditRateUnit(rate.rate_unit);
+  }
+
+  function cancelEditRate() {
+    setEditingRateId(null);
+    setEditRateValue("");
+    setEditRateUnit("per_kg");
+  }
+
+  async function saveRateEdit() {
+    if (!editingRateId) return;
+    const rateNum = Number(editRateValue);
+    if (!Number.isFinite(rateNum) || rateNum <= 0) {
+      setShippingErr("Rate must be a positive USD number.");
+      return;
+    }
+    setSavingRate(true);
+    try {
+      const res = await fetch("/api/internal/shipping-rates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingRateId, rate_value: rateNum, rate_unit: editRateUnit }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to update rate");
+      await loadShippingData();
+      cancelEditRate();
+    } catch (e: any) {
+      setShippingErr(e?.message || "Failed to update rate");
+    } finally {
+      setSavingRate(false);
+    }
+  }
+
   async function loadBanks() {
     setBanksLoading(true);
     setBanksErr(null);
@@ -92,6 +348,12 @@ export default function InternalSettingsPage() {
   useEffect(() => {
     // Load banks once (for modal dropdown + settings list)
     loadBanks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadSettings();
+    loadShippingData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -125,6 +387,78 @@ export default function InternalSettingsPage() {
     initialAmount,
     selectedBankId,
   ]);
+
+  const settingsValidation = useMemo(() => {
+    const errors: string[] = [];
+    const commitment = Number(commitmentDue);
+    const agentPct = Number(agentPercent);
+    const agentCommitPct = Number(agentCommitmentPercent);
+    const markupPct = Number(markupPercent);
+    const usdRate = Number(exchangeUsd);
+    const rmbRate = Number(exchangeRmb);
+
+    if (!Number.isFinite(commitment) || commitment < 0) {
+      errors.push("Commitment fee must be 0 or more.");
+    }
+    if (!Number.isFinite(agentPct) || agentPct < 0 || agentPct > 100) {
+      errors.push("Agent earning (products) must be between 0 and 100.");
+    }
+    if (!Number.isFinite(agentCommitPct) || agentCommitPct < 0 || agentCommitPct > 100) {
+      errors.push("Agent earning (commitment) must be between 0 and 100.");
+    }
+    if (!Number.isFinite(markupPct) || markupPct < 0 || markupPct > 100) {
+      errors.push("Markup percent must be between 0 and 100.");
+    }
+    if (!Number.isFinite(usdRate) || usdRate <= 0) {
+      errors.push("Exchange rate USD → NGN must be greater than 0.");
+    }
+    if (!Number.isFinite(rmbRate) || rmbRate <= 0) {
+      errors.push("Exchange rate RMB → NGN must be greater than 0.");
+    }
+
+    return { ok: errors.length === 0, errors };
+  }, [
+    commitmentDue,
+    agentPercent,
+    agentCommitmentPercent,
+    markupPercent,
+    exchangeUsd,
+    exchangeRmb,
+  ]);
+
+  const rateReady = useMemo(() => {
+    const typeOk = !!newRateTypeId;
+    const rate = Number(newRateValue);
+    const rateOk = Number.isFinite(rate) && rate > 0;
+    const usdOk = Number.isFinite(Number(exchangeUsd)) && Number(exchangeUsd) > 0;
+    return typeOk && rateOk && usdOk;
+  }, [newRateTypeId, newRateValue, exchangeUsd]);
+
+  const fmtNaira = (value: number) => {
+    if (!Number.isFinite(value)) return "NGN 0";
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: "NGN",
+        maximumFractionDigits: 0,
+      }).format(value);
+    } catch {
+      return `NGN ${Math.round(value).toLocaleString()}`;
+    }
+  };
+
+  const fmtUsd = (value: number) => {
+    if (!Number.isFinite(value)) return "$0";
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      }).format(value);
+    } catch {
+      return `$${value.toFixed(2)}`;
+    }
+  };
 
   function resetForm() {
     setCustomerName("");
@@ -243,16 +577,311 @@ export default function InternalSettingsPage() {
             </p>
           </div>
 
+          <div />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-100">Global pricing & earnings</h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Fixed commitment fee (NGN), exchange rates, markup, and agent earnings.
+            </p>
+          </div>
           <button
-            onClick={() => {
-              resetForm();
-              setOpen(true);
-            }}
-            className="inline-flex items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white active:scale-[0.99]"
+            onClick={saveSettings}
+            disabled={settingsLoading || !settingsValidation.ok}
+            className="inline-flex items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-xs font-semibold text-neutral-900 hover:bg-white disabled:opacity-60"
           >
-            Create manual handoff
+            {settingsLoading ? "Saving..." : "Save settings"}
           </button>
         </div>
+
+        {settingsErr ? (
+          <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+            {settingsErr}
+          </div>
+        ) : null}
+
+        {!settingsValidation.ok ? (
+          <div className="mt-3 rounded-xl border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            {settingsValidation.errors[0]}
+          </div>
+        ) : null}
+
+        {settingsMsg ? (
+          <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-200">
+            {settingsMsg}
+          </div>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className="text-xs text-neutral-400">Commitment fee (NGN)</label>
+            <input
+              value={commitmentDue}
+              onChange={(e) => setCommitmentDue(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="50000"
+              inputMode="decimal"
+            />
+            <div className="mt-1 text-[11px] text-neutral-500">
+              {fmtNaira(Number(commitmentDue || 0))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Agent earning % (products)</label>
+            <input
+              value={agentPercent}
+              onChange={(e) => setAgentPercent(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="5"
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Agent earning % (commitment)</label>
+            <input
+              value={agentCommitmentPercent}
+              onChange={(e) => setAgentCommitmentPercent(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="40"
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Markup %</label>
+            <input
+              value={markupPercent}
+              onChange={(e) => setMarkupPercent(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="20"
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Exchange rate (USD → NGN)</label>
+            <input
+              value={exchangeUsd}
+              onChange={(e) => setExchangeUsd(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="1500"
+              inputMode="decimal"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Exchange rate (RMB → NGN)</label>
+            <input
+              value={exchangeRmb}
+              onChange={(e) => setExchangeRmb(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="210"
+              inputMode="decimal"
+            />
+          </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Shipping types</div>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                value={newShippingType}
+                onChange={(e) => setNewShippingType(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Air, Sea"
+              />
+              <button
+                onClick={createShippingType}
+                disabled={creatingShippingType}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+              >
+                {creatingShippingType ? "Saving..." : "Add"}
+              </button>
+            </div>
+
+            {shippingLoading ? (
+              <div className="mt-3 text-xs text-neutral-500">Loading...</div>
+            ) : shippingTypes.length ? (
+              <div className="mt-3 space-y-2">
+                {shippingTypes.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200">
+                    <span>{t.name}</span>
+                    <button
+                      onClick={() => toggleShippingType(t.id, t.is_active === 0 ? 1 : 0)}
+                      className="text-xs text-neutral-400 hover:text-neutral-100"
+                    >
+                      {t.is_active === 0 ? "Activate" : "Deactivate"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-neutral-500">No shipping types yet.</div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Shipping rates</div>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              <select
+                value={newRateTypeId ?? ""}
+                onChange={(e) => setNewRateTypeId(Number(e.target.value))}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              >
+                <option value="" disabled>
+                  Select shipping type
+                </option>
+                {shippingTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={newRateValue}
+                onChange={(e) => setNewRateValue(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Rate value (USD)"
+              />
+              {(() => {
+                const rate = Number(newRateValue);
+                const usdOk = Number.isFinite(rate) && rate > 0;
+                const usdRate = usdOk ? rate : 0;
+                const exchange = Number(exchangeUsd || 0);
+                const ngnRate = usdOk && Number.isFinite(exchange) && exchange > 0 ? usdRate * exchange : 0;
+                if (!Number.isFinite(exchange) || exchange <= 0) {
+                  return (
+                    <div className="text-[11px] text-amber-200">
+                      Set USD → NGN exchange rate to compute NGN equivalent.
+                    </div>
+                  );
+                }
+                return (
+                  <div className="text-[11px] text-neutral-500">
+                    {fmtUsd(usdRate)} → {fmtNaira(ngnRate)} (NGN equivalent)
+                  </div>
+                );
+              })()}
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={newRateUnit}
+                  onChange={(e) => setNewRateUnit(e.target.value as "per_kg" | "per_cbm")}
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                >
+                  <option value="per_kg">Per KG</option>
+                  <option value="per_cbm">Per CBM</option>
+                </select>
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-500 flex items-center">
+                  USD (base)
+                </div>
+              </div>
+              <button
+                onClick={createShippingRate}
+                disabled={creatingRate || !rateReady}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+              >
+                {creatingRate ? "Saving..." : "Add rate"}
+              </button>
+            </div>
+
+            {shippingLoading ? (
+              <div className="mt-3 text-xs text-neutral-500">Loading...</div>
+            ) : shippingRates.length ? (
+              <div className="mt-3 space-y-2">
+                {shippingRates.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200">
+                    {editingRateId === r.id ? (
+                      <div className="flex-1">
+                        <div className="font-semibold">{r.shipping_type_name}</div>
+                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px]">
+                          <input
+                            value={editRateValue}
+                            onChange={(e) => setEditRateValue(e.target.value)}
+                            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                            placeholder="USD rate"
+                          />
+                          <select
+                            value={editRateUnit}
+                            onChange={(e) => setEditRateUnit(e.target.value as "per_kg" | "per_cbm")}
+                            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                          >
+                            <option value="per_kg">Per KG</option>
+                            <option value="per_cbm">Per CBM</option>
+                          </select>
+                        </div>
+                        <div className="mt-2 text-[11px] text-neutral-500">
+                          {(() => {
+                            const usd = Number(editRateValue || 0);
+                            const ex = Number(exchangeUsd || 0);
+                            if (!Number.isFinite(usd) || !Number.isFinite(ex) || ex <= 0) return "NGN 0";
+                            return `${fmtUsd(usd)} → ${fmtNaira(usd * ex)}`;
+                          })()}
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            onClick={saveRateEdit}
+                            disabled={savingRate}
+                            className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+                          >
+                            {savingRate ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            onClick={cancelEditRate}
+                            className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <div className="font-semibold">{r.shipping_type_name}</div>
+                          <div className="text-neutral-400">
+                            {fmtUsd(Number(r.rate_value || 0))} / {r.rate_unit === "per_kg" ? "KG" : "CBM"}
+                          </div>
+                          <div className="text-neutral-500">
+                            {(() => {
+                              const usd = Number(r.rate_value || 0);
+                              const ex = Number(exchangeUsd || 0);
+                              if (!Number.isFinite(usd) || !Number.isFinite(ex) || ex <= 0) return "NGN 0";
+                              return fmtNaira(usd * ex);
+                            })()}{" "}
+                            (NGN equivalent)
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => startEditRate(r)}
+                            className="text-xs text-neutral-400 hover:text-neutral-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => toggleShippingRate(r.id, r.is_active === 0 ? 1 : 0)}
+                            className="text-xs text-neutral-400 hover:text-neutral-100"
+                          >
+                            {r.is_active === 0 ? "Activate" : "Deactivate"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-neutral-500">No shipping rates yet.</div>
+            )}
+          </div>
+        </div>
+
+        {shippingErr ? (
+          <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+            {shippingErr}
+          </div>
+        ) : null}
       </div>
 
       {/* Manual onboarding card */}
@@ -265,6 +894,15 @@ export default function InternalSettingsPage() {
               sourcing handoff record. Optional: set total due and record an initial payment.
             </p>
           </div>
+          <button
+            onClick={() => {
+              resetForm();
+              setOpen(true);
+            }}
+            className="inline-flex shrink-0 whitespace-nowrap items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white active:scale-[0.99]"
+          >
+            Create manual handoff
+          </button>
         </div>
       </div>
 
