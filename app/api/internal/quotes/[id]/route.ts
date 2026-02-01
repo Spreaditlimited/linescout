@@ -89,6 +89,7 @@ function num(v: any, fallback = 0) {
 
 function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, shippingRateUsd: number, shippingUnit: string, markupPercent: number) {
   let totalProductRmb = 0;
+  let totalLocalTransportRmb = 0;
   let totalWeightKg = 0;
   let totalCbm = 0;
 
@@ -97,13 +98,16 @@ function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, s
     const unitPrice = num(item.unit_price_rmb, 0);
     const unitWeight = num(item.unit_weight_kg, 0);
     const unitCbm = num(item.unit_cbm, 0);
+    const localTransport = num(item.local_transport_rmb, 0);
 
     totalProductRmb += qty * unitPrice;
+    totalLocalTransportRmb += localTransport;
     totalWeightKg += qty * unitWeight;
     totalCbm += qty * unitCbm;
   }
 
-  const totalProductNgn = totalProductRmb * exchangeRmb;
+  const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
+  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
@@ -111,7 +115,7 @@ function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, s
   const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
 
   return {
-    totalProductRmb,
+    totalProductRmb: totalProductRmbWithLocal,
     totalProductNgn,
     totalWeightKg,
     totalCbm,
@@ -126,10 +130,12 @@ function ensureItems(raw: any) {
   const items = Array.isArray(raw) ? raw : [];
   return items.map((item) => ({
     product_name: String(item.product_name || "").trim(),
+    product_description: String(item.product_description || "").trim(),
     quantity: num(item.quantity, 0),
     unit_price_rmb: num(item.unit_price_rmb, 0),
     unit_weight_kg: num(item.unit_weight_kg, 0),
     unit_cbm: num(item.unit_cbm, 0),
+    local_transport_rmb: num(item.local_transport_rmb, 0),
   }));
 }
 

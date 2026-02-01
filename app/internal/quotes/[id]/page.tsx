@@ -31,10 +31,12 @@ function fmtUsd(value: number) {
 
 type QuoteItem = {
   product_name: string;
+  product_description?: string;
   quantity: number;
   unit_price_rmb: number;
   unit_weight_kg: number;
   unit_cbm: number;
+  local_transport_rmb?: number;
 };
 
 type QuoteRow = {
@@ -221,7 +223,7 @@ export default function QuoteEditPage() {
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      { product_name: "", quantity: 1, unit_price_rmb: 0, unit_weight_kg: 0, unit_cbm: 0 },
+      { product_name: "", product_description: "", quantity: 1, unit_price_rmb: 0, unit_weight_kg: 0, unit_cbm: 0, local_transport_rmb: 0 },
     ]);
   };
 
@@ -278,6 +280,12 @@ export default function QuoteEditPage() {
                 className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                 placeholder="Product name"
               />
+              <textarea
+                value={item.product_description || ""}
+                onChange={(e) => updateItem(idx, { product_description: e.target.value })}
+                className="mt-2 w-full min-h-[80px] resize-none rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Product description"
+              />
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <input
                   value={item.quantity}
@@ -290,6 +298,12 @@ export default function QuoteEditPage() {
                   onChange={(e) => updateItem(idx, { unit_price_rmb: Number(e.target.value || 0) })}
                   className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                   placeholder="Unit RMB"
+                />
+                <input
+                  value={item.local_transport_rmb || 0}
+                  onChange={(e) => updateItem(idx, { local_transport_rmb: Number(e.target.value || 0) })}
+                  className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  placeholder="Local transport RMB (total)"
                 />
                 <input
                   value={item.unit_weight_kg}
