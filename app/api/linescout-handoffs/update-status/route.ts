@@ -235,11 +235,12 @@ export async function POST(req: Request) {
 
     // Transition validation
     if (!manufacturerUpdateOnly) {
-      const allowed = NEXT_ALLOWED[current] ?? [];
-      if (target !== current && !allowed.includes(target)) {
+      const effectiveCurrent = current === "pending" && hasClaim ? "claimed" : current;
+      const allowed = NEXT_ALLOWED[effectiveCurrent] ?? [];
+      if (target !== effectiveCurrent && !allowed.includes(target)) {
         await conn.end();
         return NextResponse.json(
-          { ok: false, error: `Invalid transition: ${current} → ${target}` },
+          { ok: false, error: `Invalid transition: ${effectiveCurrent} → ${target}` },
           { status: 400 }
         );
       }
