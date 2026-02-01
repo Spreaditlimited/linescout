@@ -21,7 +21,18 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     if (!rows?.length) return notFound();
 
     const quote = rows[0];
-    const items = JSON.parse(quote.items_json || "[]");
+    let items: any[] = [];
+    try {
+      if (Array.isArray(quote.items_json)) {
+        items = quote.items_json;
+      } else if (typeof quote.items_json === "string") {
+        items = JSON.parse(quote.items_json || "[]");
+      } else if (quote.items_json && typeof quote.items_json === "object") {
+        items = Array.isArray(quote.items_json.items) ? quote.items_json.items : [];
+      }
+    } catch {
+      items = [];
+    }
 
     const [settingsRows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
     const settings = settingsRows?.[0] || null;
