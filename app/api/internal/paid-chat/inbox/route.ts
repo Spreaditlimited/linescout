@@ -142,6 +142,7 @@ export async function GET(req: Request) {
           params.push(auth.userId);
         } else if (wantUnclaimed) {
           where += ` AND c.assigned_agent_id IS NULL`;
+          where += ` AND (h.status IS NULL OR LOWER(h.status) = 'pending')`;
         } else {
           where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
           params.push(auth.userId);
