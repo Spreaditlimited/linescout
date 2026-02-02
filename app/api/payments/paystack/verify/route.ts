@@ -326,6 +326,29 @@ async function sendEmail(opts: {
   return { ok: true as const };
 }
 
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
+
 export async function POST(req: Request) {
   try {
     const u = await requireUser(req);
@@ -557,6 +580,58 @@ export async function POST(req: Request) {
       );
 
       await conn.commit();
+
+      // 4) Notify agents about new paid chat (push + optional email)
+      try {
+        const agentLabel = customerFirst || "Customer";
+        const [trows]: any = await conn.query(
+          `
+          SELECT token
+          FROM linescout_agent_device_tokens
+          WHERE is_active = 1
+          `
+        );
+        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        await sendExpoPush(tokens, {
+          title: "New paid chat available",
+          body: `${agentLabel} just opened a paid chat. Tap to claim.`,
+          data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: routeType },
+        });
+
+        const [emailRows]: any = await conn.query(
+          `
+          SELECT ap.email
+          FROM linescout_agent_profiles ap
+          JOIN internal_users u ON u.id = ap.internal_user_id
+          WHERE u.is_active = 1
+            AND ap.approval_status = 'approved'
+            AND COALESCE(ap.email_notifications_enabled, 1) = 1
+            AND ap.email IS NOT NULL
+            AND ap.email <> ''
+          `
+        );
+        const emails = (emailRows || [])
+          .map((r: any) => String(r.email || "").trim())
+          .filter(Boolean);
+
+        for (const email of emails) {
+          await sendEmail({
+            to: email,
+            replyTo: "hello@sureimports.com",
+            subject: "New paid chat available",
+            text:
+              `${agentLabel} just opened a paid chat.\n` +
+              `Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}\n` +
+              `Handoff ID: ${handoffId}\n\n` +
+              "Open the LineScout Agent app to claim this project.",
+            html:
+              `<p><strong>${agentLabel}</strong> just opened a paid chat.</p>` +
+              `<p>Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}<br/>` +
+              `Handoff ID: ${handoffId}</p>` +
+              `<p>Open the LineScout Agent app to claim this project.</p>`,
+          });
+        }
+      } catch {}
 
       // 4) Send email (do AFTER commit so user never gets email for failed DB writes)
       const firstName = firstNameFromUser(u) || (customerFirst || null);

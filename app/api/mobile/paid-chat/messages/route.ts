@@ -103,6 +103,31 @@ export async function GET(req: Request) {
       const customerRaw = String(c.customer_name || c.lead_name || "").trim();
       const customerFirst = customerRaw ? customerRaw.split(/\s+/)[0] : "";
       const customerName = customerFirst || "Customer";
+      let agentLastSeenId = 0;
+      if (c.assigned_agent_id) {
+        const [rows]: any = await conn.query(
+          `
+          SELECT last_seen_message_id
+          FROM linescout_conversation_reads
+          WHERE conversation_id = ? AND internal_user_id = ?
+          LIMIT 1
+          `,
+          [conversationId, Number(c.assigned_agent_id)]
+        );
+        agentLastSeenId = Number(rows?.[0]?.last_seen_message_id || 0);
+      }
+
+      let customerLastSeenId = 0;
+      const [customerRows]: any = await conn.query(
+        `
+        SELECT last_seen_message_id
+        FROM linescout_user_conversation_reads
+        WHERE conversation_id = ? AND user_id = ?
+        LIMIT 1
+        `,
+        [conversationId, userId]
+      );
+      customerLastSeenId = Number(customerRows?.[0]?.last_seen_message_id || 0);
 
       const isLocked =
         projectCancelled || handoffStatus === "cancelled" || handoffStatus === "delivered";
@@ -123,6 +148,8 @@ export async function GET(req: Request) {
               handoff_status: handoffStatus || null,
               cancel_reason: c.cancel_reason || null,
               customer_name: customerName,
+              agent_last_seen_message_id: agentLastSeenId,
+              customer_last_seen_message_id: customerLastSeenId,
             },
           },
           { status: 403 }
@@ -149,6 +176,9 @@ export async function GET(req: Request) {
             sender_type,
             sender_id,
             message_text,
+            reply_to_message_id,
+            reply_to_sender_type,
+            reply_to_text,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -173,6 +203,9 @@ export async function GET(req: Request) {
             sender_type,
             sender_id,
             message_text,
+            reply_to_message_id,
+            reply_to_sender_type,
+            reply_to_text,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -192,6 +225,9 @@ export async function GET(req: Request) {
             sender_type,
             sender_id,
             message_text,
+            reply_to_message_id,
+            reply_to_sender_type,
+            reply_to_text,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -271,6 +307,8 @@ export async function GET(req: Request) {
           handoff_status: handoffStatus || null,
           customer_name: customerName,
           agent_name: assignedAgentName,
+          agent_last_seen_message_id: agentLastSeenId,
+          customer_last_seen_message_id: customerLastSeenId,
 
           claimed_by: c.claimed_by || null,
           claimed_at: c.claimed_at || null,

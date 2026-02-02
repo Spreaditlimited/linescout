@@ -2,9 +2,70 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import type { Transporter } from "nodemailer";
+const nodemailer = require("nodemailer");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  return { ok: true as const, host, port, user, pass, from };
+}
+
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const smtp = getSmtpConfig();
+  if (!smtp.ok) return { ok: false as const, error: smtp.error };
+
+  const transporter: Transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.pass },
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+
+  return { ok: true as const };
+}
+
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
 
 /**
  * Same internal auth rule you used:
@@ -112,7 +173,7 @@ export async function POST(req: Request) {
     }
 
     const [rows]: any = await conn.query(
-      `SELECT id, assigned_agent_id, chat_mode, payment_status, project_status, handoff_id
+      `SELECT id, user_id, assigned_agent_id, chat_mode, payment_status, project_status, handoff_id
        FROM linescout_conversations
        WHERE id = ?
        LIMIT 1`,
@@ -126,6 +187,7 @@ export async function POST(req: Request) {
 
     const conv = rows[0];
     const assigned = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
+    const customerId = conv.user_id == null ? null : Number(conv.user_id);
 
     // Only claim paid chats that are active
     const chatMode = String(conv.chat_mode || "");
@@ -153,6 +215,33 @@ export async function POST(req: Request) {
           [auth.userId, conversationId]
         );
         await conn.commit();
+
+        if (customerId) {
+          try {
+            const [urows]: any = await conn.query(`SELECT email FROM users WHERE id = ? LIMIT 1`, [customerId]);
+            const email = String(urows?.[0]?.email || "").trim();
+            const [trows]: any = await conn.query(
+              `SELECT token FROM linescout_device_tokens WHERE is_active = 1 AND user_id = ?`,
+              [customerId]
+            );
+            const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+            await sendExpoPush(tokens, {
+              title: "Your chat has been claimed",
+              body: "A specialist has claimed your paid chat and will respond shortly.",
+              data: { kind: "paid", conversation_id: conversationId },
+            });
+            if (email) {
+              await sendEmail({
+                to: email,
+                subject: "Your LineScout paid chat has been claimed",
+                text:
+                  "A specialist has claimed your paid chat and will respond shortly. Open the LineScout app to continue the conversation.",
+                html:
+                  "<p>A specialist has claimed your paid chat and will respond shortly.</p><p>Open the LineScout app to continue the conversation.</p>",
+              });
+            }
+          } catch {}
+        }
         return NextResponse.json({ ok: true, conversation_id: conversationId, assigned_agent_id: auth.userId, taken_over: true });
       }
 
@@ -193,6 +282,33 @@ export async function POST(req: Request) {
       afterRows?.[0]?.assigned_agent_id == null ? null : Number(afterRows[0].assigned_agent_id);
 
     await conn.commit();
+
+    if (finalAssigned === auth.userId && customerId) {
+      try {
+        const [urows]: any = await conn.query(`SELECT email FROM users WHERE id = ? LIMIT 1`, [customerId]);
+        const email = String(urows?.[0]?.email || "").trim();
+        const [trows]: any = await conn.query(
+          `SELECT token FROM linescout_device_tokens WHERE is_active = 1 AND user_id = ?`,
+          [customerId]
+        );
+        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        await sendExpoPush(tokens, {
+          title: "Your chat has been claimed",
+          body: "A specialist has claimed your paid chat and will respond shortly.",
+          data: { kind: "paid", conversation_id: conversationId },
+        });
+        if (email) {
+          await sendEmail({
+            to: email,
+            subject: "Your LineScout paid chat has been claimed",
+            text:
+              "A specialist has claimed your paid chat and will respond shortly. Open the LineScout app to continue the conversation.",
+            html:
+              "<p>A specialist has claimed your paid chat and will respond shortly.</p><p>Open the LineScout app to continue the conversation.</p>",
+          });
+        }
+      } catch {}
+    }
 
     return NextResponse.json({
       ok: true,

@@ -6,6 +6,29 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
+
 type IncomingUploadFile = {
   url: string; // secure url from upload route
   public_id: string;
@@ -114,6 +137,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const conversationId = Number(body?.conversation_id || 0);
   const messageText = String(body?.message_text || "").trim();
+  const replyToId = Number(body?.reply_to_message_id || 0);
 
   const file = normalizeFile(body);
 
@@ -200,13 +224,40 @@ export async function POST(req: Request) {
       }
     }
 
+    let replyToMessageId: number | null = null;
+    let replyToSenderType: string | null = null;
+    let replyToText: string | null = null;
+    if (replyToId) {
+      const [replyRows]: any = await conn.query(
+        `
+        SELECT id, sender_type, message_text
+        FROM linescout_messages
+        WHERE id = ? AND conversation_id = ?
+        LIMIT 1
+        `,
+        [replyToId, conversationId]
+      );
+      if (replyRows?.length) {
+        replyToMessageId = Number(replyRows[0].id);
+        replyToSenderType = String(replyRows[0].sender_type || "");
+        replyToText = String(replyRows[0].message_text || "").trim().slice(0, 280);
+      }
+    }
+
     // 3) Insert agent message (allow blank text if file exists)
     const [ins]: any = await conn.query(
       `INSERT INTO linescout_messages
-         (conversation_id, sender_type, sender_id, message_text)
+         (conversation_id, sender_type, sender_id, message_text, reply_to_message_id, reply_to_sender_type, reply_to_text)
        VALUES
-         (?, 'agent', ?, ?)`,
-      [conversationId, auth.userId, hasText ? messageText : ""]
+         (?, 'agent', ?, ?, ?, ?, ?)`,
+      [
+        conversationId,
+        auth.userId,
+        hasText ? messageText : "",
+        replyToMessageId,
+        replyToSenderType,
+        replyToText,
+      ]
     );
 
     const messageId = Number(ins?.insertId || 0);
@@ -268,7 +319,7 @@ export async function POST(req: Request) {
 
     // 6) Return inserted message + its attachments
     const [rows]: any = await conn.query(
-      `SELECT id, conversation_id, sender_type, sender_id, message_text, created_at
+      `SELECT id, conversation_id, sender_type, sender_id, message_text, reply_to_message_id, reply_to_sender_type, reply_to_text, created_at
        FROM linescout_messages
        WHERE id = ?
        LIMIT 1`,
@@ -302,6 +353,49 @@ export async function POST(req: Request) {
     );
 
     await conn.commit();
+
+    // Notify customer if they are not active
+    try {
+      const [userRows]: any = await conn.query(
+        `SELECT user_id FROM linescout_conversations WHERE id = ? LIMIT 1`,
+        [conversationId]
+      );
+      const customerId = userRows?.[0]?.user_id ? Number(userRows[0].user_id) : null;
+
+      if (customerId) {
+        let shouldNotify = true;
+        const [rrows]: any = await conn.query(
+          `
+          SELECT last_seen_message_id, updated_at
+          FROM linescout_user_conversation_reads
+          WHERE conversation_id = ? AND user_id = ?
+          LIMIT 1
+          `,
+          [conversationId, customerId]
+        );
+        const lastSeen = Number(rrows?.[0]?.last_seen_message_id || 0);
+        const updatedAt = rrows?.[0]?.updated_at ? new Date(rrows[0].updated_at).getTime() : 0;
+        const activeRecently = updatedAt && Date.now() - updatedAt < 2 * 60 * 1000;
+        if (lastSeen >= messageId || activeRecently) shouldNotify = false;
+
+        if (shouldNotify) {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token
+            FROM linescout_device_tokens
+            WHERE is_active = 1 AND user_id = ?
+            `,
+            [customerId]
+          );
+          const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          await sendExpoPush(tokens, {
+            title: "New message from your agent",
+            body: (hasText ? messageText : "Attachment").slice(0, 120),
+            data: { kind: "paid", conversation_id: conversationId },
+          });
+        }
+      }
+    } catch {}
 
     return NextResponse.json({ ok: true, item: rows?.[0] || null, attachments: attRows || [] });
   } catch (e: any) {

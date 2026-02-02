@@ -96,6 +96,7 @@ export async function GET() {
           nin_verified_at,
           full_address,
           payout_status,
+          email_notifications_enabled,
           approval_status
         FROM linescout_agent_profiles
         WHERE internal_user_id = ?

@@ -5,6 +5,29 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
+
 type IncomingUploadFile = {
   url: string; // from your upload route
   public_id: string;
@@ -52,6 +75,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const conversationId = Number(body?.conversation_id || 0);
     const messageText = String(body?.message_text || "").trim();
+    const replyToId = Number(body?.reply_to_message_id || 0);
 
     const attachmentRaw: IncomingAttachment | null =
       body?.attachment && typeof body.attachment === "object" ? body.attachment : null;
@@ -131,6 +155,7 @@ export async function POST(req: Request) {
           c.payment_status,
           c.project_status,
           c.handoff_id,
+          c.assigned_agent_id,
           h.status AS handoff_status,
           h.cancel_reason
         FROM linescout_conversations c
@@ -148,6 +173,7 @@ export async function POST(req: Request) {
       }
 
       const c = crows[0];
+      const assignedAgentId = c.assigned_agent_id == null ? null : Number(c.assigned_agent_id);
 
       if (String(c.chat_mode) !== "paid_human") {
         await conn.rollback();
@@ -192,15 +218,42 @@ export async function POST(req: Request) {
         );
       }
 
+      let replyToMessageId: number | null = null;
+      let replyToSenderType: string | null = null;
+      let replyToText: string | null = null;
+      if (replyToId) {
+        const [replyRows]: any = await conn.query(
+          `
+          SELECT id, sender_type, message_text
+          FROM linescout_messages
+          WHERE id = ? AND conversation_id = ?
+          LIMIT 1
+          `,
+          [replyToId, conversationId]
+        );
+        if (replyRows?.length) {
+          replyToMessageId = Number(replyRows[0].id);
+          replyToSenderType = String(replyRows[0].sender_type || "");
+          replyToText = String(replyRows[0].message_text || "").trim().slice(0, 280);
+        }
+      }
+
       // Insert message (allow blank if attachment exists)
       const [ins]: any = await conn.query(
         `
         INSERT INTO linescout_messages
-          (conversation_id, sender_type, sender_id, message_text)
+          (conversation_id, sender_type, sender_id, message_text, reply_to_message_id, reply_to_sender_type, reply_to_text)
         VALUES
-          (?, 'user', ?, ?)
+          (?, 'user', ?, ?, ?, ?, ?)
         `,
-        [conversationId, userId, hasText ? messageText : ""]
+        [
+          conversationId,
+          userId,
+          hasText ? messageText : "",
+          replyToMessageId,
+          replyToSenderType,
+          replyToText,
+        ]
       );
 
       const messageId = Number(ins?.insertId || 0);
@@ -269,6 +322,9 @@ export async function POST(req: Request) {
           sender_type,
           sender_id,
           message_text,
+          reply_to_message_id,
+          reply_to_sender_type,
+          reply_to_text,
           created_at
         FROM linescout_messages
         WHERE id = ?
@@ -300,6 +356,56 @@ export async function POST(req: Request) {
       );
 
       await conn.commit();
+
+      // Notify assigned agent (or all) if they are not active
+      try {
+        let shouldNotify = true;
+        if (assignedAgentId) {
+          const [rrows]: any = await conn.query(
+            `
+            SELECT last_seen_message_id, updated_at
+            FROM linescout_conversation_reads
+            WHERE conversation_id = ? AND internal_user_id = ?
+            LIMIT 1
+            `,
+            [conversationId, assignedAgentId]
+          );
+          const lastSeen = Number(rrows?.[0]?.last_seen_message_id || 0);
+          const updatedAt = rrows?.[0]?.updated_at ? new Date(rrows[0].updated_at).getTime() : 0;
+          const activeRecently = updatedAt && Date.now() - updatedAt < 2 * 60 * 1000;
+          if (lastSeen >= messageId || activeRecently) shouldNotify = false;
+        }
+
+        if (shouldNotify) {
+          let tokens: string[] = [];
+          if (assignedAgentId) {
+            const [trows]: any = await conn.query(
+              `
+              SELECT token
+              FROM linescout_agent_device_tokens
+              WHERE is_active = 1 AND agent_id = ?
+              `,
+              [assignedAgentId]
+            );
+            tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          } else {
+            const [trows]: any = await conn.query(
+              `
+              SELECT token
+              FROM linescout_agent_device_tokens
+              WHERE is_active = 1
+              `
+            );
+            tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          }
+
+          await sendExpoPush(tokens, {
+            title: "New paid message",
+            body: (hasText ? messageText : "Attachment").slice(0, 120),
+            data: { kind: "paid", conversation_id: conversationId },
+          });
+        }
+      } catch {}
 
       return NextResponse.json({
         ok: true,
