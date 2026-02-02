@@ -134,8 +134,7 @@ export async function GET(req: Request) {
         : null;
     const assignedFirst = String(conv.assigned_agent_first_name || "").trim();
     const assignedLast = String(conv.assigned_agent_last_name || "").trim();
-    const assignedAgentName =
-      `${assignedFirst} ${assignedLast}`.trim() || assignedAgentUsername || null;
+    const assignedAgentName = assignedFirst || assignedAgentUsername || null;
     const customerRaw = String(conv.customer_name || conv.lead_name || "").trim();
     const customerFirst = customerRaw ? customerRaw.split(/\s+/)[0] : "";
     const customerName = customerFirst || "Customer";

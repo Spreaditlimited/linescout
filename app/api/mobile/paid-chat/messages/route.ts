@@ -132,7 +132,7 @@ export async function GET(req: Request) {
       const assignedFirst = String(c.assigned_agent_first_name || "").trim();
       const assignedLast = String(c.assigned_agent_last_name || "").trim();
       const assignedAgentName =
-        `${assignedFirst} ${assignedLast}`.trim() ||
+        assignedFirst ||
         String(c.assigned_agent_username || "").trim() ||
         null;
 
