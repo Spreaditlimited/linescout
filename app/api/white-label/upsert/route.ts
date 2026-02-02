@@ -121,8 +121,8 @@ export async function POST(req: Request) {
     if (!rows.length) {
       const [ins] = await conn.execute<mysql.ResultSetHeader>(
         `
-        INSERT INTO linescout_white_label_projects (user_id, step, status)
-        VALUES (?, 1, 'draft')
+        INSERT INTO linescout_white_label_projects (user_id, step, status, handoff_id)
+        VALUES (?, 1, 'draft', NULL)
         `,
         [userId]
       );

@@ -95,11 +95,30 @@ export async function GET(req: Request) {
         [wallet.id]
       );
 
+      const [payoutRows]: any = await conn.query(
+        `SELECT id, amount, status, rejection_reason, created_at
+         FROM linescout_user_payout_requests
+         WHERE user_id = ?
+         ORDER BY id DESC
+         LIMIT 20`,
+        [user.id]
+      );
+
+      const [bankRows]: any = await conn.query(
+        `SELECT bank_code, account_number, status
+         FROM linescout_user_payout_accounts
+         WHERE user_id = ?
+         LIMIT 1`,
+        [user.id]
+      );
+
       return NextResponse.json({
         ok: true,
         wallet: { id: wallet.id, balance: wallet.balance, currency: wallet.currency },
         virtual_account: vAccount,
         transactions: txRows || [],
+        payouts: payoutRows || [],
+        payout_account: bankRows?.[0] || null,
       });
     } finally {
       conn.release();
