@@ -37,6 +37,8 @@ export async function GET(req: Request) {
         ON h.id = c.handoff_id
       WHERE c.user_id = ?
         AND c.handoff_id IS NOT NULL
+        AND c.chat_mode = 'paid_human'
+        AND c.payment_status = 'paid'
       ORDER BY c.updated_at DESC
       LIMIT 50
       `,

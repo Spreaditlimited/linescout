@@ -98,7 +98,8 @@ export async function GET(req: Request) {
         ap.last_name AS assigned_agent_last_name,
         c.handoff_id,
         h.status AS handoff_status,
-        h.customer_name AS customer_name
+        h.customer_name AS customer_name,
+        h.context AS handoff_context
       FROM linescout_conversations c
       LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
       LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = c.assigned_agent_id
@@ -278,6 +279,7 @@ export async function GET(req: Request) {
         handoff_status: handoffStatus,
         customer_name: conv.customer_name ?? null,
         agent_name: assignedAgentName,
+        handoff_context: conv.handoff_context ?? null,
       },
     });
   } catch (e: any) {

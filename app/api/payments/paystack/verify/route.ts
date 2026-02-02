@@ -54,6 +54,65 @@ function formatNaira(amountNaira: number | null) {
   }
 }
 
+function normalizeText(value: any) {
+  const s = String(value ?? "").replace(/\s+/g, " ").trim();
+  return s || "N/A";
+}
+
+function formatQuantityTier(value: any) {
+  if (value === "test") return "Test run (50–200 units)";
+  if (value === "scale") return "Scale run (1,000+ units)";
+  return "N/A";
+}
+
+function formatBrandingLevel(value: any) {
+  if (value === "logo") return "Logo only";
+  if (value === "packaging") return "Custom packaging";
+  if (value === "mould") return "Full custom mould";
+  return "N/A";
+}
+
+function formatReferenceLink(link: any, noLink: any) {
+  const safeLink = String(link ?? "").trim();
+  if (safeLink) return safeLink;
+  if (noLink) return "No reference link provided";
+  return "N/A";
+}
+
+function buildWhiteLabelBrief(row: any) {
+  if (!row) return "";
+
+  const category = normalizeText(row.category);
+  const productName = normalizeText(row.product_name);
+  const productDesc = normalizeText(row.product_desc);
+  const referenceLink = formatReferenceLink(row.reference_link, row.no_link);
+  const quantityTier = formatQuantityTier(row.quantity_tier);
+  const brandingLevel = formatBrandingLevel(row.branding_level);
+  const targetCost =
+    row.target_landed_cost_naira != null && row.target_landed_cost_naira !== ""
+      ? `₦${row.target_landed_cost_naira}`
+      : "N/A";
+
+  return [
+    "WHITE LABEL PROJECT BRIEF",
+    "",
+    `Category: ${category}`,
+    `Product name: ${productName}`,
+    "",
+    "Description:",
+    productDesc || "N/A",
+    "",
+    "Reference link:",
+    referenceLink,
+    "",
+    `Quantity tier: ${quantityTier}`,
+    "",
+    `Branding level: ${brandingLevel}`,
+    "",
+    `Target landed cost: ${targetCost}`,
+  ].join("\n");
+}
+
 function firstNameFromUser(u: any) {
   const candidates = [
     u?.first_name,
@@ -438,11 +497,37 @@ export async function POST(req: Request) {
         }
       }
 
+      let whiteLabelBrief = "";
+      if (routeType === "white_label") {
+        const [wlRows]: any = await conn.query(
+          `
+          SELECT
+            category,
+            product_name,
+            product_desc,
+            reference_link,
+            no_link,
+            quantity_tier,
+            branding_level,
+            target_landed_cost_naira
+          FROM linescout_white_label_projects
+          WHERE user_id = ?
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+          [userId]
+        );
+
+        if (wlRows && wlRows.length) {
+          whiteLabelBrief = buildWhiteLabelBrief(wlRows[0]);
+        }
+      }
+
       const contextNote = [
         "Created from in-app Paystack payment.",
         sourceConversationId ? `Source AI conversation_id: ${sourceConversationId}` : "",
         aiContextBlock,
-        "Project brief to be provided in paid chat.",
+        whiteLabelBrief || "Project brief to be provided in paid chat.",
       ]
         .filter(Boolean)
         .join("\n");
@@ -452,9 +537,9 @@ export async function POST(req: Request) {
         INSERT INTO linescout_handoffs
           (token, handoff_type, email, context, status, paid_at, conversation_id)
         VALUES
-          (?, 'sourcing', ?, ?, 'pending', NOW(), ?)
+          (?, ?, ?, ?, 'pending', NOW(), ?)
         `,
-        [token, payEmail, contextNote, conversationId]
+        [token, routeType === "white_label" ? "white_label" : "sourcing", payEmail, contextNote, conversationId]
       );
 
       const handoffId = Number(insH?.insertId || 0);
