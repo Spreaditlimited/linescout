@@ -44,8 +44,8 @@ export async function GET(req: Request) {
     const conn = await db.getConnection();
     try {
       /**
-       * Last message per conversation (by max(id)).
-       * sort_at ensures correct ordering even if c.updated_at is not maintained perfectly.
+       * Last non-empty message per conversation.
+       * Avoids "No messages yet" when the latest message is empty (e.g., file-only).
        */
       const [rows]: any = await conn.query(
         `
@@ -59,22 +59,34 @@ export async function GET(req: Request) {
           c.handoff_id,
           c.updated_at,
           c.created_at,
-          lm.message_text AS last_message_text,
-          lm.created_at AS last_message_at,
-          COALESCE(lm.created_at, c.updated_at, c.created_at) AS sort_at
+          (
+            SELECT m.message_text
+            FROM linescout_messages m
+            WHERE m.conversation_id = c.id
+              AND m.message_text IS NOT NULL
+              AND TRIM(m.message_text) <> ''
+            ORDER BY m.id DESC
+            LIMIT 1
+          ) AS last_message_text,
+          (
+            SELECT m.created_at
+            FROM linescout_messages m
+            WHERE m.conversation_id = c.id
+            ORDER BY m.id DESC
+            LIMIT 1
+          ) AS last_message_at,
+          COALESCE(
+            (
+              SELECT m.created_at
+              FROM linescout_messages m
+              WHERE m.conversation_id = c.id
+              ORDER BY m.id DESC
+              LIMIT 1
+            ),
+            c.updated_at,
+            c.created_at
+          ) AS sort_at
         FROM linescout_conversations c
-        LEFT JOIN (
-          SELECT m1.conversation_id, m1.message_text, m1.created_at
-          FROM linescout_messages m1
-          JOIN (
-            SELECT conversation_id, MAX(id) AS max_id
-            FROM linescout_messages
-            GROUP BY conversation_id
-          ) x
-            ON x.conversation_id = m1.conversation_id
-           AND x.max_id = m1.id
-        ) lm
-          ON lm.conversation_id = c.id
         WHERE c.user_id = ?
           AND c.route_type = ?
         ORDER BY sort_at DESC, c.id DESC

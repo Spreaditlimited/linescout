@@ -74,6 +74,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const conversationId = Number(url.searchParams.get("conversation_id") || 0);
   const afterId = Number(url.searchParams.get("after_id") || 0);
+  const beforeId = Number(url.searchParams.get("before_id") || 0);
   const limitRaw = Number(url.searchParams.get("limit") || 80);
   const limit = Math.max(10, Math.min(200, limitRaw));
 
@@ -150,21 +151,70 @@ export async function GET(req: Request) {
     }
 
     // 3) Messages
-    const [rows]: any = await conn.query(
-      `SELECT
-         id,
-         conversation_id,
-         sender_type,
-         sender_id,
-         message_text,
-         created_at
-       FROM linescout_messages
-       WHERE conversation_id = ?
-         AND id > ?
-       ORDER BY id ASC
-       LIMIT ?`,
-      [conversationId, afterId, limit]
-    );
+    let rows: any[] = [];
+    let hasMore = false;
+
+    if (beforeId > 0) {
+      const [res]: any = await conn.query(
+        `SELECT
+           id,
+           conversation_id,
+           sender_type,
+           sender_id,
+           message_text,
+           created_at
+         FROM linescout_messages
+         WHERE conversation_id = ?
+           AND id < ?
+         ORDER BY id DESC
+         LIMIT ?`,
+        [conversationId, beforeId, limit + 1]
+      );
+      rows = res || [];
+      if (rows.length > limit) {
+        hasMore = true;
+        rows = rows.slice(0, limit);
+      }
+      rows = rows.reverse();
+    } else if (afterId > 0) {
+      const [res]: any = await conn.query(
+        `SELECT
+           id,
+           conversation_id,
+           sender_type,
+           sender_id,
+           message_text,
+           created_at
+         FROM linescout_messages
+         WHERE conversation_id = ?
+           AND id > ?
+         ORDER BY id ASC
+         LIMIT ?`,
+        [conversationId, afterId, limit]
+      );
+      rows = res || [];
+    } else {
+      const [res]: any = await conn.query(
+        `SELECT
+           id,
+           conversation_id,
+           sender_type,
+           sender_id,
+           message_text,
+           created_at
+         FROM linescout_messages
+         WHERE conversation_id = ?
+         ORDER BY id DESC
+         LIMIT ?`,
+        [conversationId, limit + 1]
+      );
+      rows = res || [];
+      if (rows.length > limit) {
+        hasMore = true;
+        rows = rows.slice(0, limit);
+      }
+      rows = rows.reverse();
+    }
 
     const lastId = rows?.length ? Number(rows[rows.length - 1].id) : afterId;
 
@@ -219,6 +269,7 @@ export async function GET(req: Request) {
       assigned_agent_username: assignedAgentUsername,
       items: rows || [],
       last_id: lastId,
+      has_more: hasMore,
       attachments,
       attachments_by_message_id: attachmentsByMessageId,
       meta: {
