@@ -89,7 +89,6 @@ export async function POST(req: Request) {
             human_message_limit = 0,
             human_message_used = 0,
             human_access_expires_at = NULL,
-            project_status = 'cancelled',
             updated_at = NOW()
         WHERE id = ? AND user_id = ?
         `,
@@ -119,7 +118,6 @@ export async function POST(req: Request) {
             human_message_limit = 0,
             human_message_used = 0,
             human_access_expires_at = NULL,
-            project_status = 'cancelled',
             updated_at = NOW()
         WHERE id = ? AND user_id = ?
         `,

@@ -78,13 +78,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
 
-      if (String(convRows[0].project_status || "") === "cancelled") {
-        await conn.rollback();
-        return NextResponse.json(
-          { ok: false, error: "This project is cancelled." },
-          { status: 403 }
-        );
-      }
+      // AI chats are for clarity only and should not be blocked by project status.
 
       // 2) Insert USER message
       const [insUser]: any = await conn.query(

@@ -58,6 +58,10 @@ export async function GET(req: Request) {
           [conversationId, userId]
         );
         row = rows?.[0] || null;
+
+        if (row && (row.handoff_id == null || String(row.chat_mode || "") !== "paid_human")) {
+          row = null;
+        }
       }
 
       if (!row?.id) {

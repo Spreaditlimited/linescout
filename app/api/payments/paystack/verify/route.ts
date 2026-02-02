@@ -403,9 +403,45 @@ export async function POST(req: Request) {
       if (!conversationId) throw new Error("Failed to create paid conversation");
 
       // 2) Create handoff and link to conversation_id
+      let aiContextBlock = "";
+      if (sourceConversationId) {
+        const [ctxRows]: any = await conn.query(
+          `
+          SELECT sender_type, message_text
+          FROM linescout_messages
+          WHERE conversation_id = ?
+          ORDER BY id DESC
+          LIMIT 12
+          `,
+          [sourceConversationId]
+        );
+
+        const trimmed = (ctxRows || [])
+          .reverse()
+          .map((r: any) => {
+            const role =
+              r.sender_type === "user"
+                ? "User"
+                : r.sender_type === "ai"
+                ? "LineScout"
+                : "Agent";
+            const text = String(r.message_text || "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 220);
+            return text ? `${role}: ${text}` : "";
+          })
+          .filter(Boolean);
+
+        if (trimmed.length) {
+          aiContextBlock = ["AI context (latest messages):", ...trimmed].join("\n");
+        }
+      }
+
       const contextNote = [
         "Created from in-app Paystack payment.",
         sourceConversationId ? `Source AI conversation_id: ${sourceConversationId}` : "",
+        aiContextBlock,
         "Project brief to be provided in paid chat.",
       ]
         .filter(Boolean)

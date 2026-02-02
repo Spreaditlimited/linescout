@@ -36,6 +36,7 @@ export async function GET(req: Request) {
       LEFT JOIN linescout_handoffs h
         ON h.id = c.handoff_id
       WHERE c.user_id = ?
+        AND c.handoff_id IS NOT NULL
       ORDER BY c.updated_at DESC
       LIMIT 50
       `,
