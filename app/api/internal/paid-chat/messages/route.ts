@@ -99,8 +99,16 @@ export async function GET(req: Request) {
         c.handoff_id,
         h.status AS handoff_status,
         h.customer_name AS customer_name,
-        h.context AS handoff_context
+        h.context AS handoff_context,
+        (
+          SELECT l.name
+          FROM linescout_leads l
+          WHERE l.email = u.email
+          ORDER BY l.created_at DESC
+          LIMIT 1
+        ) AS lead_name
       FROM linescout_conversations c
+      LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
       LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = c.assigned_agent_id
       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
@@ -128,6 +136,9 @@ export async function GET(req: Request) {
     const assignedLast = String(conv.assigned_agent_last_name || "").trim();
     const assignedAgentName =
       `${assignedFirst} ${assignedLast}`.trim() || assignedAgentUsername || null;
+    const customerRaw = String(conv.customer_name || conv.lead_name || "").trim();
+    const customerFirst = customerRaw ? customerRaw.split(/\s+/)[0] : "";
+    const customerName = customerFirst || "Customer";
 
     const handoffId = conv.handoff_id == null ? null : Number(conv.handoff_id);
     const handoffStatusRaw = String(conv.handoff_status || "").trim();
@@ -277,7 +288,7 @@ export async function GET(req: Request) {
         project_status: projectStatus || null,
         handoff_id: handoffId,
         handoff_status: handoffStatus,
-        customer_name: conv.customer_name ?? null,
+        customer_name: customerName,
         agent_name: assignedAgentName,
         handoff_context: conv.handoff_context ?? null,
       },
