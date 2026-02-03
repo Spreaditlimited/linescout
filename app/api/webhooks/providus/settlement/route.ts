@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getProvidusConfig, providusSignature } from "@/lib/providus";
+import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,36 @@ function responsePayload(sessionId: string, responseCode: "00" | "01" | "02" | "
     responseMessage: message,
     responseCode,
   };
+}
+
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const nodemailer = require("nodemailer") as any;
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+
+  return { ok: true as const };
 }
 
 export async function POST(req: Request) {
@@ -143,6 +174,88 @@ export async function POST(req: Request) {
       newBalance,
       walletId,
     ]);
+
+    // Try to auto-apply to a pending Providus quote payment if there's a single exact match.
+    if (acct.owner_type === "user") {
+      const [pendingRows]: any = await conn.query(
+        `SELECT id, quote_id, handoff_id, amount, purpose
+         FROM linescout_quote_payments
+         WHERE user_id = ?
+           AND method = 'providus'
+           AND status = 'pending'
+           AND amount = ?
+         ORDER BY id ASC`,
+        [acct.owner_id, creditAmount]
+      );
+
+      if (pendingRows?.length === 1) {
+        const qp = pendingRows[0];
+        await conn.query(
+          `UPDATE linescout_quote_payments
+           SET status = 'paid',
+               paid_at = NOW()
+           WHERE id = ?`,
+          [qp.id]
+        );
+
+        const purpose = String(qp.purpose || "");
+        const handoffPurpose =
+          purpose === "deposit" ? "downpayment" : purpose === "shipping_payment" ? "shipping_payment" : "full_payment";
+        if (qp.handoff_id) {
+          await conn.query(
+            `INSERT INTO linescout_handoff_payments
+             (handoff_id, amount, currency, purpose, note, paid_at, created_at)
+             VALUES (?, ?, ?, ?, 'Quote payment (providus)', NOW(), NOW())`,
+            [qp.handoff_id, creditAmount, currency || "NGN", handoffPurpose]
+          );
+        }
+
+        const [userRows]: any = await conn.query(
+          `SELECT email, display_name
+           FROM users
+           WHERE id = ?
+           LIMIT 1`,
+          [acct.owner_id]
+        );
+        const email = String(userRows?.[0]?.email || "");
+        const displayName = String(userRows?.[0]?.display_name || "");
+        const title = "Payment received";
+        const purposeLabel =
+          purpose === "deposit" ? "Deposit" : purpose === "shipping_payment" ? "Shipping payment" : "Product payment";
+
+        await conn.query(
+          `INSERT INTO linescout_notifications
+           (target, user_id, title, body, data_json)
+           VALUES ('user', ?, ?, ?, ?)`,
+          [
+            acct.owner_id,
+            title,
+            `${purposeLabel} of NGN ${creditAmount.toLocaleString()} has been received.`,
+            JSON.stringify({
+              type: "quote_payment",
+              quote_id: qp.quote_id,
+              handoff_id: qp.handoff_id,
+              amount: creditAmount,
+              purpose,
+            }),
+          ]
+        );
+
+        if (email) {
+          const emailPack = buildNoticeEmail({
+            subject: "Payment received",
+            title: "Payment received",
+            lines: [
+              `Amount: NGN ${creditAmount.toLocaleString()}`,
+              `Purpose: ${purposeLabel}`,
+              displayName ? `Customer: ${displayName}` : "",
+            ].filter(Boolean),
+            footerNote: "This email was sent because a payment was confirmed on your LineScout quote.",
+          });
+          await sendEmail({ to: email, subject: emailPack.subject, text: emailPack.text, html: emailPack.html });
+        }
+      }
+    }
 
     await conn.commit();
 

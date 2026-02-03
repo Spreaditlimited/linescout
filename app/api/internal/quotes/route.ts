@@ -237,11 +237,17 @@ export async function POST(req: Request) {
   const agent_percent = num(body?.agent_percent, 0);
   const agent_commitment_percent = num(body?.agent_commitment_percent, 0);
   const commitment_due_ngn = num(body?.commitment_due_ngn, 0);
+  const deposit_enabled = body?.deposit_enabled === true || body?.deposit_enabled === 1;
+  const deposit_percent_raw = num(body?.deposit_percent, 0);
+  const deposit_percent = deposit_enabled ? deposit_percent_raw : 0;
   const payment_purpose = String(body?.payment_purpose || "full_product_payment");
   const currency = String(body?.currency || "NGN");
 
   if (exchange_rate_rmb <= 0 || exchange_rate_usd <= 0 || shipping_rate_usd <= 0) {
     return NextResponse.json({ ok: false, error: "Exchange rates and shipping rate must be greater than 0" }, { status: 400 });
+  }
+  if (deposit_enabled && (deposit_percent < 1 || deposit_percent > 100)) {
+    return NextResponse.json({ ok: false, error: "Deposit percent must be between 1 and 100" }, { status: 400 });
   }
   if (shipping_rate_unit !== "per_kg" && shipping_rate_unit !== "per_cbm") {
     return NextResponse.json({ ok: false, error: "Invalid shipping_rate_unit" }, { status: 400 });
@@ -261,11 +267,12 @@ export async function POST(req: Request) {
         exchange_rate_rmb, exchange_rate_usd,
         shipping_type_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
+        deposit_enabled, deposit_percent,
         items_json,
         total_product_rmb, total_product_ngn, total_weight_kg, total_cbm,
         total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
         created_by, updated_by)
-       VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+       VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
       [
         handoff_id,
         token,
@@ -280,6 +287,8 @@ export async function POST(req: Request) {
         agent_percent,
         agent_commitment_percent,
         commitment_due_ngn,
+        deposit_enabled ? 1 : 0,
+        deposit_percent || null,
         JSON.stringify(items),
         totals.totalProductRmb,
         totals.totalProductNgn,

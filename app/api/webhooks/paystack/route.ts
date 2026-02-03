@@ -122,6 +122,8 @@ export async function POST(req: Request) {
           ]);
           const userEmail = String(urows?.[0]?.email || "").trim();
           const userName = String(urows?.[0]?.display_name || "").trim();
+          const fallbackUser = userEmail ? userEmail.split("@")[0] : "";
+          const recipientName = userName || fallbackUser || null;
 
           await conn.query(
             `UPDATE linescout_user_payout_requests
@@ -139,7 +141,7 @@ export async function POST(req: Request) {
               title: "Payout completed",
               lines: [
                 `Amount: ${currency} ${Number(row.amount || 0).toLocaleString()}`,
-                userName ? `Recipient: ${userName}` : "Recipient: LineScout user",
+                `Recipient: ${recipientName || "User"}`,
                 "Your payout has been completed successfully.",
               ],
             });
@@ -173,6 +175,8 @@ export async function POST(req: Request) {
           const agentName = `${String(arows?.[0]?.first_name || "").trim()} ${String(
             arows?.[0]?.last_name || ""
           ).trim()}`.trim();
+          const fallbackAgent = agentEmail ? agentEmail.split("@")[0] : "";
+          const recipientName = agentName || fallbackAgent || null;
 
           await conn.query(
             `UPDATE linescout_agent_payout_requests
@@ -191,7 +195,7 @@ export async function POST(req: Request) {
               title: "Payout completed",
               lines: [
                 `Amount: ${currency} ${amount.toLocaleString()}`,
-                agentName ? `Recipient: ${agentName}` : "Recipient: LineScout agent",
+                `Recipient: ${recipientName || "Agent"}`,
                 "Your payout has been completed successfully.",
               ],
             });
@@ -211,6 +215,134 @@ export async function POST(req: Request) {
 
   if (event !== "charge.success") {
     return NextResponse.json({ ok: true, ignored: true });
+  }
+
+  if (String(data?.metadata?.payment_kind || "") === "quote" || data?.metadata?.quote_id) {
+    const reference = String(data?.reference || data?.transaction_reference || data?.id || "").trim();
+    const amountNgn = toNaira(data?.amount);
+    const currency = String(data?.currency || "NGN").trim().toUpperCase();
+
+    if (!reference || !amountNgn || amountNgn <= 0) {
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+
+    const conn = await db.getConnection();
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT id, quote_id, handoff_id, user_id, purpose, status
+         FROM linescout_quote_payments
+         WHERE provider_ref = ?
+         LIMIT 1`,
+        [reference]
+      );
+      if (!rows?.length) {
+        return NextResponse.json({ ok: true, ignored: true });
+      }
+
+      const row = rows[0];
+      if (String(row.status || "") === "paid") {
+        return NextResponse.json({ ok: true, duplicate: true });
+      }
+
+      await conn.beginTransaction();
+      await conn.query(
+        `UPDATE linescout_quote_payments
+         SET status = 'paid',
+             paid_at = NOW()
+         WHERE id = ?`,
+        [row.id]
+      );
+
+      const purpose = String(row.purpose || "");
+      const handoffPurpose =
+        purpose === "deposit" ? "downpayment" : purpose === "shipping_payment" ? "shipping_payment" : "full_payment";
+
+      if (row.handoff_id) {
+        await conn.query(
+          `INSERT INTO linescout_handoff_payments
+           (handoff_id, amount, currency, purpose, note, paid_at, created_at)
+           VALUES (?, ?, ?, ?, 'Quote payment (paystack)', NOW(), NOW())`,
+          [row.handoff_id, amountNgn, currency || "NGN", handoffPurpose]
+        );
+      }
+
+      await conn.commit();
+
+      // Notify customer on successful quote payment
+      const userId = Number(row.user_id || 0) || null;
+      let email = "";
+      let displayName = "";
+
+      if (userId) {
+        const [uRows]: any = await conn.query(
+          `SELECT email, display_name
+           FROM users
+           WHERE id = ?
+           LIMIT 1`,
+          [userId]
+        );
+        email = String(uRows?.[0]?.email || "");
+        displayName = String(uRows?.[0]?.display_name || "");
+      }
+
+      if (!email && row.handoff_id) {
+        const [hRows]: any = await conn.query(
+          `SELECT email, customer_name
+           FROM linescout_handoffs
+           WHERE id = ?
+           LIMIT 1`,
+          [row.handoff_id]
+        );
+        email = String(hRows?.[0]?.email || "");
+        displayName = String(hRows?.[0]?.customer_name || "");
+      }
+
+      const title = "Payment received";
+      const purposeLabel =
+        purpose === "deposit" ? "Deposit" : purpose === "shipping_payment" ? "Shipping payment" : "Product payment";
+      if (userId) {
+        await conn.query(
+          `INSERT INTO linescout_notifications
+           (target, user_id, title, body, data_json)
+           VALUES ('user', ?, ?, ?, ?)`,
+          [
+            userId,
+            title,
+            `${purposeLabel} of NGN ${amountNgn.toLocaleString()} has been received.`,
+            JSON.stringify({
+              type: "quote_payment",
+              quote_id: row.quote_id,
+              handoff_id: row.handoff_id,
+              amount: amountNgn,
+              purpose,
+            }),
+          ]
+        );
+      }
+
+      if (email) {
+        const emailPack = buildNoticeEmail({
+          subject: "Payment received",
+          title: "Payment received",
+          lines: [
+            `Amount: NGN ${amountNgn.toLocaleString()}`,
+            `Purpose: ${purposeLabel}`,
+            displayName ? `Customer: ${displayName}` : "",
+          ].filter(Boolean),
+          footerNote: "This email was sent because a payment was confirmed on your LineScout quote.",
+        });
+        await sendEmail({ to: email, subject: emailPack.subject, text: emailPack.text, html: emailPack.html });
+      }
+
+      return NextResponse.json({ ok: true });
+    } catch (e: any) {
+      try {
+        await conn.rollback();
+      } catch {}
+      return NextResponse.json({ ok: false, error: e?.message || "Failed" }, { status: 500 });
+    } finally {
+      conn.release();
+    }
   }
 
   const reference = String(data?.reference || data?.transaction_reference || data?.id || "").trim();

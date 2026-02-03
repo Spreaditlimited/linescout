@@ -44,6 +44,8 @@ type QuoteRow = {
   token: string;
   items_json: string;
   payment_purpose?: string | null;
+  deposit_enabled?: number | null;
+  deposit_percent?: number | null;
   exchange_rate_rmb: number;
   exchange_rate_usd: number;
   shipping_type_id?: number | null;
@@ -102,6 +104,8 @@ export default function QuoteEditPage() {
   const [agentCommitPercent, setAgentCommitPercent] = useState("40");
   const [commitmentDue, setCommitmentDue] = useState("0");
   const [paymentPurpose, setPaymentPurpose] = useState("full_product_payment");
+  const [depositEnabled, setDepositEnabled] = useState(false);
+  const [depositPercent, setDepositPercent] = useState("0");
 
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
 
@@ -140,6 +144,8 @@ export default function QuoteEditPage() {
         setAgentCommitPercent(String(q.agent_commitment_percent ?? settings.agent_commitment_percent ?? 0));
         setCommitmentDue(String(q.commitment_due_ngn ?? settings.commitment_due_ngn ?? 0));
         setPaymentPurpose(String(q.payment_purpose || "full_product_payment"));
+        setDepositEnabled(Boolean(q.deposit_enabled));
+        setDepositPercent(String(q.deposit_percent ?? 0));
       } catch (e: any) {
         setErr(e?.message || "Failed to load");
       } finally {
@@ -203,6 +209,8 @@ export default function QuoteEditPage() {
           agent_commitment_percent: Number(agentCommitPercent),
           commitment_due_ngn: Number(commitmentDue),
           payment_purpose: paymentPurpose,
+          deposit_enabled: depositEnabled,
+          deposit_percent: Number(depositPercent || 0),
           currency: "NGN",
         }),
       });
@@ -383,6 +391,36 @@ export default function QuoteEditPage() {
               {opt.label}
             </button>
           ))}
+        </div>
+        <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold text-neutral-200">Enable deposit</div>
+              <div className="text-[11px] text-neutral-500">
+                Allow customer to pay a deposit before the full product payment.
+              </div>
+            </div>
+            <button
+              onClick={() => setDepositEnabled((v) => !v)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                depositEnabled ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+              }`}
+            >
+              {depositEnabled ? "On" : "Off"}
+            </button>
+          </div>
+          {depositEnabled ? (
+            <div className="mt-3">
+              <label className="text-[11px] text-neutral-500">Deposit percent</label>
+              <input
+                value={depositPercent}
+                onChange={(e) => setDepositPercent(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="30"
+                inputMode="decimal"
+              />
+            </div>
+          ) : null}
         </div>
       </div>
 

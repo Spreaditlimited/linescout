@@ -275,13 +275,22 @@ export default function AdminPayoutRequestsPage() {
                 Admin
               </Link>{" "}
               <span className="text-neutral-700">/</span>{" "}
-              <span className="text-neutral-300">Payout Requests</span>
+              <span className="text-neutral-300">Payouts</span>
             </div>
 
-            <h2 className="mt-2 text-lg font-semibold text-neutral-100">Payout Requests</h2>
+            <h2 className="mt-2 text-lg font-semibold text-neutral-100">Payouts</h2>
             <p className="text-sm text-neutral-400">
               Review and pay agents. This list is grouped by payout request status.
             </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link href="/internal/admin/payouts" className={`${tabBtn} ${tabActive}`}>
+                Agents
+              </Link>
+              <Link href="/internal/user-payouts" className={`${tabBtn} ${tabIdle}`}>
+                Users
+              </Link>
+            </div>
           </div>
 
           <div className="flex w-full flex-col gap-2 lg:w-auto lg:items-end">

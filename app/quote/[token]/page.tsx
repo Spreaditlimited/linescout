@@ -82,6 +82,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
         markupPercent={markupPercent}
         shippingRates={shippingRates}
         defaultShippingTypeId={quote.shipping_type_id}
+        depositEnabled={!!quote.deposit_enabled}
+        depositPercent={Number(quote.deposit_percent || 0)}
+        commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
       />
     );
   } finally {

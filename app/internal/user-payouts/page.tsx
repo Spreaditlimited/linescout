@@ -81,8 +81,19 @@ export default function UserPayoutsPage() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-white">User Payouts</h1>
+        <h1 className="text-2xl font-semibold text-white">Payouts</h1>
         <p className="mt-1 text-sm text-neutral-400">Approve, reject, and mark payouts paid.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href="/internal/admin/payouts"
+            className="rounded-xl border border-neutral-800 bg-neutral-900/60 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 hover:bg-neutral-900"
+          >
+            Agents
+          </a>
+          <span className="rounded-xl border border-neutral-700 bg-white/10 px-3 py-2 text-xs font-semibold text-white">
+            Users
+          </span>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap gap-3">

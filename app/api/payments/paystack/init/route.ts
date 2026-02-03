@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +19,22 @@ function rand(len: number) {
   return Math.random().toString(36).slice(2, 2 + len).toUpperCase();
 }
 
-// Prices in kobo
-function amountForPurpose(purpose: string) {
-  // Keep it explicit and boring. You can move to env later.
-  if (purpose === "sourcing") return 100000; // ₦100,000
+// Prices in kobo (sourcing uses admin settings)
+async function amountForPurpose(purpose: string) {
   if (purpose === "business_plan") return 2000000; // ₦20,000 (example)
-  return 10000000;
+  if (purpose !== "sourcing") return 10000000;
+
+  const conn = await db.getConnection();
+  try {
+    const [rows]: any = await conn.query(
+      "SELECT commitment_due_ngn FROM linescout_settings ORDER BY id DESC LIMIT 1"
+    );
+    const ngn = Number(rows?.[0]?.commitment_due_ngn || 0);
+    const safeNgn = Number.isFinite(ngn) && ngn > 0 ? ngn : 100000;
+    return Math.round(safeNgn * 100);
+  } finally {
+    conn.release();
+  }
 }
 
 export async function POST(req: Request) {
@@ -63,7 +74,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const amount = amountForPurpose(purpose);
+    const amount = await amountForPurpose(purpose);
 
     // Unique, traceable reference
     const userId = Number((u as any).id || 0);
