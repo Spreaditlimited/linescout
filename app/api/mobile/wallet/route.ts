@@ -93,9 +93,17 @@ async function ensureVirtualAccount(
     if (existingRes.ok) {
       customerCode = String(existingRes.data?.customer_code || "").trim();
       const existingPhone = String(existingRes.data?.phone || "").trim();
-      if (!existingPhone) {
+      const existingFirst = String(existingRes.data?.first_name || "").trim();
+      const existingLast = String(existingRes.data?.last_name || "").trim();
+
+      const needsName = !existingFirst || !existingLast;
+      const needsPhone = !existingPhone;
+
+      if (needsName || needsPhone) {
         let updated = false;
-        const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
+        const candidates = needsPhone
+          ? (phoneCandidates.length ? phoneCandidates : [phoneValue!])
+          : [existingPhone];
         for (const candidate of candidates) {
           const updateRes = await paystackUpdateCustomer(customerCode, {
             first_name: firstName,
@@ -107,7 +115,7 @@ async function ensureVirtualAccount(
             break;
           }
         }
-        if (!updated) throw new Error("Paystack customer phone update failed.");
+        if (!updated) throw new Error("Paystack customer update failed.");
       }
     } else {
       let customerRes: any = null;
