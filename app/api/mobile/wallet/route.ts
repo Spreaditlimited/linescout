@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/lib/providus";
+import { paystackAssignDedicatedAccount, paystackCreateCustomer } from "@/lib/paystack";
+import { selectPaymentProvider } from "@/lib/payment-provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,15 +34,68 @@ async function ensureWallet(conn: any, userId: number) {
   return created?.[0] as WalletRow;
 }
 
-async function ensureVirtualAccount(conn: any, userId: number, accountName: string) {
+async function ensureVirtualAccount(
+  conn: any,
+  userId: number,
+  accountName: string,
+  provider: "providus" | "paystack"
+) {
   const [rows]: any = await conn.query(
     `SELECT account_number, account_name
      FROM linescout_virtual_accounts
-     WHERE owner_type = 'user' AND owner_id = ? AND provider = 'providus'
+     WHERE owner_type = 'user' AND owner_id = ? AND provider = ?
      LIMIT 1`,
-    [userId]
+    [userId, provider]
   );
   if (rows?.length) return rows[0];
+
+  if (provider === "paystack") {
+    const [userRows]: any = await conn.query(
+      `SELECT email, display_name FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    const email = String(userRows?.[0]?.email || "").trim();
+    const displayName = String(userRows?.[0]?.display_name || "").trim();
+    const [firstName, ...rest] = displayName.split(" ");
+    const lastName = rest.join(" ");
+
+    const customerRes = await paystackCreateCustomer({
+      email,
+      first_name: firstName || undefined,
+      last_name: lastName || undefined,
+    });
+    if (!customerRes.ok) throw new Error(customerRes.error);
+
+    const customerCode = String(customerRes.data?.customer_code || "").trim();
+    if (!customerCode) throw new Error("Paystack customer_code missing");
+
+    const dedicatedRes = await paystackAssignDedicatedAccount({ customer: customerCode });
+    if (!dedicatedRes.ok) throw new Error(dedicatedRes.error);
+
+    const accountNumber = String(dedicatedRes.data?.account_number || "").trim();
+    const accountNameOut = String(dedicatedRes.data?.account_name || "").trim();
+    const bankName = String(dedicatedRes.data?.bank?.name || "").trim();
+    const bankCode = String(dedicatedRes.data?.bank?.slug || "").trim();
+
+    if (!accountNumber) throw new Error("Paystack account_number missing");
+
+    await conn.query(
+      `INSERT INTO linescout_virtual_accounts
+        (owner_type, owner_id, provider, account_number, account_name, bank_name, bank_code, provider_ref, meta_json)
+       VALUES ('user', ?, 'paystack', ?, ?, ?, ?, ?, ?)`,
+      [
+        userId,
+        accountNumber,
+        accountNameOut || accountName || `User ${userId}`,
+        bankName || null,
+        bankCode || null,
+        customerCode,
+        JSON.stringify(dedicatedRes.data || {}),
+      ]
+    );
+
+    return { account_number: accountNumber, account_name: accountNameOut || accountName };
+  }
 
   const cfg = getProvidusConfig();
   if (!cfg.ok) throw new Error(cfg.error);
@@ -75,9 +130,15 @@ async function ensureVirtualAccount(conn: any, userId: number, accountName: stri
 
   await conn.query(
     `INSERT INTO linescout_virtual_accounts
-      (owner_type, owner_id, provider, account_number, account_name, bvn)
-     VALUES ('user', ?, 'providus', ?, ?, ?)`,
-    [userId, String(data.account_number), String(data.account_name || accountName || ""), String(data.bvn || "")]
+      (owner_type, owner_id, provider, account_number, account_name, bvn, meta_json)
+     VALUES ('user', ?, 'providus', ?, ?, ?, ?)`,
+    [
+      userId,
+      String(data.account_number),
+      String(data.account_name || accountName || ""),
+      String(data.bvn || ""),
+      JSON.stringify(data || {}),
+    ]
   );
 
   return { account_number: String(data.account_number), account_name: String(data.account_name || "") };
@@ -96,7 +157,8 @@ export async function GET(req: Request) {
       const accountName = displayName || (user.email ? user.email.split("@")[0] : `User ${user.id}`);
 
       const wallet = await ensureWallet(conn, user.id);
-      const vAccount = await ensureVirtualAccount(conn, user.id, accountName);
+      const { provider } = await selectPaymentProvider(conn, "user", user.id);
+      const vAccount = await ensureVirtualAccount(conn, user.id, accountName, provider);
 
       const [txRows]: any = await conn.query(
         `SELECT id, type, amount, currency, reason, reference_type, reference_id, created_at
@@ -128,6 +190,7 @@ export async function GET(req: Request) {
         ok: true,
         wallet: { id: wallet.id, balance: wallet.balance, currency: wallet.currency },
         virtual_account: vAccount,
+        provider_used: provider,
         transactions: txRows || [],
         payouts: payoutRows || [],
         payout_account: bankRows?.[0] || null,

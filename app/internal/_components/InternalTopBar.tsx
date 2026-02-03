@@ -236,6 +236,7 @@ export default function InternalTopBar() {
     adminItems.push({ label: "Notifications", href: "/internal/notifications" });
     adminItems.push({ label: "Wallets", href: "/internal/wallets" });
     adminItems.push({ label: "User Payouts", href: "/internal/user-payouts" });
+    adminItems.push({ label: "Payments", href: "/internal/payments" });
     adminItems.push({ label: "Settings", href: "/internal/settings" });
   }
 
