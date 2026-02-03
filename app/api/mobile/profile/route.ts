@@ -118,6 +118,14 @@ export async function PUT(req: Request) {
       [fullName, phone || lead.whatsapp, lead.id]
     );
 
+    await queryRows(
+      `UPDATE users
+       SET display_name = ?
+       WHERE id = ?
+       LIMIT 1`,
+      [fullName, user.id]
+    );
+
     return NextResponse.json({
       ok: true,
       email: user.email,

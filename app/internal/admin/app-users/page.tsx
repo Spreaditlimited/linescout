@@ -188,6 +188,7 @@ export default function AdminAppUsersPage() {
               <thead className="bg-neutral-900/70 text-neutral-300">
                 <tr>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">User</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Name</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Created</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Sessions</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Last seen</th>
@@ -207,8 +208,11 @@ export default function AdminAppUsersPage() {
                       <div className="font-semibold text-neutral-100">{u.email}</div>
                       <div className="text-xs text-neutral-500">
                         ID: {u.id}
-                        {u.display_name ? ` • ${u.display_name}` : ""}
                       </div>
+                    </td>
+
+                    <td className="px-3 py-3 text-sm text-neutral-200">
+                      {u.display_name ? u.display_name : "—"}
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">

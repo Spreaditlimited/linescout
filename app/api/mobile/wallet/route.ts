@@ -69,8 +69,24 @@ async function ensureVirtualAccount(
     if (!phoneValue && !phoneCandidates.length) {
       throw new Error("Nigeria phone number is required to create a Paystack virtual account.");
     }
-    const [firstName, ...rest] = displayName.split(" ");
-    const lastName = rest.join(" ");
+    const [nameRows]: any = await conn.query(
+      `SELECT name
+       FROM linescout_leads
+       WHERE email = ?
+         AND name IS NOT NULL
+         AND name <> ''
+         AND name <> 'Unknown'
+       ORDER BY updated_at DESC, created_at DESC
+       LIMIT 1`,
+      [email]
+    );
+    const leadName = String(nameRows?.[0]?.name || "").trim();
+    const sourceName = leadName || displayName || "";
+    const [firstNameRaw, ...rest] = sourceName.split(" ");
+    const lastNameRaw = rest.join(" ");
+    const fallbackName = email.split("@")[0] || `User${userId}`;
+    const firstName = (firstNameRaw || fallbackName || "LineScout").trim();
+    const lastName = (lastNameRaw || "Customer").trim();
 
     let customerCode = "";
     const existingRes = await paystackFetchCustomer(email);
@@ -82,8 +98,8 @@ async function ensureVirtualAccount(
         const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
         for (const candidate of candidates) {
           const updateRes = await paystackUpdateCustomer(customerCode, {
-            first_name: firstName || undefined,
-            last_name: lastName || undefined,
+            first_name: firstName,
+            last_name: lastName,
             phone: candidate,
           });
           if (updateRes.ok) {
@@ -99,8 +115,8 @@ async function ensureVirtualAccount(
       for (const candidate of candidates) {
         const res = await paystackCreateCustomer({
           email,
-          first_name: firstName || undefined,
-          last_name: lastName || undefined,
+          first_name: firstName,
+          last_name: lastName,
           phone: candidate,
         });
         if (res.ok) {

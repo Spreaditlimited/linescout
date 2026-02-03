@@ -118,9 +118,12 @@ async function ensureVirtualAccount(
         let updated = false;
         const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
         for (const candidate of candidates) {
+          const fallbackName = profile.email.split("@")[0] || `Agent${agentId}`;
+          const firstName = (profile.first_name || fallbackName || "LineScout").trim();
+          const lastName = (profile.last_name || "Agent").trim();
           const updateRes = await paystackUpdateCustomer(customerCode, {
-            first_name: profile.first_name || undefined,
-            last_name: profile.last_name || undefined,
+            first_name: firstName,
+            last_name: lastName,
             phone: candidate,
           });
           if (updateRes.ok) {
@@ -134,10 +137,13 @@ async function ensureVirtualAccount(
       let customerRes: any = null;
       const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
       for (const candidate of candidates) {
+        const fallbackName = profile.email.split("@")[0] || `Agent${agentId}`;
+        const firstName = (profile.first_name || fallbackName || "LineScout").trim();
+        const lastName = (profile.last_name || "Agent").trim();
         const res = await paystackCreateCustomer({
           email: profile.email,
-          first_name: profile.first_name || undefined,
-          last_name: profile.last_name || undefined,
+          first_name: firstName,
+          last_name: lastName,
           phone: candidate,
         });
         if (res.ok) {
