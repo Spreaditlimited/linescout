@@ -52,8 +52,8 @@ async function ensureRow(conn: mysql.PoolConnection) {
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb)
-     VALUES (0, 5, 40, 20, 0, 0)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email)
+     VALUES (0, 5, 40, 20, 0, 0, NULL)`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -90,6 +90,8 @@ export async function POST(req: Request) {
   const markup_percent = num(body.markup_percent);
   const exchange_rate_usd = num(body.exchange_rate_usd);
   const exchange_rate_rmb = num(body.exchange_rate_rmb);
+  const payout_summary_email =
+    typeof body.payout_summary_email === "string" ? body.payout_summary_email.trim() : "";
 
   const values = {
     commitment_due_ngn,
@@ -116,6 +118,7 @@ export async function POST(req: Request) {
            markup_percent = ?,
            exchange_rate_usd = ?,
            exchange_rate_rmb = ?,
+           payout_summary_email = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -125,6 +128,7 @@ export async function POST(req: Request) {
         markup_percent,
         exchange_rate_usd,
         exchange_rate_rmb,
+        payout_summary_email || null,
         row.id,
       ]
     );

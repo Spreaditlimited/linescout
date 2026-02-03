@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPaystackSignature } from "@/lib/paystack";
+import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,36 @@ function pickCustomerCode(data: any) {
   return null;
 }
 
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const nodemailer = require("nodemailer") as any;
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+
+  return { ok: true as const };
+}
+
 export async function POST(req: Request) {
   const rawBody = await req.text().catch(() => "");
   const signature = req.headers.get("x-paystack-signature") || "";
@@ -59,6 +90,124 @@ export async function POST(req: Request) {
 
   const event = String(payload?.event || "").trim();
   const data = payload?.data || {};
+
+  if (event === "transfer.success") {
+    const transferCode = String(data?.transfer_code || "").trim();
+    const reference = String(data?.reference || "").trim();
+    const status = String(data?.status || "").trim();
+    const amountNgn = toNaira(data?.amount);
+    const currency = String(data?.currency || "NGN").trim().toUpperCase();
+
+    if (!transferCode && !reference) {
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+
+    const conn = await db.getConnection();
+    try {
+      const [userRows]: any = await conn.query(
+        `
+        SELECT id, user_id, amount, status, payout_email_sent_at
+        FROM linescout_user_payout_requests
+        WHERE paystack_reference = ? OR paystack_transfer_code = ?
+        LIMIT 1
+        `,
+        [reference || null, transferCode || null]
+      );
+
+      if (userRows?.length) {
+        const row = userRows[0];
+        if (!row.payout_email_sent_at && status === "success") {
+          const [urows]: any = await conn.query(`SELECT email, display_name FROM users WHERE id = ? LIMIT 1`, [
+            row.user_id,
+          ]);
+          const userEmail = String(urows?.[0]?.email || "").trim();
+          const userName = String(urows?.[0]?.display_name || "").trim();
+
+          await conn.query(
+            `UPDATE linescout_user_payout_requests
+             SET payout_email_sent_at = NOW(),
+                 paystack_transfer_status = ?,
+                 paid_at = COALESCE(paid_at, NOW()),
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [status || "success", row.id]
+          );
+
+          if (userEmail) {
+            const emailPack = buildNoticeEmail({
+              subject: "Your LineScout payout is complete",
+              title: "Payout completed",
+              lines: [
+                `Amount: ${currency} ${Number(row.amount || 0).toLocaleString()}`,
+                userName ? `Recipient: ${userName}` : "Recipient: LineScout user",
+                "Your payout has been completed successfully.",
+              ],
+            });
+            await sendEmail({ to: userEmail, subject: emailPack.subject, text: emailPack.text, html: emailPack.html });
+          }
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      const [agentRows]: any = await conn.query(
+        `
+        SELECT id, internal_user_id, amount_kobo, status, payout_email_sent_at
+        FROM linescout_agent_payout_requests
+        WHERE paystack_reference = ? OR paystack_transfer_code = ?
+        LIMIT 1
+        `,
+        [reference || null, transferCode || null]
+      );
+
+      if (agentRows?.length) {
+        const row = agentRows[0];
+        if (!row.payout_email_sent_at && status === "success") {
+          const [arows]: any = await conn.query(
+            `SELECT ap.email, ap.first_name, ap.last_name
+             FROM linescout_agent_profiles ap
+             WHERE ap.internal_user_id = ?
+             LIMIT 1`,
+            [row.internal_user_id]
+          );
+          const agentEmail = String(arows?.[0]?.email || "").trim();
+          const agentName = `${String(arows?.[0]?.first_name || "").trim()} ${String(
+            arows?.[0]?.last_name || ""
+          ).trim()}`.trim();
+
+          await conn.query(
+            `UPDATE linescout_agent_payout_requests
+             SET payout_email_sent_at = NOW(),
+                 paystack_transfer_status = ?,
+                 paid_at = COALESCE(paid_at, NOW()),
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [status || "success", row.id]
+          );
+
+          if (agentEmail) {
+            const amount = Number(row.amount_kobo || 0) / 100;
+            const emailPack = buildNoticeEmail({
+              subject: "Your LineScout payout is complete",
+              title: "Payout completed",
+              lines: [
+                `Amount: ${currency} ${amount.toLocaleString()}`,
+                agentName ? `Recipient: ${agentName}` : "Recipient: LineScout agent",
+                "Your payout has been completed successfully.",
+              ],
+            });
+            await sendEmail({ to: agentEmail, subject: emailPack.subject, text: emailPack.text, html: emailPack.html });
+          }
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      return NextResponse.json({ ok: true, ignored: true });
+    } catch (e: any) {
+      return NextResponse.json({ ok: false, error: e?.message || "Failed" }, { status: 500 });
+    } finally {
+      conn.release();
+    }
+  }
 
   if (event !== "charge.success") {
     return NextResponse.json({ ok: true, ignored: true });

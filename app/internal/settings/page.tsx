@@ -31,6 +31,7 @@ type SettingsItem = {
   markup_percent: number;
   exchange_rate_usd: number;
   exchange_rate_rmb: number;
+  payout_summary_email?: string | null;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -75,6 +76,7 @@ export default function InternalSettingsPage() {
   const [markupPercent, setMarkupPercent] = useState("20");
   const [exchangeUsd, setExchangeUsd] = useState("0");
   const [exchangeRmb, setExchangeRmb] = useState("0");
+  const [payoutSummaryEmail, setPayoutSummaryEmail] = useState("");
 
   // Shipping types & rates
   const [shippingTypes, setShippingTypes] = useState<ShippingTypeItem[]>([]);
@@ -140,6 +142,7 @@ export default function InternalSettingsPage() {
       setMarkupPercent(String(item.markup_percent ?? 0));
       setExchangeUsd(String(item.exchange_rate_usd ?? 0));
       setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
+      setPayoutSummaryEmail(String(item.payout_summary_email || ""));
     } catch (e: any) {
       setSettingsErr(e?.message || "Failed to load settings");
     } finally {
@@ -163,6 +166,7 @@ export default function InternalSettingsPage() {
         markup_percent: Number(markupPercent),
         exchange_rate_usd: Number(exchangeUsd),
         exchange_rate_rmb: Number(exchangeRmb),
+        payout_summary_email: payoutSummaryEmail.trim(),
       };
 
       const res = await fetch("/api/internal/settings", {
@@ -396,6 +400,7 @@ export default function InternalSettingsPage() {
     const markupPct = Number(markupPercent);
     const usdRate = Number(exchangeUsd);
     const rmbRate = Number(exchangeRmb);
+    const payoutEmail = payoutSummaryEmail.trim();
 
     if (!Number.isFinite(commitment) || commitment < 0) {
       errors.push("Commitment fee must be 0 or more.");
@@ -415,6 +420,9 @@ export default function InternalSettingsPage() {
     if (!Number.isFinite(rmbRate) || rmbRate <= 0) {
       errors.push("Exchange rate RMB → NGN must be greater than 0.");
     }
+    if (payoutEmail && !payoutEmail.includes("@")) {
+      errors.push("Payout summary email must be a valid email.");
+    }
 
     return { ok: errors.length === 0, errors };
   }, [
@@ -424,6 +432,7 @@ export default function InternalSettingsPage() {
     markupPercent,
     exchangeUsd,
     exchangeRmb,
+    payoutSummaryEmail,
   ]);
 
   const rateReady = useMemo(() => {
@@ -679,6 +688,19 @@ export default function InternalSettingsPage() {
               placeholder="210"
               inputMode="decimal"
             />
+          </div>
+          <div className="sm:col-span-3">
+            <label className="text-xs text-neutral-400">Payout summary email (daily)</label>
+            <input
+              value={payoutSummaryEmail}
+              onChange={(e) => setPayoutSummaryEmail(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="hello@sureimports.com"
+              inputMode="email"
+            />
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Receives a daily payout summary at 8:00 AM Lagos time.
+            </div>
           </div>
         </div>
 
