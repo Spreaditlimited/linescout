@@ -166,11 +166,25 @@ export async function GET(req: Request) {
         `SELECT whatsapp
          FROM linescout_leads
          WHERE email = ?
-         ORDER BY created_at DESC
+           AND whatsapp IS NOT NULL
+           AND whatsapp <> ''
+           AND whatsapp <> 'unknown'
+         ORDER BY updated_at DESC, created_at DESC
          LIMIT 1`,
         [user.email]
       );
-      const leadPhone = String(leadRows?.[0]?.whatsapp || "").trim();
+      let leadPhone = String(leadRows?.[0]?.whatsapp || "").trim();
+      if (!leadPhone) {
+        const [fallbackRows]: any = await conn.query(
+          `SELECT whatsapp
+           FROM linescout_leads
+           WHERE email = ?
+           ORDER BY updated_at DESC, created_at DESC
+           LIMIT 1`,
+          [user.email]
+        );
+        leadPhone = String(fallbackRows?.[0]?.whatsapp || "").trim();
+      }
       const phone = leadPhone && leadPhone !== "unknown" ? leadPhone : "";
 
       const wallet = await ensureWallet(conn, user.id);
