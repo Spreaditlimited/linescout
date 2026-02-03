@@ -5,7 +5,7 @@ import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/
 import {
   nigerianPhoneCandidates,
   normalizeNigerianPhone,
-  paystackAssignDedicatedAccount,
+  paystackAssignDedicatedAccountWithFallback,
   paystackCreateCustomer,
   paystackFetchCustomer,
   paystackUpdateCustomer,
@@ -164,7 +164,7 @@ async function ensureVirtualAccount(
     }
     if (!customerCode) throw new Error("Paystack customer_code missing");
 
-    const dedicatedRes = await paystackAssignDedicatedAccount({ customer: customerCode });
+    const dedicatedRes = await paystackAssignDedicatedAccountWithFallback(customerCode);
     if (!dedicatedRes.ok) throw new Error(dedicatedRes.error);
 
     const accountNumber = String(dedicatedRes.data?.account_number || "").trim();

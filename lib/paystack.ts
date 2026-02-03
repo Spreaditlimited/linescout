@@ -146,6 +146,22 @@ export async function paystackAssignDedicatedAccount(params: {
   return { ok: true as const, data: json.data };
 }
 
+export async function paystackAssignDedicatedAccountWithFallback(customer: string) {
+  const first = await paystackAssignDedicatedAccount({ customer });
+  if (first.ok) return first;
+
+  const msg = String(first.error || "");
+  if (!/provider/i.test(msg)) return first;
+
+  const fallbackBanks = ["titan-paystack", "wema-bank"];
+  for (const preferred_bank of fallbackBanks) {
+    const res = await paystackAssignDedicatedAccount({ customer, preferred_bank });
+    if (res.ok) return res;
+  }
+
+  return first;
+}
+
 export function normalizeNigerianPhone(raw: string) {
   const s = String(raw || "").trim();
   if (!s) return null;
