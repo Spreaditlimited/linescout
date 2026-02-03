@@ -80,7 +80,10 @@ export async function POST(req: Request) {
 
     if (reference) {
       const [dupRows]: any = await conn.query(
-        `SELECT id FROM linescout_provider_transactions WHERE provider = 'paystack' AND reference = ? LIMIT 1`,
+        `SELECT id
+         FROM linescout_provider_transactions
+         WHERE provider = 'paystack' AND settlement_id = ?
+         LIMIT 1`,
         [reference]
       );
       if (dupRows?.length) {
@@ -144,9 +147,17 @@ export async function POST(req: Request) {
 
     await conn.query(
       `INSERT INTO linescout_provider_transactions
-        (provider, reference, amount, currency, status, raw_json)
-       VALUES ('paystack', ?, ?, ?, 'received', ?)`,
-      [reference || null, amountNgn, currency || "NGN", rawBody || null]
+        (provider, settlement_id, session_id, account_number, transaction_amount, settled_amount, fee_amount, vat_amount, currency, tran_remarks, source_account_number, source_account_name, source_bank_name, channel_id, tran_date_time, raw_json)
+       VALUES ('paystack', ?, NULL, ?, ?, ?, 0, 0, ?, ?, NULL, NULL, NULL, NULL, NULL, ?)`,
+      [
+        reference || `paystack_${Date.now()}`,
+        accountNumber || null,
+        amountNgn,
+        amountNgn,
+        currency || "NGN",
+        data?.channel || data?.gateway_response || data?.message || "paystack_deposit",
+        rawBody || null,
+      ]
     );
 
     await conn.query(
