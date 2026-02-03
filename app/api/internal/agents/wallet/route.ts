@@ -249,12 +249,22 @@ export async function GET() {
 
       const wallet = await ensureWallet(conn, auth.id);
       const { provider } = await selectPaymentProvider(conn, "agent", auth.id);
-      const vAccount = await ensureVirtualAccount(conn, auth.id, accountName, provider, {
+      await ensureVirtualAccount(conn, auth.id, accountName, provider, {
         email,
         first_name: first,
         last_name: last,
         phone,
       });
+
+      const [primaryRows]: any = await conn.query(
+        `SELECT account_number, account_name, bank_name
+         FROM linescout_virtual_accounts
+         WHERE owner_type = 'agent' AND owner_id = ? AND provider = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [auth.id, provider]
+      );
+      const vAccount = primaryRows?.[0] || null;
 
       const [accountRows]: any = await conn.query(
         `SELECT provider, account_number, account_name, bank_name

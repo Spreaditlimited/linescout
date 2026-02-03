@@ -251,7 +251,17 @@ export async function GET(req: Request) {
 
       const wallet = await ensureWallet(conn, user.id);
       const { provider } = await selectPaymentProvider(conn, "user", user.id);
-      const vAccount = await ensureVirtualAccount(conn, user.id, accountName, provider, phone || null);
+      await ensureVirtualAccount(conn, user.id, accountName, provider, phone || null);
+
+      const [primaryRows]: any = await conn.query(
+        `SELECT account_number, account_name, bank_name
+         FROM linescout_virtual_accounts
+         WHERE owner_type = 'user' AND owner_id = ? AND provider = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [user.id, provider]
+      );
+      const vAccount = primaryRows?.[0] || null;
 
       const [accountRows]: any = await conn.query(
         `SELECT provider, account_number, account_name, bank_name
