@@ -49,16 +49,28 @@ async function ensureVirtualAccount(conn: any, userId: number, accountName: stri
   if (!headers.ok) throw new Error(headers.error);
 
   const url = `${normalizeProvidusBaseUrl(cfg.baseUrl)}/PiPCreateReservedAccountNumber`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: headers.headers,
-    body: JSON.stringify({ account_name: accountName || `User ${userId}`, bvn: "" }),
-  });
-  const data = await res.json().catch(() => null);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: headers.headers,
+      body: JSON.stringify({ account_name: accountName || `User ${userId}`, bvn: "" }),
+    });
+  } catch (e: any) {
+    throw new Error(`Providus fetch failed: ${e?.message || "network error"}`);
+  }
+
+  const raw = await res.text().catch(() => "");
+  let data: any = null;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = null;
+  }
 
   if (!res.ok || !data?.requestSuccessful || !data?.account_number) {
-    const msg = data?.responseMessage || `Providus create account failed (${res.status})`;
-    throw new Error(msg);
+    const msg = data?.responseMessage || raw || `Providus create account failed (${res.status})`;
+    throw new Error(`Providus create account failed: ${msg}`);
   }
 
   await conn.query(
@@ -125,6 +137,7 @@ export async function GET(req: Request) {
     }
   } catch (e: any) {
     const msg = e?.message || "Unauthorized";
+    console.error("GET /api/mobile/wallet error:", msg);
     const status = msg === "Unauthorized" ? 401 : 500;
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
