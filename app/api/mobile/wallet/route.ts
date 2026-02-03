@@ -38,7 +38,8 @@ async function ensureVirtualAccount(
   conn: any,
   userId: number,
   accountName: string,
-  provider: "providus" | "paystack"
+  provider: "providus" | "paystack",
+  phone: string | null
 ) {
   const [rows]: any = await conn.query(
     `SELECT account_number, account_name
@@ -56,6 +57,10 @@ async function ensureVirtualAccount(
     );
     const email = String(userRows?.[0]?.email || "").trim();
     const displayName = String(userRows?.[0]?.display_name || "").trim();
+    const phoneValue = String(phone || "").trim();
+    if (!phoneValue) {
+      throw new Error("Phone number is required to create a Paystack virtual account.");
+    }
     const [firstName, ...rest] = displayName.split(" ");
     const lastName = rest.join(" ");
 
@@ -63,6 +68,7 @@ async function ensureVirtualAccount(
       email,
       first_name: firstName || undefined,
       last_name: lastName || undefined,
+      phone: phoneValue,
     });
     if (!customerRes.ok) throw new Error(customerRes.error);
 
@@ -156,9 +162,28 @@ export async function GET(req: Request) {
       const displayName = String(userRows?.[0]?.display_name || "").trim();
       const accountName = displayName || (user.email ? user.email.split("@")[0] : `User ${user.id}`);
 
+      const [leadRows]: any = await conn.query(
+        `SELECT whatsapp
+         FROM linescout_leads
+         WHERE email = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [user.email]
+      );
+      const leadPhone = String(leadRows?.[0]?.whatsapp || "").trim();
+      const phone = leadPhone && leadPhone !== "unknown" ? leadPhone : "";
+
       const wallet = await ensureWallet(conn, user.id);
       const { provider } = await selectPaymentProvider(conn, "user", user.id);
-      const vAccount = await ensureVirtualAccount(conn, user.id, accountName, provider);
+      const vAccount = await ensureVirtualAccount(conn, user.id, accountName, provider, phone || null);
+
+      const [accountRows]: any = await conn.query(
+        `SELECT provider, account_number, account_name, bank_name
+         FROM linescout_virtual_accounts
+         WHERE owner_type = 'user' AND owner_id = ?
+         ORDER BY id DESC`,
+        [user.id]
+      );
 
       const [txRows]: any = await conn.query(
         `SELECT id, type, amount, currency, reason, reference_type, reference_id, created_at
@@ -190,6 +215,7 @@ export async function GET(req: Request) {
         ok: true,
         wallet: { id: wallet.id, balance: wallet.balance, currency: wallet.currency },
         virtual_account: vAccount,
+        accounts: accountRows || [],
         provider_used: provider,
         transactions: txRows || [],
         payouts: payoutRows || [],
@@ -202,6 +228,9 @@ export async function GET(req: Request) {
     const msg = e?.message || "Unauthorized";
     console.error("GET /api/mobile/wallet error:", msg);
     const status = msg === "Unauthorized" ? 401 : 500;
+    if (String(msg).toLowerCase().includes("phone number is required")) {
+      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }

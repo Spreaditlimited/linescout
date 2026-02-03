@@ -84,7 +84,7 @@ async function ensureVirtualAccount(
   agentId: number,
   accountName: string,
   provider: "providus" | "paystack",
-  profile: { email: string; first_name: string; last_name: string }
+  profile: { email: string; first_name: string; last_name: string; phone?: string }
 ) {
   const [rows]: any = await conn.query(
     `SELECT account_number, account_name
@@ -96,10 +96,16 @@ async function ensureVirtualAccount(
   if (rows?.length) return rows[0];
 
   if (provider === "paystack") {
+    const phoneValue = String(profile?.phone || "").trim();
+    if (!phoneValue) {
+      throw new Error("Phone number is required to create a Paystack virtual account.");
+    }
+
     const customerRes = await paystackCreateCustomer({
       email: profile.email,
       first_name: profile.first_name || undefined,
       last_name: profile.last_name || undefined,
+      phone: phoneValue,
     });
     if (!customerRes.ok) throw new Error(customerRes.error);
 
@@ -177,7 +183,7 @@ export async function GET() {
     const conn = await db.getConnection();
     try {
       const [profileRows]: any = await conn.query(
-        `SELECT first_name, last_name, email
+        `SELECT first_name, last_name, email, ng_phone
          FROM linescout_agent_profiles
          WHERE internal_user_id = ?
          LIMIT 1`,
@@ -186,6 +192,7 @@ export async function GET() {
       const first = String(profileRows?.[0]?.first_name || "").trim();
       const last = String(profileRows?.[0]?.last_name || "").trim();
       const email = String(profileRows?.[0]?.email || "").trim();
+      const phone = String(profileRows?.[0]?.ng_phone || "").trim();
       const accountName = `${first} ${last}`.trim() || email || `Agent ${auth.id}`;
 
       const wallet = await ensureWallet(conn, auth.id);
@@ -194,7 +201,16 @@ export async function GET() {
         email,
         first_name: first,
         last_name: last,
+        phone,
       });
+
+      const [accountRows]: any = await conn.query(
+        `SELECT provider, account_number, account_name, bank_name
+         FROM linescout_virtual_accounts
+         WHERE owner_type = 'agent' AND owner_id = ?
+         ORDER BY id DESC`,
+        [auth.id]
+      );
 
       const [txRows]: any = await conn.query(
         `SELECT id, type, amount, currency, reason, reference_type, reference_id, created_at
@@ -209,6 +225,7 @@ export async function GET() {
         ok: true,
         wallet: { id: wallet.id, balance: wallet.balance, currency: wallet.currency },
         virtual_account: vAccount,
+        accounts: accountRows || [],
         provider_used: provider,
         transactions: txRows || [],
       });
@@ -218,6 +235,9 @@ export async function GET() {
   } catch (e: any) {
     const msg = e?.message || "Unauthorized";
     const status = msg === "Unauthorized" ? 401 : 500;
+    if (String(msg).toLowerCase().includes("phone number is required")) {
+      return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
     return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
