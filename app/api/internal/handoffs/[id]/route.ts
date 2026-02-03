@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,73 @@ export const dynamic = "force-dynamic";
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function pickItems(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object" && Array.isArray(raw.items)) return raw.items;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function computeShippingNgn(
+  items: any[],
+  exchangeUsd: number,
+  shippingRateUsd: number,
+  shippingUnit: "per_kg" | "per_cbm"
+) {
+  let totalWeightKg = 0;
+  let totalCbm = 0;
+
+  for (const item of items) {
+    const qty = num(item.quantity || 0);
+    const unitWeight = num(item.unit_weight_kg || 0);
+    const unitCbm = num(item.unit_cbm || 0);
+    totalWeightKg += qty * unitWeight;
+    totalCbm += qty * unitCbm;
+  }
+
+  const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
+  const totalShippingUsd = shippingUnits * shippingRateUsd;
+  const totalShippingNgn = totalShippingUsd * exchangeUsd;
+  return Math.round(totalShippingNgn);
+}
+
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const nodemailer = require("nodemailer") as any;
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  await transporter.sendMail({
+    from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+
+  return { ok: true as const };
 }
 
 async function requireInternalSession() {
@@ -204,6 +272,160 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (e: any) {
     console.error("GET /api/internal/handoffs/[id] error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to load handoff" }, { status: 500 });
+  } finally {
+    conn.release();
+  }
+}
+
+/**
+ * POST /api/internal/handoffs/:id
+ * action=request_shipping_payment (admin only)
+ */
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await requireInternalSession();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  if (auth.user.role !== "admin") {
+    return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const action = String(body?.action || "").trim();
+  if (action !== "request_shipping_payment") {
+    return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
+  }
+
+  const { id } = await ctx.params;
+  const handoffId = num(id, 0);
+  if (!handoffId) {
+    return NextResponse.json({ ok: false, error: "Invalid handoff id" }, { status: 400 });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    const [handoffRows]: any = await conn.query(
+      `SELECT id, token, email, customer_name
+       FROM linescout_handoffs
+       WHERE id = ?
+       LIMIT 1`,
+      [handoffId]
+    );
+    if (!handoffRows?.length) {
+      return NextResponse.json({ ok: false, error: "Handoff not found" }, { status: 404 });
+    }
+
+    const handoff = handoffRows[0];
+    const [quoteRows]: any = await conn.query(
+      `SELECT id, token, items_json, exchange_rate_usd, shipping_rate_usd, shipping_rate_unit, shipping_type_id
+       FROM linescout_quotes
+       WHERE handoff_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [handoffId]
+    );
+    if (!quoteRows?.length) {
+      return NextResponse.json({ ok: false, error: "No quote found for this handoff" }, { status: 400 });
+    }
+
+    const quote = quoteRows[0];
+    const items = pickItems(quote.items_json);
+    const exchangeUsd = num(quote.exchange_rate_usd, 0);
+    let shippingRateUsd = num(quote.shipping_rate_usd, 0);
+    let shippingRateUnit = String(quote.shipping_rate_unit || "per_kg");
+    const shipTypeId = Number(quote.shipping_type_id || 0);
+
+    if (shipTypeId) {
+      const [rateRows]: any = await conn.query(
+        `SELECT rate_value, rate_unit
+         FROM linescout_shipping_rates
+         WHERE shipping_type_id = ?
+           AND is_active = 1
+         ORDER BY id DESC
+         LIMIT 1`,
+        [shipTypeId]
+      );
+      if (rateRows?.length) {
+        shippingRateUsd = num(rateRows[0].rate_value, shippingRateUsd);
+        shippingRateUnit = String(rateRows[0].rate_unit || shippingRateUnit);
+      }
+    }
+
+    const totalShippingNgn = computeShippingNgn(
+      items,
+      exchangeUsd,
+      shippingRateUsd,
+      shippingRateUnit === "per_cbm" ? "per_cbm" : "per_kg"
+    );
+
+    const [paidRows]: any = await conn.query(
+      `SELECT COALESCE(SUM(amount),0) AS paid
+       FROM linescout_quote_payments
+       WHERE handoff_id = ?
+         AND purpose = 'shipping_payment'
+         AND status = 'paid'`,
+      [handoffId]
+    );
+    const shippingPaid = num(paidRows?.[0]?.paid, 0);
+    const shippingRemaining = Math.max(0, totalShippingNgn - shippingPaid);
+    if (shippingRemaining <= 0) {
+      return NextResponse.json({ ok: false, error: "Shipping payment already completed" }, { status: 400 });
+    }
+
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://linescout.sureimports.com").replace(/\/$/, "");
+    const quoteLink = `${baseUrl}/quote/${quote.token}?pay=shipping`;
+    const recipientLabel = handoff.token || handoff.customer_name || `Handoff #${handoffId}`;
+
+    const title = "Shipping payment required";
+    const subject = `Pay for shipping – ${recipientLabel}`;
+    const bodyLines = [
+      "Your shipment has arrived in Nigeria and is ready for delivery.",
+      "Please pay the shipping fee to proceed with final delivery.",
+      `Amount due: NGN ${shippingRemaining.toLocaleString()}`,
+      `Project: ${recipientLabel}`,
+      `Pay now: ${quoteLink}`,
+    ];
+
+    if (handoff.email) {
+      const emailPack = buildNoticeEmail({
+        subject,
+        title,
+        lines: bodyLines,
+        footerNote: "This email was sent because a shipping payment was requested for your LineScout project.",
+        footerLines: [
+          "LineScout is a registered trademark of Sure Importers Limited in Nigeria.",
+          "Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.",
+          "Email: hello@sureimports.com",
+        ],
+      });
+      await sendEmail({ to: handoff.email, subject: emailPack.subject, text: emailPack.text, html: emailPack.html });
+    }
+
+    const [userRows]: any = await conn.query(
+      `SELECT id
+       FROM users
+       WHERE email = ? OR email_normalized = ?
+       LIMIT 1`,
+      [handoff.email, String(handoff.email || "").toLowerCase()]
+    );
+    if (userRows?.length) {
+      await conn.query(
+        `INSERT INTO linescout_notifications
+         (target, user_id, title, body, data_json)
+         VALUES ('user', ?, ?, ?, ?)`,
+        [
+          Number(userRows[0].id),
+          title,
+          `Shipping payment of NGN ${shippingRemaining.toLocaleString()} is required.`,
+          JSON.stringify({ type: "shipping_payment_request", quote_token: quote.token, handoff_id: handoffId }),
+        ]
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      amount_due: shippingRemaining,
+      quote_token: quote.token,
+      quote_link: quoteLink,
+    });
   } finally {
     conn.release();
   }

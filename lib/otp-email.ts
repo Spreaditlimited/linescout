@@ -59,7 +59,13 @@ export function buildOtpEmail(params: { otp: string }) {
   return { subject, text, html };
 }
 
-export function buildNoticeEmail(params: { subject: string; title: string; lines: string[]; footerNote?: string }) {
+export function buildNoticeEmail(params: {
+  subject: string;
+  title: string;
+  lines: string[];
+  footerNote?: string;
+  footerLines?: string[];
+}) {
   const subject = params.subject;
   const text = [
     "LineScout (Sure Importers Limited)",
@@ -78,6 +84,15 @@ export function buildNoticeEmail(params: { subject: string; title: string; lines
   const footerNote =
     params.footerNote ||
     "This email was sent because a payout event occurred on your LineScout account.";
+  const footerLines = Array.isArray(params.footerLines) ? params.footerLines : [];
+  const footerHtml = footerLines.length
+    ? footerLines
+        .map(
+          (line) =>
+            `<div style="margin-top:2px;font-size:11px;line-height:1.5;color:#9ca3af;">${line}</div>`
+        )
+        .join("")
+    : "";
 
   const html = `
   <div style="margin:0;padding:0;background:#f6f7fb;">
@@ -106,6 +121,7 @@ export function buildNoticeEmail(params: { subject: string; title: string; lines
 
           <div style="width:600px;max-width:600px;margin-top:10px;color:#9ca3af;font-size:11px;line-height:1.5;text-align:left;padding:0 4px;">
             ${footerNote}
+            ${footerHtml}
           </div>
         </td>
       </tr>

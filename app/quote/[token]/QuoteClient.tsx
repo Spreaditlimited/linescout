@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type ShippingRate = {
   id: number;
@@ -142,6 +143,7 @@ export default function QuoteClient({
   depositPercent = 0,
   commitmentDueNgn = 0,
 }: QuoteClientProps) {
+  const searchParams = useSearchParams();
   const initialRateId = useMemo(() => {
     if (!shippingRates.length) return null;
     if (defaultShippingTypeId) {
@@ -184,6 +186,16 @@ export default function QuoteClient({
     shipping_paid: 0,
   });
   const [payments, setPayments] = useState<QuotePayment[]>([]);
+
+  useEffect(() => {
+    const pay = String(searchParams?.get("pay") || "").toLowerCase();
+    if (pay === "shipping") {
+      setPaymentOption("shipping");
+      setPayMsg("Shipping payment selected.");
+    } else if (pay === "deposit") {
+      setPaymentOption("deposit");
+    }
+  }, [searchParams]);
 
   const refreshPayments = async () => {
     try {

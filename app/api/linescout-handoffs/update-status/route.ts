@@ -246,6 +246,24 @@ export async function POST(req: Request) {
       }
     }
 
+    if (target === "delivered") {
+      const [shipPaidRows]: any = await conn.execute(
+        `SELECT COALESCE(SUM(amount),0) AS paid
+         FROM linescout_handoff_payments
+         WHERE handoff_id = ?
+           AND purpose = 'shipping_payment'`,
+        [id]
+      );
+      const shipPaid = Number(shipPaidRows?.[0]?.paid || 0);
+      if (!Number.isFinite(shipPaid) || shipPaid <= 0) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "Shipping payment must be completed before marking delivered." },
+          { status: 400 }
+        );
+      }
+    }
+
     if (manufacturerUpdateOnly && (current === "delivered" || current === "cancelled")) {
       await conn.end();
       return NextResponse.json(

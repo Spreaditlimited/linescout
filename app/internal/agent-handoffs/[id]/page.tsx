@@ -255,6 +255,7 @@ export default function HandoffDetailPage() {
   const [shipper, setShipper] = useState("");
   const [tracking, setTracking] = useState("");
   const [cancelReason, setCancelReason] = useState("");
+  const [shippingReqMsg, setShippingReqMsg] = useState<string | null>(null);
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false);
@@ -432,6 +433,30 @@ export default function HandoffDetailPage() {
     } catch (e: any) {
       setBanner({ type: "err", msg: e?.message || "Failed to update status." });
       throw e;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function requestShippingPayment() {
+    if (!handoff) return;
+    try {
+      setBusy(true);
+      setShippingReqMsg(null);
+      const res = await fetch(`/api/internal/handoffs/${handoff.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request_shipping_payment" }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to request shipping payment.");
+      }
+      setShippingReqMsg(
+        `Shipping payment request sent. Amount due: NGN ${Number(data.amount_due || 0).toLocaleString()}`
+      );
+    } catch (e: any) {
+      setShippingReqMsg(e?.message || "Failed to request shipping payment.");
     } finally {
       setBusy(false);
     }
@@ -1022,6 +1047,21 @@ export default function HandoffDetailPage() {
                   {busy ? "Saving..." : action === "payment" ? "Continue" : "Confirm"}
                 </button>
               </div>
+
+              {isAdmin && handoff.status?.toLowerCase() === "shipped" ? (
+                <div className="mt-4">
+                  <button
+                    onClick={requestShippingPayment}
+                    disabled={busy}
+                    className={`${btnSecondary} ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+                  >
+                    Request shipping payment
+                  </button>
+                  {shippingReqMsg ? (
+                    <div className="mt-2 text-xs text-neutral-400">{shippingReqMsg}</div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
