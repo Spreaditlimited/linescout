@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/lib/providus";
-import { paystackAssignDedicatedAccount, paystackCreateCustomer } from "@/lib/paystack";
+import {
+  nigerianPhoneCandidates,
+  normalizeNigerianPhone,
+  paystackAssignDedicatedAccount,
+  paystackCreateCustomer,
+  paystackFetchCustomer,
+  paystackUpdateCustomer,
+} from "@/lib/paystack";
 import { selectPaymentProvider } from "@/lib/payment-provider";
 
 export const runtime = "nodejs";
@@ -57,22 +64,53 @@ async function ensureVirtualAccount(
     );
     const email = String(userRows?.[0]?.email || "").trim();
     const displayName = String(userRows?.[0]?.display_name || "").trim();
-    const phoneValue = String(phone || "").trim();
-    if (!phoneValue) {
-      throw new Error("Phone number is required to create a Paystack virtual account.");
+    const phoneValue = normalizeNigerianPhone(String(phone || ""));
+    const phoneCandidates = nigerianPhoneCandidates(String(phone || ""));
+    if (!phoneValue && !phoneCandidates.length) {
+      throw new Error("Nigeria phone number is required to create a Paystack virtual account.");
     }
     const [firstName, ...rest] = displayName.split(" ");
     const lastName = rest.join(" ");
 
-    const customerRes = await paystackCreateCustomer({
-      email,
-      first_name: firstName || undefined,
-      last_name: lastName || undefined,
-      phone: phoneValue,
-    });
-    if (!customerRes.ok) throw new Error(customerRes.error);
-
-    const customerCode = String(customerRes.data?.customer_code || "").trim();
+    let customerCode = "";
+    const existingRes = await paystackFetchCustomer(email);
+    if (existingRes.ok) {
+      customerCode = String(existingRes.data?.customer_code || "").trim();
+      const existingPhone = String(existingRes.data?.phone || "").trim();
+      if (!existingPhone) {
+        let updated = false;
+        const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
+        for (const candidate of candidates) {
+          const updateRes = await paystackUpdateCustomer(customerCode, {
+            first_name: firstName || undefined,
+            last_name: lastName || undefined,
+            phone: candidate,
+          });
+          if (updateRes.ok) {
+            updated = true;
+            break;
+          }
+        }
+        if (!updated) throw new Error("Paystack customer phone update failed.");
+      }
+    } else {
+      let customerRes: any = null;
+      const candidates = phoneCandidates.length ? phoneCandidates : [phoneValue!];
+      for (const candidate of candidates) {
+        const res = await paystackCreateCustomer({
+          email,
+          first_name: firstName || undefined,
+          last_name: lastName || undefined,
+          phone: candidate,
+        });
+        if (res.ok) {
+          customerRes = res;
+          break;
+        }
+      }
+      if (!customerRes?.ok) throw new Error(customerRes?.error || "Paystack create customer failed.");
+      customerCode = String(customerRes.data?.customer_code || "").trim();
+    }
     if (!customerCode) throw new Error("Paystack customer_code missing");
 
     const dedicatedRes = await paystackAssignDedicatedAccount({ customer: customerCode });
