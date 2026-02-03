@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import crypto from "crypto";
+import { buildOtpEmail } from "@/lib/otp-email";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodemailer = require("nodemailer");
@@ -144,11 +145,15 @@ export async function POST(req: Request) {
       auth: { user: smtp.user, pass: smtp.pass },
     });
 
+    const mail = buildOtpEmail({ otp });
+
     await transporter.sendMail({
       from: smtp.from,
       to: auth.email,
+      replyTo: "hello@sureimports.com",
       subject: "Confirm payout bank change",
-      text: `Your LineScout verification code is ${otp}. It expires in 10 minutes.`,
+      text: mail.text,
+      html: mail.html,
     });
 
     return NextResponse.json({ ok: true });
