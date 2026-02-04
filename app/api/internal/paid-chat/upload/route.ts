@@ -207,7 +207,8 @@ export async function POST(req: Request) {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder,
-          resource_type: "auto",
+          // PDFs should be uploaded as raw for reliable browser/mobile preview links.
+          resource_type: isPdf ? "raw" : "image",
           public_id: `${Date.now()}_${originalName}`.replace(/\.[a-z0-9]+$/i, ""),
           overwrite: false,
           use_filename: true,
