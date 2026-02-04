@@ -134,9 +134,9 @@ export async function GET(req: Request) {
       if (String(c.handoff_token || "").trim()) {
         const [commitRows]: any = await conn.query(
           `SELECT id, amount, currency, created_at
-           FROM linescout_payments
+           FROM linescout_tokens
            WHERE token = ?
-             AND status = 'paid'
+             AND status = 'valid'
              AND type IN ('sourcing','business_plan')
            ORDER BY id ASC
            LIMIT 1`,
