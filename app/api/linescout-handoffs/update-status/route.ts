@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import mysql from "mysql2/promise";
+import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,43 @@ function toOptionalPositiveInt(v: any): number | null {
   if (!Number.isFinite(n) || Number.isNaN(n)) return null;
   if (n <= 0) return null;
   return Math.floor(n);
+}
+
+function statusLabel(s: string) {
+  const t = normStatus(s);
+  if (t === "manufacturer_found") return "Manufacturer Found";
+  if (!t) return "Unknown";
+  return t.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+  if (!host || !port || !user || !pass) return null;
+  return { host, port, user, pass, from };
+}
+
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const smtp = getSmtpConfig();
+  if (!smtp) return { ok: false as const, error: "SMTP is not configured" };
+  const nodemailer = require("nodemailer") as any;
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.pass },
+  });
+  await transporter.sendMail({
+    from: smtp.from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+  return { ok: true as const };
 }
 
 async function getInternalUser(conn: mysql.Connection) {
@@ -75,6 +113,9 @@ async function getInternalUser(conn: mysql.Connection) {
 }
 
 async function safeNotifyN8n(payload: any) {
+  if (process.env.N8N_STATUS_NOTIFY_ENABLED !== "1") {
+    return { ok: true, skipped: true, reason: "N8N_STATUS_NOTIFY_ENABLED != 1" };
+  }
   const base = process.env.N8N_BASE_URL;
   if (!base) return { ok: false, error: "N8N_BASE_URL not set" };
 
@@ -549,6 +590,54 @@ export async function POST(req: Request) {
 
     const handoff = handoffRows?.[0] || null;
 
+    let emailResult: any = { ok: false, skipped: true, reason: "No recipient email" };
+    if (handoff?.email && process.env.STATUS_EMAILS_ENABLED !== "0") {
+      const to = String(handoff.email || "").trim();
+      const token = String(handoff.token || "").trim() || `Handoff #${id}`;
+      const currentLabel = statusLabel(current);
+      const nextLabel = statusLabel(target);
+      const lines = [
+        `Request ID: ${token}`,
+        `Current Status: ${nextLabel}`,
+      ];
+
+      if (current && current !== target) {
+        lines.splice(1, 0, `Previous Status: ${currentLabel}`);
+      }
+      if (target === "manufacturer_found") {
+        lines.push("Good news: a manufacturer has been identified for your request.");
+      }
+      if (target === "shipped") {
+        if (handoff?.shipper) lines.push(`Shipper: ${handoff.shipper}`);
+        if (handoff?.tracking_number) lines.push(`Tracking Number: ${handoff.tracking_number}`);
+      }
+      if (target === "cancelled" && handoff?.cancel_reason) {
+        lines.push(`Reason: ${handoff.cancel_reason}`);
+      }
+      if (target === "delivered") {
+        lines.push("Your shipment has been marked as delivered.");
+      }
+
+      const emailPack = buildNoticeEmail({
+        subject: `LineScout Update: ${token}`,
+        title: "Project status update",
+        lines,
+        footerNote: "This email was sent because your LineScout project status was updated.",
+      });
+      try {
+        emailResult = await sendEmail({
+          to,
+          subject: emailPack.subject,
+          text: emailPack.text,
+          html: emailPack.html,
+        });
+      } catch (e: any) {
+        emailResult = { ok: false, error: e?.message || "Failed to send status email" };
+      }
+    } else if (process.env.STATUS_EMAILS_ENABLED === "0") {
+      emailResult = { ok: true, skipped: true, reason: "STATUS_EMAILS_ENABLED=0" };
+    }
+
     const notifyResult = handoff
       ? await safeNotifyN8n({
           event: "handoff.status_changed",
@@ -568,6 +657,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      emailed: emailResult?.ok === true,
+      email_error: emailResult?.ok ? null : emailResult,
       notified: notifyResult.ok === true,
       notify_error: notifyResult.ok ? null : notifyResult,
     });
