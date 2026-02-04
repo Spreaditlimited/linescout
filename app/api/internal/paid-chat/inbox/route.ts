@@ -178,9 +178,18 @@ export async function GET(req: Request) {
 
         h.id AS handoff_id,
         COALESCE(
-          NULLIF(TRIM(u.display_name), ''),
           NULLIF(TRIM(h.customer_name), ''),
-          NULLIF(SUBSTRING_INDEX(u.email, '@', 1), ''),
+          NULLIF(
+            TRIM((
+              SELECT l.name
+              FROM linescout_leads l
+              WHERE l.email = u.email
+              ORDER BY l.created_at DESC
+              LIMIT 1
+            )),
+            ''
+          ),
+          NULLIF(TRIM(u.display_name), ''),
           'Customer'
         ) AS customer_name,
         COALESCE(NULLIF(TRIM(h.email), ''), u.email) AS email,
