@@ -38,6 +38,7 @@ async function requireInternalAccess(req: Request) {
       `SELECT
          u.id,
          u.role,
+         u.username,
          u.is_active,
          COALESCE(p.can_view_leads, 0) AS can_view_leads
        FROM internal_sessions s
@@ -55,8 +56,9 @@ async function requireInternalAccess(req: Request) {
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
     const canViewLeads = !!rows[0].can_view_leads;
+    const username = String(rows[0].username || "");
 
-    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
+    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role, username };
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
     conn.release();
@@ -142,8 +144,11 @@ export async function POST(req: Request) {
           c.payment_status,
           c.project_status,
           c.assigned_agent_id,
-          c.conversation_kind
+          c.conversation_kind,
+          c.handoff_id,
+          h.claimed_by
         FROM linescout_conversations c
+        LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
         WHERE c.id = ?
         LIMIT 1
         `,
@@ -172,13 +177,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
       }
 
-      // Agent restriction (admin bypass)
+      // Agent restriction (admin bypass): read allowed, send/upload allowed only for claiming agent
       if (auth.role !== "admin") {
-        if (!assignedAgentId) {
-          return NextResponse.json({ ok: false, error: "This chat is unassigned. Claim it first." }, { status: 403 });
-        }
-        if (assignedAgentId !== auth.userId) {
-          return NextResponse.json({ ok: false, error: "You are not assigned to this conversation." }, { status: 403 });
+        const claimedBy = String(conv.claimed_by || "").trim();
+        const isAssignedToAgent = !!assignedAgentId && assignedAgentId === auth.userId;
+        const isClaimedByAgent = !!claimedBy && !!auth.username && claimedBy === auth.username;
+
+        if (!isAssignedToAgent && !isClaimedByAgent) {
+          return NextResponse.json(
+            { ok: false, error: "You can read this project, but only the claiming agent can send messages." },
+            { status: 403 }
+          );
         }
       }
     } finally {

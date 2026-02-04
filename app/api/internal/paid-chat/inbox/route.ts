@@ -177,8 +177,13 @@ export async function GET(req: Request) {
         c.updated_at,
 
         h.id AS handoff_id,
-        h.customer_name,
-        h.email,
+        COALESCE(
+          NULLIF(TRIM(h.customer_name), ''),
+          NULLIF(TRIM(u.display_name), ''),
+          NULLIF(SUBSTRING_INDEX(u.email, '@', 1), ''),
+          'Customer'
+        ) AS customer_name,
+        COALESCE(NULLIF(TRIM(h.email), ''), u.email) AS email,
         h.whatsapp_number,
         h.status AS handoff_status,
 
@@ -198,6 +203,7 @@ export async function GET(req: Request) {
 
       FROM linescout_conversations c
       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+      LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
 
       LEFT JOIN linescout_conversation_reads r

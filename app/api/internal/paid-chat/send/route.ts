@@ -68,6 +68,7 @@ async function requireInternalAccess(req: Request) {
       `SELECT
          u.id,
          u.role,
+         u.username,
          u.is_active,
          COALESCE(p.can_view_leads, 0) AS can_view_leads
        FROM internal_sessions s
@@ -85,8 +86,9 @@ async function requireInternalAccess(req: Request) {
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
     const canViewLeads = !!rows[0].can_view_leads;
+    const username = String(rows[0].username || "");
 
-    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
+    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role, username };
 
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
@@ -178,9 +180,11 @@ export async function POST(req: Request) {
 
     // 1) Ensure paid conversation and active
     const [convRows]: any = await conn.query(
-      `SELECT id, chat_mode, payment_status, project_status, assigned_agent_id
-       FROM linescout_conversations
-       WHERE id = ?
+      `SELECT c.id, c.chat_mode, c.payment_status, c.project_status, c.assigned_agent_id,
+              c.handoff_id, h.claimed_by
+       FROM linescout_conversations c
+       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+       WHERE c.id = ?
        LIMIT 1`,
       [conversationId]
     );
@@ -206,19 +210,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
     }
 
-    // 2) Guard: agents can send only if assigned to them (admin bypass)
+    // 2) Guard: non-admin agents can read unclaimed projects but only claiming agent can send
     if (auth.role !== "admin") {
-      if (!assignedAgentId) {
+      const claimedBy = String(conv.claimed_by || "").trim();
+      const isAssignedToAgent = !!assignedAgentId && auth.userId === assignedAgentId;
+      const isClaimedByAgent = !!claimedBy && !!auth.username && claimedBy === auth.username;
+
+      if (!isAssignedToAgent && !isClaimedByAgent) {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "This chat is unassigned. Claim it first." },
-          { status: 403 }
-        );
-      }
-      if (auth.userId !== assignedAgentId) {
-        await conn.rollback();
-        return NextResponse.json(
-          { ok: false, error: "You are not assigned to this conversation." },
+          {
+            ok: false,
+            error:
+              "You can read this project, but only the claiming agent can send messages.",
+          },
           { status: 403 }
         );
       }
