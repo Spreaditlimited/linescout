@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { getAgentEarningsSnapshot } from "@/lib/agent-earnings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ async function requireInternalSession() {
       return { ok: false as const, status: 403 as const, error: "Forbidden" };
     }
 
-    return { ok: true as const };
+    return { ok: true as const, userId: Number(rows[0].id), role };
   } finally {
     conn.release();
   }
@@ -74,12 +75,16 @@ export async function GET() {
   const conn = await db.getConnection();
   try {
     const settings = await ensureSettings(conn);
+    const earnings =
+      auth.role === "agent" ? await getAgentEarningsSnapshot(conn, auth.userId) : null;
+
     return NextResponse.json({
       ok: true,
       commission: {
         agent_percent: Number(settings?.agent_percent || 0),
         agent_commitment_percent: Number(settings?.agent_commitment_percent || 0),
       },
+      earnings,
     });
   } finally {
     conn.release();

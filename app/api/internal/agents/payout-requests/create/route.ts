@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { getAgentEarningsSnapshot } from "@/lib/agent-earnings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,27 +115,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // Agents can only request up to their current wallet balance.
-    const [walletRows]: any = await conn.query(
-      `
-      SELECT balance
-      FROM linescout_wallets
-      WHERE owner_type = 'agent'
-        AND owner_id = ?
-      LIMIT 1
-      `,
-      [auth.userId]
-    );
-
-    const walletBalanceNgn = Number(walletRows?.[0]?.balance || 0);
-    const walletBalanceKobo = Math.round(walletBalanceNgn * 100);
-    if (!walletRows?.length || walletBalanceKobo <= 0) {
+    const earnings = await getAgentEarningsSnapshot(conn, auth.userId);
+    const availableKobo = Math.round(Number(earnings.available_ngn || 0) * 100);
+    if (availableKobo <= 0) {
       return NextResponse.json(
         { ok: false, error: "No available earnings to withdraw yet." },
         { status: 400 }
       );
     }
-    if (amountKobo > walletBalanceKobo) {
+    if (amountKobo > availableKobo) {
       return NextResponse.json(
         { ok: false, error: "Requested amount exceeds your available earnings." },
         { status: 400 }

@@ -10,7 +10,7 @@ function clean(v: any) {
 }
 
 function normPhone(v: any) {
-  // Expecting test phone in E.164 format, e.g. +44XXXXXXXXXXX
+  // Expecting test phone in E.164 format, e.g. +86XXXXXXXXXXX
   const s = clean(v);
   return s.replace(/\s+/g, "");
 }
@@ -27,8 +27,8 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json({ ok: false, error: "user_id is required" }, { status: 400 });
   if (!phone) return NextResponse.json({ ok: false, error: "phone is required" }, { status: 400 });
 
-  const REQUIRED_PREFIX = "+44";
-  // Minimal sanity: must start with +44 for now (test-only)
+  const REQUIRED_PREFIX = "+86";
+  // Minimal sanity: must start with +86 for now (test-only)
   if (!phone.startsWith(REQUIRED_PREFIX) || phone.length < 10) {
     return NextResponse.json(
       { ok: false, error: `Phone must be in ${REQUIRED_PREFIX} format` },

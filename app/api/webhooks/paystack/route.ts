@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { verifyPaystackSignature } from "@/lib/paystack";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -273,6 +274,17 @@ export async function POST(req: Request) {
            VALUES (?, ?, ?, ?, 'Quote payment (paystack)', NOW(), NOW())`,
           [row.handoff_id, amountNgn, currency || "NGN", handoffPurpose]
         );
+      }
+
+      if (row.handoff_id) {
+        await creditAgentCommissionForQuotePayment(conn, {
+          quotePaymentId: Number(row.id),
+          quoteId: Number(row.quote_id || 0),
+          handoffId: Number(row.handoff_id || 0),
+          purpose,
+          amountNgn,
+          currency: currency || "NGN",
+        });
       }
 
       await conn.commit();

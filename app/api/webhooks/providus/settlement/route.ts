@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getProvidusConfig, providusSignature } from "@/lib/providus";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -208,6 +209,17 @@ export async function POST(req: Request) {
              VALUES (?, ?, ?, ?, 'Quote payment (providus)', NOW(), NOW())`,
             [qp.handoff_id, creditAmount, currency || "NGN", handoffPurpose]
           );
+        }
+
+        if (qp.handoff_id) {
+          await creditAgentCommissionForQuotePayment(conn, {
+            quotePaymentId: Number(qp.id),
+            quoteId: Number(qp.quote_id || 0),
+            handoffId: Number(qp.handoff_id || 0),
+            purpose,
+            amountNgn: creditAmount,
+            currency: currency || "NGN",
+          });
         }
 
         const [userRows]: any = await conn.query(

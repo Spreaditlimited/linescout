@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { selectPaymentProvider } from "@/lib/payment-provider";
 import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/lib/providus";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -321,12 +322,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
       if (walletApplied > 0) {
         const nextBalance = balance - walletApplied;
-        await conn.query(
+        const [walletPayIns]: any = await conn.query(
           `INSERT INTO linescout_quote_payments
            (quote_id, handoff_id, user_id, purpose, method, status, amount, currency, provider_ref, shipping_type_id, created_at, paid_at)
            VALUES (?, ?, ?, ?, 'wallet', 'paid', ?, 'NGN', NULL, ?, NOW(), NOW())`,
           [quote.id, handoffId || null, user.id, purpose, walletApplied, shipType || null]
         );
+        const quotePaymentId = Number(walletPayIns?.insertId || 0);
 
         await conn.query(
           `INSERT INTO linescout_wallet_transactions
@@ -349,6 +351,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
              VALUES (?, ?, 'NGN', ?, 'Quote payment (wallet)', NOW(), NOW())`,
             [handoffId, walletApplied, handoffPurpose]
           );
+        }
+
+        if (quotePaymentId && handoffId) {
+          await creditAgentCommissionForQuotePayment(conn, {
+            quotePaymentId,
+            quoteId: Number(quote.id),
+            handoffId: Number(handoffId),
+            purpose,
+            amountNgn: walletApplied,
+            currency: "NGN",
+          });
         }
 
         const purposeLabel =
