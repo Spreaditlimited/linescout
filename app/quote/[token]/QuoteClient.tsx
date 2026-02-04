@@ -157,7 +157,7 @@ export default function QuoteClient({
 
   const [selectedRateId, setSelectedRateId] = useState<number | null>(initialRateId);
   const [paymentOption, setPaymentOption] = useState<"deposit" | "product" | "shipping">("product");
-  const [useWallet, setUseWallet] = useState(true);
+  const [useWallet, setUseWallet] = useState(false);
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState<string | null>(null);
@@ -262,6 +262,14 @@ export default function QuoteClient({
       cancelled = true;
     };
   }, []);
+
+  const canUseWallet = walletBalance != null && !walletLoading && !walletAuthMissing;
+
+  useEffect(() => {
+    if (!canUseWallet && useWallet) {
+      setUseWallet(false);
+    }
+  }, [canUseWallet, useWallet]);
 
   useEffect(() => {
     if (!providusExpiresAt) {
@@ -663,12 +671,22 @@ export default function QuoteClient({
             <div className="mt-3 flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setUseWallet((v) => !v)}
+                onClick={() => setUseWallet(false)}
                 className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  useWallet ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+                  !useWallet ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
                 }`}
               >
-                {useWallet ? "Wallet + card/bank" : "Card/bank only"}
+                Card/bank only
+              </button>
+              <button
+                type="button"
+                onClick={() => canUseWallet && setUseWallet(true)}
+                disabled={!canUseWallet}
+                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                  useWallet ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+                } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
+              >
+                Wallet + card/bank
               </button>
               {walletLoading ? (
                 <span className="text-xs text-neutral-500">Loading wallet…</span>
@@ -677,7 +695,9 @@ export default function QuoteClient({
                   Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
                 </span>
               ) : walletAuthMissing ? (
-                <span className="text-xs text-neutral-500">Sign in to show wallet balance.</span>
+                <span className="text-xs text-neutral-500">
+                  To use wallet, sign in to your LineScout account in the LineScout mobile app, then reopen this quote link.
+                </span>
               ) : null}
             </div>
             {walletAccount ? (

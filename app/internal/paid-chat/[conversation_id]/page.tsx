@@ -40,10 +40,38 @@ type ClaimRes = {
   error?: string;
 };
 
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+
 function fmtTime(ts: string) {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString();
+}
+
+function renderMessageWithLinks(text: string) {
+  return String(text || "")
+    .split(URL_RE)
+    .map((chunk, idx) => {
+      if (/^https?:\/\//i.test(chunk)) {
+        const isQuote = /\/quote\/[A-Za-z0-9_-]+/i.test(chunk);
+        return (
+          <a
+            key={`${idx}-${chunk}`}
+            href={chunk}
+            target="_blank"
+            rel="noreferrer"
+            className={
+              isQuote
+                ? "inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-neutral-950 hover:bg-neutral-200"
+                : "underline underline-offset-2 hover:opacity-80"
+            }
+          >
+            {isQuote ? "Open Quote" : chunk}
+          </a>
+        );
+      }
+      return <span key={`${idx}-${chunk}`}>{chunk}</span>;
+    });
 }
 
 export default function PaidChatThreadPage() {
@@ -322,7 +350,7 @@ export default function PaidChatThreadPage() {
                       {label} • {fmtTime(m.created_at)}
                     </div>
                     <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
-                      {m.message_text}
+                      {renderMessageWithLinks(m.message_text)}
                     </div>
                   </div>
                 );
