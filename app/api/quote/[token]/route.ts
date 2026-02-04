@@ -12,7 +12,35 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
-      `SELECT q.*, h.customer_name
+      `SELECT
+         q.*,
+         COALESCE(
+           NULLIF(TRIM(h.customer_name), ''),
+           NULLIF(
+             TRIM((
+               SELECT l.name
+               FROM linescout_conversations c2
+               JOIN users u2 ON u2.id = c2.user_id
+               LEFT JOIN linescout_leads l ON l.email = u2.email
+               WHERE c2.handoff_id = h.id
+               ORDER BY l.created_at DESC, l.id DESC
+               LIMIT 1
+             )),
+             ''
+           ),
+           NULLIF(
+             TRIM((
+               SELECT u2.display_name
+               FROM linescout_conversations c2
+               JOIN users u2 ON u2.id = c2.user_id
+               WHERE c2.handoff_id = h.id
+               ORDER BY c2.id DESC
+               LIMIT 1
+             )),
+             ''
+           ),
+           'Customer'
+         ) AS customer_name
        FROM linescout_quotes q
        LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
        WHERE q.token = ?

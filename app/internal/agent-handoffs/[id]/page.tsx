@@ -128,6 +128,7 @@ type QuoteItem = {
   token: string;
   status: string;
   payment_purpose?: string | null;
+  agent_note?: string | null;
   total_due_ngn?: number | null;
   created_at?: string | null;
   created_by?: number | null;
@@ -859,6 +860,11 @@ export default function HandoffDetailPage() {
                         <div className="text-neutral-400">
                           {q.payment_purpose || "payment"} · {q.created_by_name || "Agent"}
                         </div>
+                        {String(q.agent_note || "").trim() ? (
+                          <div className="mt-1 max-w-xl whitespace-pre-line text-neutral-300">
+                            Note: {String(q.agent_note || "").trim()}
+                          </div>
+                        ) : null}
                         {q.created_at ? (
                           <div className="text-neutral-500">{fmt(q.created_at)}</div>
                         ) : null}

@@ -15,6 +15,7 @@ type ShippingRate = {
 type QuoteClientProps = {
   token: string;
   customerName?: string | null;
+  agentNote?: string | null;
   items: any[];
   exchangeRmb: number;
   exchangeUsd: number;
@@ -133,6 +134,7 @@ function computeTotals(
 export default function QuoteClient({
   token,
   customerName,
+  agentNote,
   items,
   exchangeRmb,
   exchangeUsd,
@@ -433,6 +435,11 @@ export default function QuoteClient({
                 Customer: <span className="text-neutral-200">{customerName || "Customer"}</span>
               </p>
               <p className="text-xs text-neutral-500">Token: {token}</p>
+              {String(agentNote || "").trim() ? (
+                <p className="mt-2 whitespace-pre-line text-xs text-neutral-400">
+                  Note: <span className="text-neutral-200">{String(agentNote || "").trim()}</span>
+                </p>
+              ) : null}
             </div>
             <div className="text-right">
               <div className="text-xs text-neutral-400">Total due</div>

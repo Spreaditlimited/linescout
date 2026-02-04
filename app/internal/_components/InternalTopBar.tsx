@@ -233,6 +233,7 @@ export default function InternalTopBar() {
     adminItems.push({ label: "App Users", href: "/internal/admin/app-users" });
     adminItems.push({ label: "Agent Approval", href: "/internal/admin/agent-approval" });
     adminItems.push({ label: "Payouts", href: "/internal/admin/payouts" });
+    adminItems.push({ label: "Agent Support", href: "/internal/agent-support" });
     adminItems.push({ label: "Notifications", href: "/internal/notifications" });
     adminItems.push({ label: "Wallets", href: "/internal/wallets" });
     adminItems.push({ label: "Payments", href: "/internal/payments" });

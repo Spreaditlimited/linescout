@@ -162,6 +162,18 @@ function ensureItems(raw: any) {
   }));
 }
 
+async function hasQuoteNoteColumn(conn: any) {
+  const [rows]: any = await conn.query(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'linescout_quotes'
+       AND COLUMN_NAME = 'agent_note'
+     LIMIT 1`
+  );
+  return !!rows?.length;
+}
+
 export async function GET(req: Request) {
   const auth = await requireInternalSession();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -242,6 +254,7 @@ export async function POST(req: Request) {
   const deposit_percent = deposit_enabled ? deposit_percent_raw : 0;
   const payment_purpose = String(body?.payment_purpose || "full_product_payment");
   const currency = String(body?.currency || "NGN");
+  const agent_note = String(body?.agent_note || "").trim();
 
   if (exchange_rate_rmb <= 0 || exchange_rate_usd <= 0 || shipping_rate_usd <= 0) {
     return NextResponse.json({ ok: false, error: "Exchange rates and shipping rate must be greater than 0" }, { status: 400 });
@@ -261,9 +274,18 @@ export async function POST(req: Request) {
     const allowed = await canCreateQuote(conn, auth.user, handoff_id);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
-    const [result]: any = await conn.query(
-      `INSERT INTO linescout_quotes
-       (handoff_id, token, status, currency, payment_purpose,
+    const supportsAgentNote = await hasQuoteNoteColumn(conn);
+    const insertColumns = supportsAgentNote
+      ? `handoff_id, token, status, currency, payment_purpose,
+        exchange_rate_rmb, exchange_rate_usd,
+        shipping_type_id, shipping_rate_usd, shipping_rate_unit,
+        markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
+        deposit_enabled, deposit_percent, agent_note,
+        items_json,
+        total_product_rmb, total_product_ngn, total_weight_kg, total_cbm,
+        total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
+        created_by, updated_by`
+      : `handoff_id, token, status, currency, payment_purpose,
         exchange_rate_rmb, exchange_rate_usd,
         shipping_type_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
@@ -271,36 +293,73 @@ export async function POST(req: Request) {
         items_json,
         total_product_rmb, total_product_ngn, total_weight_kg, total_cbm,
         total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
-        created_by, updated_by)
-       VALUES (?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
-      [
-        handoff_id,
-        token,
-        currency,
-        payment_purpose,
-        exchange_rate_rmb,
-        exchange_rate_usd,
-        shipping_type_id,
-        shipping_rate_usd,
-        shipping_rate_unit,
-        markup_percent,
-        agent_percent,
-        agent_commitment_percent,
-        commitment_due_ngn,
-        deposit_enabled ? 1 : 0,
-        deposit_percent || null,
-        JSON.stringify(items),
-        totals.totalProductRmb,
-        totals.totalProductNgn,
-        totals.totalWeightKg,
-        totals.totalCbm,
-        totals.totalShippingUsd,
-        totals.totalShippingNgn,
-        totals.totalMarkupNgn,
-        totals.totalDueNgn,
-        auth.user.id,
-        auth.user.id,
-      ]
+        created_by, updated_by`;
+
+    const insertValues = supportsAgentNote
+      ? `?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
+      : `?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
+    const insertParams = supportsAgentNote
+      ? [
+          handoff_id,
+          token,
+          currency,
+          payment_purpose,
+          exchange_rate_rmb,
+          exchange_rate_usd,
+          shipping_type_id,
+          shipping_rate_usd,
+          shipping_rate_unit,
+          markup_percent,
+          agent_percent,
+          agent_commitment_percent,
+          commitment_due_ngn,
+          deposit_enabled ? 1 : 0,
+          deposit_percent || null,
+          agent_note || null,
+          JSON.stringify(items),
+          totals.totalProductRmb,
+          totals.totalProductNgn,
+          totals.totalWeightKg,
+          totals.totalCbm,
+          totals.totalShippingUsd,
+          totals.totalShippingNgn,
+          totals.totalMarkupNgn,
+          totals.totalDueNgn,
+          auth.user.id,
+          auth.user.id,
+        ]
+      : [
+          handoff_id,
+          token,
+          currency,
+          payment_purpose,
+          exchange_rate_rmb,
+          exchange_rate_usd,
+          shipping_type_id,
+          shipping_rate_usd,
+          shipping_rate_unit,
+          markup_percent,
+          agent_percent,
+          agent_commitment_percent,
+          commitment_due_ngn,
+          deposit_enabled ? 1 : 0,
+          deposit_percent || null,
+          JSON.stringify(items),
+          totals.totalProductRmb,
+          totals.totalProductNgn,
+          totals.totalWeightKg,
+          totals.totalCbm,
+          totals.totalShippingUsd,
+          totals.totalShippingNgn,
+          totals.totalMarkupNgn,
+          totals.totalDueNgn,
+          auth.user.id,
+          auth.user.id,
+        ];
+
+    const [result]: any = await conn.query(
+      `INSERT INTO linescout_quotes (${insertColumns}) VALUES (${insertValues})`,
+      insertParams
     );
 
     // Keep handoff financials in sync with latest estimated landing cost

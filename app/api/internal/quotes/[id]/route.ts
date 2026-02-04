@@ -149,6 +149,18 @@ function ensureItems(raw: any) {
   }));
 }
 
+async function hasQuoteNoteColumn(conn: any) {
+  const [rows]: any = await conn.query(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'linescout_quotes'
+       AND COLUMN_NAME = 'agent_note'
+     LIMIT 1`
+  );
+  return !!rows?.length;
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireInternalSession();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -207,6 +219,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const deposit_percent = deposit_enabled ? deposit_percent_raw : 0;
   const payment_purpose = String(body?.payment_purpose || "full_product_payment");
   const currency = String(body?.currency || "NGN");
+  const includeAgentNote = Object.prototype.hasOwnProperty.call(body || {}, "agent_note");
+  const agent_note = String(body?.agent_note || "").trim();
 
   if (exchange_rate_rmb <= 0 || exchange_rate_usd <= 0 || shipping_rate_usd <= 0) {
     return NextResponse.json({ ok: false, error: "Exchange rates and shipping rate must be greater than 0" }, { status: 400 });
@@ -224,6 +238,36 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    const supportsAgentNote = await hasQuoteNoteColumn(conn);
+    const updateAgentNote = supportsAgentNote && includeAgentNote;
+    const setNoteSql = updateAgentNote ? "agent_note = ?," : "";
+    const params = [
+      currency,
+      payment_purpose,
+      exchange_rate_rmb,
+      exchange_rate_usd,
+      shipping_type_id,
+      shipping_rate_usd,
+      shipping_rate_unit,
+      markup_percent,
+      agent_percent,
+      agent_commitment_percent,
+      commitment_due_ngn,
+      deposit_enabled ? 1 : 0,
+      deposit_percent || null,
+      ...(updateAgentNote ? [agent_note || null] : []),
+      JSON.stringify(items),
+      totals.totalProductRmb,
+      totals.totalProductNgn,
+      totals.totalWeightKg,
+      totals.totalCbm,
+      totals.totalShippingUsd,
+      totals.totalShippingNgn,
+      totals.totalMarkupNgn,
+      totals.totalDueNgn,
+      auth.user.id,
+      quoteId,
+    ];
 
     await conn.query(
       `UPDATE linescout_quotes
@@ -240,6 +284,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
            commitment_due_ngn = ?,
            deposit_enabled = ?,
            deposit_percent = ?,
+           ${setNoteSql}
            items_json = ?,
            total_product_rmb = ?,
            total_product_ngn = ?,
@@ -252,32 +297,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
            updated_by = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [
-        currency,
-        payment_purpose,
-        exchange_rate_rmb,
-        exchange_rate_usd,
-        shipping_type_id,
-        shipping_rate_usd,
-        shipping_rate_unit,
-        markup_percent,
-        agent_percent,
-        agent_commitment_percent,
-        commitment_due_ngn,
-        deposit_enabled ? 1 : 0,
-        deposit_percent || null,
-        JSON.stringify(items),
-        totals.totalProductRmb,
-        totals.totalProductNgn,
-        totals.totalWeightKg,
-        totals.totalCbm,
-        totals.totalShippingUsd,
-        totals.totalShippingNgn,
-        totals.totalMarkupNgn,
-        totals.totalDueNgn,
-        auth.user.id,
-        quoteId,
-      ]
+      params
     );
 
     const [handoffRows]: any = await conn.query(
