@@ -59,6 +59,21 @@ export async function GET(req: Request) {
         c.id AS id,
 
         c.user_id,
+        COALESCE(
+          NULLIF(
+            TRIM((
+              SELECT l.name
+              FROM linescout_leads l
+              WHERE l.email = u.email
+              ORDER BY l.created_at DESC
+              LIMIT 1
+            )),
+            ''
+          ),
+          NULLIF(TRIM(u.display_name), ''),
+          NULLIF(TRIM(SUBSTRING_INDEX(u.email, '@', 1)), ''),
+          'User'
+        ) AS customer_name,
         c.route_type,
         c.chat_mode,
         c.project_status,
@@ -81,6 +96,7 @@ export async function GET(req: Request) {
         END AS is_unread
 
       FROM linescout_conversations c
+      LEFT JOIN users u ON u.id = c.user_id
 
       LEFT JOIN (
         SELECT m1.*
