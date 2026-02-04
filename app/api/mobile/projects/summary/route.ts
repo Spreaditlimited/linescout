@@ -61,7 +61,8 @@ export async function GET(req: Request) {
           c.chat_mode,
           c.payment_status,
           c.handoff_id,
-          h.status AS handoff_status
+          h.status AS handoff_status,
+          h.token AS handoff_token
         FROM linescout_conversations c
         LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
         WHERE c.id = ?
@@ -128,6 +129,33 @@ export async function GET(req: Request) {
 
       let quoteSummary: any = null;
       let quotePayments: any[] = [];
+      let commitmentPayment: any | null = null;
+
+      if (String(c.handoff_token || "").trim()) {
+        const [commitRows]: any = await conn.query(
+          `SELECT id, amount, currency, created_at
+           FROM linescout_payments
+           WHERE token = ?
+             AND status = 'paid'
+             AND type IN ('sourcing','business_plan')
+           ORDER BY id ASC
+           LIMIT 1`,
+          [String(c.handoff_token).trim()]
+        );
+        const cp = commitRows?.[0];
+        if (cp?.id) {
+          commitmentPayment = {
+            id: Number(cp.id),
+            purpose: "commitment_fee",
+            method: "card_bank",
+            status: "paid",
+            amount: Number(cp.amount || 0),
+            currency: String(cp.currency || "NGN"),
+            created_at: cp.created_at || null,
+            paid_at: cp.created_at || null,
+          };
+        }
+      }
       const [quoteRows]: any = await conn.query(
         `SELECT
            q.id,
@@ -218,13 +246,17 @@ export async function GET(req: Request) {
         };
       }
 
+      const allPayments = commitmentPayment
+        ? [commitmentPayment, ...quotePayments]
+        : quotePayments;
+
       return NextResponse.json({
         ok: true,
         conversation_id: conversationId,
         stage,
         summary: summaryText,
         quote_summary: quoteSummary,
-        payments: quotePayments,
+        payments: allPayments,
       });
     } finally {
       conn.release();

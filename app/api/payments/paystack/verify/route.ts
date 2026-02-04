@@ -170,7 +170,7 @@ function buildEmail(params: {
       `Token: ${params.token}`,
       `Amount: ${params.amountText}`,
       `Paystack Reference: ${params.paystackRef}`,
-      `Open the LineScout app and continue your paid chat: ${deepLink}`,
+      "Open the LineScout app and tap the Open Paid Chat button below.",
       "Share your requirements in one message if possible (specs, pictures, capacity, voltage, output, target country).",
       "Your sourcing specialist will respond inside the paid chat thread.",
       "Please keep conversations respectful. You can report issues directly inside paid chat.",
@@ -193,7 +193,7 @@ function buildEmail(params: {
     `Paystack Reference: ${params.paystackRef}`,
     "",
     "What happens next",
-    `1) Open the LineScout app and continue your paid chat: ${deepLink}`,
+    "1) Open the LineScout app and tap the Open Paid Chat button in this email.",
     "2) Share your requirements in one message if possible (specs, pictures, capacity, voltage, output, target country). If you started this sourcing project from the AI chat, we already have your context.",
     "3) Your sourcing specialist will respond inside the paid chat thread.",
     "",
@@ -261,8 +261,8 @@ function buildEmail(params: {
                         Open Paid Chat
                       </a>
                     </div>
-                    <div style="margin-top:10px;font-size:12px;color:#6b7280;word-break:break-all;">
-                      If the button does not open the app, copy this link: ${deepLink}
+                    <div style="margin-top:10px;font-size:12px;color:#6b7280;">
+                      If the button does not open the app, open LineScout and continue from Projects.
                     </div>
                   </li>
                   <li style="margin:0 0 8px 0;">
@@ -631,20 +631,24 @@ export async function POST(req: Request) {
           .filter(Boolean);
 
         for (const email of emails) {
+          const mail = buildNoticeEmail({
+            subject: "New paid chat available",
+            title: "New paid chat",
+            lines: [
+              `${agentLabel} just opened a paid chat.`,
+              `Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}`,
+              `Handoff ID: ${handoffId}`,
+              "Open the LineScout Agent app to claim this project.",
+            ],
+            footerNote:
+              "This email was sent because a new paid chat became available for LineScout agents.",
+          });
           await sendEmail({
             to: email,
             replyTo: "hello@sureimports.com",
-            subject: "New paid chat available",
-            text:
-              `${agentLabel} just opened a paid chat.\n` +
-              `Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}\n` +
-              `Handoff ID: ${handoffId}\n\n` +
-              "Open the LineScout Agent app to claim this project.",
-            html:
-              `<p><strong>${agentLabel}</strong> just opened a paid chat.</p>` +
-              `<p>Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}<br/>` +
-              `Handoff ID: ${handoffId}</p>` +
-              `<p>Open the LineScout Agent app to claim this project.</p>`,
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
           });
         }
       } catch {}
