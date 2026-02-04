@@ -41,6 +41,7 @@ async function requireInternalAccess(req: Request) {
       `SELECT
          u.id,
          u.role,
+         u.username,
          u.is_active,
          COALESCE(p.can_view_leads, 0) AS can_view_leads
        FROM internal_sessions s
@@ -57,9 +58,10 @@ async function requireInternalAccess(req: Request) {
 
     const userId = Number(rows[0].id);
     const role = String(rows[0].role || "");
+    const username = String(rows[0].username || "").trim();
     const canViewLeads = !!rows[0].can_view_leads;
 
-    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role };
+    if (role === "admin" || canViewLeads) return { ok: true as const, userId, role, username };
 
     return { ok: false as const, status: 403 as const, error: "Forbidden" };
   } finally {
@@ -99,6 +101,7 @@ export async function GET(req: Request) {
         ap.last_name AS assigned_agent_last_name,
         c.handoff_id,
         h.status AS handoff_status,
+        h.claimed_by AS handoff_claimed_by,
         h.customer_name AS customer_name,
         h.context AS handoff_context,
         (
@@ -144,6 +147,14 @@ export async function GET(req: Request) {
     const handoffId = conv.handoff_id == null ? null : Number(conv.handoff_id);
     const handoffStatusRaw = String(conv.handoff_status || "").trim();
     const handoffStatus = handoffStatusRaw ? handoffStatusRaw : null;
+    const claimedBy = String(conv.handoff_claimed_by || "").trim().toLowerCase();
+    const isAdmin = auth.role === "admin";
+    const isAssignedById = !!assignedAgentId && assignedAgentId === auth.userId;
+    const isClaimedByUsername = !!claimedBy && !!auth.username && claimedBy === auth.username.toLowerCase();
+    const canSend = isAdmin || isAssignedById || isClaimedByUsername;
+    const sendBlockedReason = canSend
+      ? null
+      : "This project is not assigned to you. Claim it before sending messages.";
 
     let customerLastSeenId = 0;
     if (customerUserId) {
@@ -331,6 +342,8 @@ export async function GET(req: Request) {
         handoff_context: conv.handoff_context ?? null,
         customer_last_seen_message_id: customerLastSeenId,
         agent_last_seen_message_id: agentLastSeenId,
+        can_send: canSend,
+        send_blocked_reason: sendBlockedReason,
       },
     });
   } catch (e: any) {
