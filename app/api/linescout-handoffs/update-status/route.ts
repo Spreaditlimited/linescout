@@ -368,6 +368,13 @@ export async function POST(req: Request) {
     }
 
     if (target === "cancelled") {
+      if (actor?.role !== "admin") {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "Only admin can cancel a project." },
+          { status: 403 }
+        );
+      }
       if (!nonEmpty(cancel_reason)) {
         await conn.end();
         return NextResponse.json({ ok: false, error: "Missing cancel_reason" }, { status: 400 });

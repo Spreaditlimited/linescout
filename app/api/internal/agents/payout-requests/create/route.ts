@@ -114,6 +114,33 @@ export async function POST(req: Request) {
       );
     }
 
+    // Agents can only request up to their current wallet balance.
+    const [walletRows]: any = await conn.query(
+      `
+      SELECT balance
+      FROM linescout_wallets
+      WHERE owner_type = 'agent'
+        AND owner_id = ?
+      LIMIT 1
+      `,
+      [auth.userId]
+    );
+
+    const walletBalanceNgn = Number(walletRows?.[0]?.balance || 0);
+    const walletBalanceKobo = Math.round(walletBalanceNgn * 100);
+    if (!walletRows?.length || walletBalanceKobo <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "No available earnings to withdraw yet." },
+        { status: 400 }
+      );
+    }
+    if (amountKobo > walletBalanceKobo) {
+      return NextResponse.json(
+        { ok: false, error: "Requested amount exceeds your available earnings." },
+        { status: 400 }
+      );
+    }
+
     const [ins]: any = await conn.query(
       `
       INSERT INTO linescout_agent_payout_requests

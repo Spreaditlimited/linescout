@@ -217,6 +217,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
+  // Do not treat project-start commitments as wallet top-ups.
+  // These are handled by the paystack verify flow that creates/updates project records.
+  const metadataPurpose = String(data?.metadata?.purpose || "")
+    .trim()
+    .toLowerCase();
+  if (metadataPurpose === "sourcing" || metadataPurpose === "business_plan") {
+    return NextResponse.json({ ok: true, ignored: true, reason: "project_start_payment" });
+  }
+
   if (String(data?.metadata?.payment_kind || "") === "quote" || data?.metadata?.quote_id) {
     const reference = String(data?.reference || data?.transaction_reference || data?.id || "").trim();
     const amountNgn = toNaira(data?.amount);
