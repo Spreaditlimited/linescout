@@ -340,6 +340,46 @@ export async function POST(req: Request) {
     if (!manufacturerUpdateOnly) {
     // Required fields validation for certain statuses
     if (target === "shipped") {
+      const [quoteRows]: any = await conn.execute(
+        `SELECT id, total_product_ngn, total_markup_ngn, commitment_due_ngn
+         FROM linescout_quotes
+         WHERE handoff_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [id]
+      );
+      if (!quoteRows?.length) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "A quote is required before marking shipped." },
+          { status: 400 }
+        );
+      }
+
+      const latestQuote = quoteRows[0];
+      const productDue = Math.max(
+        0,
+        Math.round(
+          Number(latestQuote.total_product_ngn || 0) +
+            Number(latestQuote.total_markup_ngn || 0) -
+            Number(latestQuote.commitment_due_ngn || 0)
+        )
+      );
+      const [quotePayRows]: any = await conn.execute(
+        `SELECT COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS paid
+         FROM linescout_quote_payments
+         WHERE quote_id = ?`,
+        [Number(latestQuote.id)]
+      );
+      const productPaid = Number(quotePayRows?.[0]?.paid || 0);
+      if (productDue > 0 && productPaid < productDue) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "Product payment must be completed before marking shipped." },
+          { status: 400 }
+        );
+      }
+
       // old UI sends shipper (text)
       // new UI sends shipping_company_id (preferred)
       if (!shipping_company_id && !nonEmpty(shipper)) {

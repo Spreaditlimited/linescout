@@ -29,6 +29,20 @@ function toOptionalPositiveInt(v: any): number | null {
   return Math.floor(n);
 }
 
+function pickItems(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object" && Array.isArray(raw.items)) return raw.items;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 // Fire-and-forget: never block saving payments (admin notify)
 async function notifyN8n(event: string, payload: any) {
   if (!N8N_BASE_URL) return;
@@ -125,6 +139,71 @@ export async function GET(req: Request) {
       [handoffId]
     );
 
+    const [quoteRows]: any = await conn.query(
+      `SELECT
+         q.id,
+         q.token,
+         q.shipping_type_id,
+         q.total_product_ngn,
+         q.total_shipping_ngn,
+         q.total_markup_ngn,
+         q.commitment_due_ngn,
+         q.items_json,
+         st.name AS shipping_type_name
+       FROM linescout_quotes q
+       LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
+       WHERE q.handoff_id = ?
+       ORDER BY q.id DESC
+       LIMIT 1`,
+      [handoffId]
+    );
+
+    const latestQuote = quoteRows?.[0] || null;
+    let quoteSummary: any = null;
+    if (latestQuote) {
+      const productDue = Math.max(
+        0,
+        Math.round(
+          Number(latestQuote.total_product_ngn || 0) +
+            Number(latestQuote.total_markup_ngn || 0) -
+            Number(latestQuote.commitment_due_ngn || 0)
+        )
+      );
+      const shippingDue = Math.max(0, Math.round(Number(latestQuote.total_shipping_ngn || 0)));
+
+      const [quotePaidRows]: any = await conn.query(
+        `SELECT
+           COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS product_paid,
+           COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN amount ELSE 0 END), 0) AS shipping_paid
+         FROM linescout_quote_payments
+         WHERE quote_id = ?`,
+        [latestQuote.id]
+      );
+      const productPaid = Number(quotePaidRows?.[0]?.product_paid || 0);
+      const shippingPaid = Number(quotePaidRows?.[0]?.shipping_paid || 0);
+
+      const items = pickItems(latestQuote.items_json);
+      const firstItem = items?.[0] || null;
+      const totalQuantity = items.reduce((sum: number, item: any) => {
+        const q = Number(item?.quantity || 0);
+        return Number.isFinite(q) ? sum + q : sum;
+      }, 0);
+
+      quoteSummary = {
+        quote_id: Number(latestQuote.id),
+        quote_token: String(latestQuote.token || ""),
+        product_name: firstItem?.product_name ? String(firstItem.product_name) : null,
+        total_quantity: totalQuantity,
+        shipping_type: latestQuote.shipping_type_name ? String(latestQuote.shipping_type_name) : null,
+        product_due: productDue,
+        product_paid: productPaid,
+        product_balance: Math.max(0, productDue - productPaid),
+        shipping_due: shippingDue,
+        shipping_paid: shippingPaid,
+        shipping_balance: Math.max(0, shippingDue - shippingPaid),
+      };
+    }
+
     const totalPaid = Number(sumRows?.[0]?.total_paid || 0);
     const totalDue = Number(finRows?.[0]?.total_due || 0);
     const currency = finRows?.[0]?.currency || "NGN";
@@ -137,6 +216,7 @@ export async function GET(req: Request) {
         total_paid: totalPaid,
         balance: totalDue - totalPaid,
       },
+      quote_summary: quoteSummary,
       payments: payRows || [],
     });
   } catch (e) {

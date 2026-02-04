@@ -6,13 +6,34 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function pickItems(raw: any) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object" && Array.isArray(raw.items)) return raw.items;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw || "[]");
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /**
  * GET /api/mobile/projects/summary?conversation_id=123
  * - Signed-in users only
  * - Returns a short, safe summary STRING for user confidence (not full transcript)
  *
  * Response:
- * { ok: true, conversation_id: number, stage: string, summary: string | null }
+ * {
+ *   ok: true,
+ *   conversation_id: number,
+ *   stage: string,
+ *   summary: string | null,
+ *   quote_summary?: {...},
+ *   payments?: [...]
+ * }
  */
 export async function GET(req: Request) {
   try {
@@ -105,11 +126,93 @@ export async function GET(req: Request) {
 
       const summaryText = parts.join("\n\n") || null;
 
+      let quoteSummary: any = null;
+      let quotePayments: any[] = [];
+      const [quoteRows]: any = await conn.query(
+        `SELECT
+           q.id,
+           q.token,
+           q.shipping_type_id,
+           q.total_product_ngn,
+           q.total_shipping_ngn,
+           q.total_markup_ngn,
+           q.commitment_due_ngn,
+           q.items_json,
+           st.name AS shipping_type_name
+         FROM linescout_quotes q
+         LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
+         WHERE q.handoff_id = ?
+         ORDER BY q.id DESC
+         LIMIT 1`,
+        [Number(c.handoff_id)]
+      );
+      if (quoteRows?.length) {
+        const q = quoteRows[0];
+        const productDue = Math.max(
+          0,
+          Math.round(
+            Number(q.total_product_ngn || 0) +
+              Number(q.total_markup_ngn || 0) -
+              Number(q.commitment_due_ngn || 0)
+          )
+        );
+        const shippingDue = Math.max(0, Math.round(Number(q.total_shipping_ngn || 0)));
+
+        const [qPayRows]: any = await conn.query(
+          `SELECT
+             id, purpose, method, status, amount, currency, provider_ref, created_at, paid_at
+           FROM linescout_quote_payments
+           WHERE quote_id = ?
+           ORDER BY id DESC`,
+          [Number(q.id)]
+        );
+        quotePayments = Array.isArray(qPayRows) ? qPayRows : [];
+
+        const productPaid = quotePayments.reduce((sum, p) => {
+          const purpose = String(p?.purpose || "");
+          const status = String(p?.status || "");
+          if (status === "paid" && (purpose === "deposit" || purpose === "product_balance" || purpose === "full_product_payment")) {
+            return sum + Number(p?.amount || 0);
+          }
+          return sum;
+        }, 0);
+        const shippingPaid = quotePayments.reduce((sum, p) => {
+          if (String(p?.status || "") === "paid" && String(p?.purpose || "") === "shipping_payment") {
+            return sum + Number(p?.amount || 0);
+          }
+          return sum;
+        }, 0);
+
+        const items = pickItems(q.items_json);
+        const firstItem = items?.[0] || null;
+        const quantity = items.reduce((sum: number, item: any) => {
+          const n = Number(item?.quantity || 0);
+          return Number.isFinite(n) ? sum + n : sum;
+        }, 0);
+
+        quoteSummary = {
+          quote_id: Number(q.id),
+          quote_token: String(q.token || ""),
+          product_name: firstItem?.product_name ? String(firstItem.product_name) : null,
+          quantity,
+          due_amount: Math.max(0, productDue - productPaid),
+          shipping_type: q.shipping_type_name ? String(q.shipping_type_name) : null,
+          product_due: productDue,
+          product_paid: productPaid,
+          product_balance: Math.max(0, productDue - productPaid),
+          shipping_due: shippingDue,
+          shipping_paid: shippingPaid,
+          shipping_balance: Math.max(0, shippingDue - shippingPaid),
+        };
+      }
+
       return NextResponse.json({
         ok: true,
         conversation_id: conversationId,
         stage,
         summary: summaryText,
+        quote_summary: quoteSummary,
+        payments: quotePayments,
       });
     } finally {
       conn.release();
