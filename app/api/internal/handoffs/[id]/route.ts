@@ -170,11 +170,27 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         b.name AS bank_name,
         sc.name AS shipping_company_name,
         c.assigned_agent_id,
-        ia.username AS assigned_agent_username
+        ia.username AS assigned_agent_username,
+        COALESCE(
+          NULLIF(TRIM(h.customer_name), ''),
+          NULLIF(
+            TRIM((
+              SELECT l.name
+              FROM linescout_leads l
+              WHERE l.email = u.email
+              ORDER BY l.created_at DESC
+              LIMIT 1
+            )),
+            ''
+          ),
+          NULLIF(TRIM(u.display_name), ''),
+          'Customer'
+        ) AS resolved_customer_name
       FROM linescout_handoffs h
       LEFT JOIN linescout_banks b ON b.id = h.bank_id
       LEFT JOIN linescout_shipping_companies sc ON sc.id = h.shipping_company_id
       LEFT JOIN linescout_conversations c ON c.handoff_id = h.id
+      LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
       WHERE h.id = ?
       LIMIT 1
@@ -210,7 +226,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         handoff_type: String(item.handoff_type || ""),
         status: String(item.status || ""),
 
-        customer_name: item.customer_name ?? null,
+        customer_name: item.resolved_customer_name ?? item.customer_name ?? null,
         email: item.email ?? null,
         whatsapp_number: item.whatsapp_number ?? null,
         context: item.context ?? null,
