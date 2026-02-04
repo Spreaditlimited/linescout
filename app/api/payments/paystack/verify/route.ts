@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { buildNoticeEmail } from "@/lib/otp-email";
 import type { Transporter } from "nodemailer";
 
 // Use require to avoid default-import interop issues in some TS setups
@@ -159,11 +160,26 @@ function buildEmail(params: {
   handoffId: number;
 }) {
   const greeting = params.firstName ? `Hi ${params.firstName},` : "Hi there,";
+  const deepLink = `linescout://paid-chat?handoff_id=${encodeURIComponent(String(params.handoffId))}`;
+  return buildNoticeEmail({
+    subject: "Payment Confirmed: Your LineScout Sourcing Project is Active",
+    title: "Payment confirmed",
+    lines: [
+      greeting,
+      "Your payment has been confirmed successfully. Your paid sourcing project is now active.",
+      `Token: ${params.token}`,
+      `Amount: ${params.amountText}`,
+      `Paystack Reference: ${params.paystackRef}`,
+      `Open the LineScout app and continue your paid chat: ${deepLink}`,
+      "Share your requirements in one message if possible (specs, pictures, capacity, voltage, output, target country).",
+      "Your sourcing specialist will respond inside the paid chat thread.",
+      "Please keep conversations respectful. You can report issues directly inside paid chat.",
+      "If you did not authorize this payment, reply to this email immediately and we will investigate.",
+    ],
+    footerNote: "This email was sent because a payment was completed on your LineScout account.",
+  });
 
   const subject = "Payment Confirmed: Your LineScout Sourcing Project is Active";
-
-  const deepLink = `linescout://paid-chat?handoff_id=${encodeURIComponent(String(params.handoffId))}`;
-
   const text = [
     "LineScout by Sure Importers Limited",
     "",

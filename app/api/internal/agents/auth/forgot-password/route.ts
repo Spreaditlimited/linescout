@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { buildNoticeEmail } from "@/lib/otp-email";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import type { Transporter } from "nodemailer";
@@ -55,27 +56,17 @@ async function sendEmail(opts: { to: string; subject: string; text: string; html
 }
 
 function buildResetEmail(params: { tempPassword: string }) {
-  const subject = "LineScout Agent Password Reset";
-  const text = [
-    "Your LineScout Agent password has been reset.",
-    "",
-    `Temporary password: ${params.tempPassword}`,
-    "",
-    "Please sign in and change your password immediately.",
-    "",
-    "If you did not request this, contact support: hello@sureimports.com",
-  ].join("\n");
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;font-size:14px;color:#111827;">
-      <p>Your LineScout Agent password has been reset.</p>
-      <p><strong>Temporary password:</strong> ${params.tempPassword}</p>
-      <p>Please sign in and change your password immediately.</p>
-      <p style="color:#6b7280;font-size:12px;">If you did not request this, contact support: hello@sureimports.com</p>
-    </div>
-  `;
-
-  return { subject, text, html };
+  return buildNoticeEmail({
+    subject: "LineScout Agent Password Reset",
+    title: "Password reset",
+    lines: [
+      "Your LineScout Agent password has been reset.",
+      `Temporary password: ${params.tempPassword}`,
+      "Please sign in and change your password immediately.",
+      "If you did not request this, contact support immediately.",
+    ],
+    footerNote: "This email was sent because a password reset was requested for your LineScout Agent account.",
+  });
 }
 
 export async function POST(req: Request) {

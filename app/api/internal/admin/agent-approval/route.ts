@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { buildNoticeEmail } from "@/lib/otp-email";
 import type { Transporter } from "nodemailer";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -59,86 +60,38 @@ function safeFirstName(name: string | null) {
 
 function buildApprovalEmail(params: { firstName: string | null }) {
   const firstName = safeFirstName(params.firstName) || "there";
-  const subject = "Your LineScout Agent Account Has Been Approved";
   const link = "https://linescout.sureimports.com/agents";
-
-  const text = [
-    `Dear ${firstName},`,
-    "",
-    "Congratulations.",
-    "",
-    "We have approved your LineScout Agent account. You can now start claiming projects.",
-    "",
-    "Please, ensure to follow our guidelines and chat politely with customers.",
-    "",
-    "Please, take your time to read our Agents' Terms and Conditions:",
-    link,
-    "",
-    "Thank you.",
-    "",
-    "Kind Regards,",
-    "LineScout Approval Team",
-    "LineScout is a registered trademark of Sure Importers Limited in Nigeria.",
-    "",
-    "Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.",
-    "Email: hello@sureimports.com",
-  ].join("\n");
-
-  const html = `
-  <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;padding:24px;">
-    <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:14px;padding:24px;border:1px solid #e5e7eb;">
-      <h2 style="margin:0 0 12px 0;color:#0f172a;">Your LineScout Agent Account Has Been Approved</h2>
-      <p style="margin:0 0 10px 0;color:#111827;">Dear ${firstName},</p>
-      <p style="margin:0 0 10px 0;color:#111827;">Congratulations.</p>
-      <p style="margin:0 0 10px 0;color:#111827;">We have approved your LineScout Agent account. You can now start claiming projects.</p>
-      <p style="margin:0 0 10px 0;color:#111827;">Please, ensure to follow our guidelines and chat politely with customers.</p>
-      <p style="margin:0 0 10px 0;color:#111827;">Please, take your time to read our Agents' Terms and Conditions:</p>
-      <p style="margin:0 0 16px 0;"><a href="${link}" style="color:#0f766e;text-decoration:underline;">${link}</a></p>
-      <p style="margin:0;color:#111827;">Thank you.</p>
-      <p style="margin:16px 0 0 0;color:#111827;">Kind Regards,<br/>LineScout Approval Team</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0;" />
-      <p style="margin:0;color:#6b7280;font-size:12px;">LineScout is a registered trademark of Sure Importers Limited in Nigeria.</p>
-      <p style="margin:6px 0 0 0;color:#6b7280;font-size:12px;">Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.</p>
-      <p style="margin:6px 0 0 0;color:#6b7280;font-size:12px;">Email: hello@sureimports.com</p>
-    </div>
-  </div>`;
-
-  return { subject, text, html };
+  return buildNoticeEmail({
+    subject: "Your LineScout Agent Account Has Been Approved",
+    title: "Agent account approved",
+    lines: [
+      `Dear ${firstName},`,
+      "Congratulations.",
+      "We have approved your LineScout Agent account. You can now start claiming projects.",
+      "Please, ensure to follow our guidelines and chat politely with customers.",
+      `Please, take your time to read our Agents' Terms and Conditions: ${link}`,
+      "Thank you.",
+      "Kind Regards,",
+      "LineScout Approval Team",
+    ],
+    footerNote: "This email was sent because your LineScout Agent account was approved.",
+  });
 }
 
 function buildRejectionEmail(params: { firstName: string | null; reason: string }) {
   const firstName = safeFirstName(params.firstName) || "there";
-  const subject = "Your LineScout Agent Application Has Been Rejected.";
   const reason = String(params.reason || "").trim();
-
-  const text = [
-    `Dear ${firstName},`,
-    "",
-    reason || "Your application was rejected.",
-    "",
-    "Kind regards,",
-    "LineScout Approval Team",
-    "LineScout is a registered trademark of Sure Importers Limited in Nigeria.",
-    "",
-    "Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.",
-    "Email: hello@sureimports.com",
-  ].join("\n");
-
-  const html = `
-  <div style="font-family:Arial,Helvetica,sans-serif;background:#f6f7fb;padding:24px;">
-    <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:14px;padding:24px;border:1px solid #e5e7eb;">
-      <h2 style="margin:0 0 12px 0;color:#0f172a;">Your LineScout Agent Application Has Been Rejected</h2>
-      <p style="margin:0 0 10px 0;color:#111827;">Dear ${firstName},</p>
-      <p style="margin:0 0 10px 0;color:#111827;">${reason || "Your application was rejected."}</p>
-      <p style="margin:16px 0 0 0;color:#111827;">Kind regards,<br/>LineScout Approval Team</p>
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:18px 0;" />
-      <p style="margin:0;color:#6b7280;font-size:12px;">LineScout is a registered trademark of Sure Importers Limited in Nigeria.</p>
-      <p style="margin:6px 0 0 0;color:#6b7280;font-size:12px;">Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.</p>
-      <p style="margin:6px 0 0 0;color:#6b7280;font-size:12px;">Email: hello@sureimports.com</p>
-    </div>
-  </div>`;
-
-  return { subject, text, html };
+  return buildNoticeEmail({
+    subject: "Your LineScout Agent Application Has Been Rejected.",
+    title: "Agent application rejected",
+    lines: [
+      `Dear ${firstName},`,
+      reason || "Your application was rejected.",
+      "Kind regards,",
+      "LineScout Approval Team",
+    ],
+    footerNote: "This email was sent because your LineScout Agent application was rejected.",
+  });
 }
 
 async function requireAdminSession() {

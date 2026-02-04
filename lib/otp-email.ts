@@ -84,7 +84,13 @@ export function buildNoticeEmail(params: {
   const footerNote =
     params.footerNote ||
     "This email was sent because a payout event occurred on your LineScout account.";
-  const footerLines = Array.isArray(params.footerLines) ? params.footerLines : [];
+  const footerLines = Array.isArray(params.footerLines) && params.footerLines.length
+    ? params.footerLines
+    : [
+        "LineScout is a registered trademark of Sure Importers Limited in Nigeria.",
+        "Address: 5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria.",
+        "Email: hello@sureimports.com",
+      ];
   const footerHtml = footerLines.length
     ? footerLines
         .map(

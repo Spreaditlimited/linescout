@@ -3,10 +3,23 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
 import type { Transporter } from "nodemailer";
+import { buildNoticeEmail } from "@/lib/otp-email";
 const nodemailer = require("nodemailer");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function buildClaimedEmail() {
+  return buildNoticeEmail({
+    subject: "Your LineScout paid chat has been claimed",
+    title: "Paid chat claimed",
+    lines: [
+      "A specialist has claimed your paid chat and will respond shortly.",
+      "Open the LineScout app to continue the conversation.",
+    ],
+    footerNote: "This email was sent because your paid chat was claimed on LineScout.",
+  });
+}
 
 function getSmtpConfig() {
   const host = process.env.SMTP_HOST?.trim();
@@ -231,13 +244,12 @@ export async function POST(req: Request) {
               data: { kind: "paid", conversation_id: conversationId },
             });
             if (email) {
+              const mail = buildClaimedEmail();
               await sendEmail({
                 to: email,
-                subject: "Your LineScout paid chat has been claimed",
-                text:
-                  "A specialist has claimed your paid chat and will respond shortly. Open the LineScout app to continue the conversation.",
-                html:
-                  "<p>A specialist has claimed your paid chat and will respond shortly.</p><p>Open the LineScout app to continue the conversation.</p>",
+                subject: mail.subject,
+                text: mail.text,
+                html: mail.html,
               });
             }
           } catch {}
@@ -298,13 +310,12 @@ export async function POST(req: Request) {
           data: { kind: "paid", conversation_id: conversationId },
         });
         if (email) {
+          const mail = buildClaimedEmail();
           await sendEmail({
             to: email,
-            subject: "Your LineScout paid chat has been claimed",
-            text:
-              "A specialist has claimed your paid chat and will respond shortly. Open the LineScout app to continue the conversation.",
-            html:
-              "<p>A specialist has claimed your paid chat and will respond shortly.</p><p>Open the LineScout app to continue the conversation.</p>",
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
           });
         }
       } catch {}
