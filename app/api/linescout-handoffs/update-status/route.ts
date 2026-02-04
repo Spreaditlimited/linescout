@@ -344,7 +344,16 @@ export async function POST(req: Request) {
         `SELECT id, total_product_ngn, total_markup_ngn, commitment_due_ngn
          FROM linescout_quotes
          WHERE handoff_id = ?
-         ORDER BY id DESC
+         ORDER BY
+           CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM linescout_quote_payments p
+               WHERE p.quote_id = linescout_quotes.id
+             ) THEN 0
+             ELSE 1
+           END ASC,
+           id DESC
          LIMIT 1`,
         [id]
       );

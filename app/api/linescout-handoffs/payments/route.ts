@@ -153,7 +153,16 @@ export async function GET(req: Request) {
        FROM linescout_quotes q
        LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
        WHERE q.handoff_id = ?
-       ORDER BY q.id DESC
+       ORDER BY
+         CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM linescout_quote_payments p
+             WHERE p.quote_id = q.id
+           ) THEN 0
+           ELSE 1
+         END ASC,
+         q.id DESC
        LIMIT 1`,
       [handoffId]
     );

@@ -142,7 +142,16 @@ export async function GET(req: Request) {
          FROM linescout_quotes q
          LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
          WHERE q.handoff_id = ?
-         ORDER BY q.id DESC
+         ORDER BY
+           CASE
+             WHEN EXISTS (
+               SELECT 1
+               FROM linescout_quote_payments p
+               WHERE p.quote_id = q.id
+             ) THEN 0
+             ELSE 1
+           END ASC,
+           q.id DESC
          LIMIT 1`,
         [Number(c.handoff_id)]
       );
@@ -189,20 +198,23 @@ export async function GET(req: Request) {
           const n = Number(item?.quantity || 0);
           return Number.isFinite(n) ? sum + n : sum;
         }, 0);
+        const productBalance = Math.max(0, productDue - productPaid);
+        const shippingBalance = Math.max(0, shippingDue - shippingPaid);
 
         quoteSummary = {
           quote_id: Number(q.id),
           quote_token: String(q.token || ""),
           product_name: firstItem?.product_name ? String(firstItem.product_name) : null,
           quantity,
-          due_amount: Math.max(0, productDue - productPaid),
+          // User-facing due should represent total outstanding on the project.
+          due_amount: productBalance + shippingBalance,
           shipping_type: q.shipping_type_name ? String(q.shipping_type_name) : null,
           product_due: productDue,
           product_paid: productPaid,
-          product_balance: Math.max(0, productDue - productPaid),
+          product_balance: productBalance,
           shipping_due: shippingDue,
           shipping_paid: shippingPaid,
-          shipping_balance: Math.max(0, shippingDue - shippingPaid),
+          shipping_balance: shippingBalance,
         };
       }
 
