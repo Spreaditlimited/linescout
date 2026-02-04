@@ -100,13 +100,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
       const conv = rows[0];
-      const kind = String(conv.conversation_kind || "");
       const chatMode = String(conv.chat_mode || "");
       const paymentStatus = String(conv.payment_status || "");
       const projectStatus = String(conv.project_status || "");
 
-      const isPaid = kind === "paid" && chatMode === "paid_human" && paymentStatus === "paid";
-      const isQuick = kind === "quick_human" && chatMode === "limited_human" && projectStatus === "active";
+      // Accept legacy rows where conversation_kind may not match current chat_mode.
+      const isPaid = chatMode === "paid_human" && paymentStatus === "paid";
+      const isQuick = chatMode === "limited_human" && projectStatus === "active";
 
       if (!isPaid && !isQuick) {
         return NextResponse.json(
