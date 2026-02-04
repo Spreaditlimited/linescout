@@ -78,10 +78,24 @@ export async function POST(req: Request) {
     const limit = Number(conv.human_message_limit || 0);
     const used = Number(conv.human_message_used || 0);
 
+    // Idempotent usage sync:
+    // Quick-chat quota should track specialist replies delivered in this conversation.
+    const agentReplyRow = await queryOne<RowDataPacket & { agent_count: number }>(
+      `
+      SELECT COUNT(*) AS agent_count
+      FROM linescout_messages
+      WHERE conversation_id = ?
+        AND sender_type = 'agent'
+      `,
+      [conv.id]
+    );
+    const agentReplyCount = Number(agentReplyRow?.agent_count || 0);
+    const effectiveUsed = Math.max(used, agentReplyCount);
+
     const exp = conv.human_access_expires_at ? Date.parse(conv.human_access_expires_at) : NaN;
     const expired = Number.isFinite(exp) ? Date.now() > exp : false;
 
-    if (expired || (limit > 0 && used >= limit)) {
+    if (expired || (limit > 0 && effectiveUsed >= limit)) {
       await exec(
         `
         UPDATE linescout_conversations
@@ -107,44 +121,17 @@ export async function POST(req: Request) {
       });
     }
 
-    const nextUsed = used + 1;
-    const nowExhausted = limit > 0 && nextUsed >= limit;
-
-    if (nowExhausted) {
+    if (effectiveUsed !== used) {
       await exec(
         `
         UPDATE linescout_conversations
-        SET chat_mode = 'ai_only',
-            human_message_limit = 0,
-            human_message_used = 0,
-            human_access_expires_at = NULL,
+        SET human_message_used = ?,
             updated_at = NOW()
         WHERE id = ? AND user_id = ?
         `,
-        [conv.id, user.id]
+        [effectiveUsed, conv.id, user.id]
       );
-
-      return NextResponse.json({
-        ok: true,
-        route_type,
-        conversation_id: conv.id,
-        chat_mode: "ai_only",
-        human_message_limit: 0,
-        human_message_used: 0,
-        human_access_expires_at: null,
-        ended: true,
-      });
     }
-
-    await exec(
-      `
-      UPDATE linescout_conversations
-      SET human_message_used = human_message_used + 1,
-          updated_at = NOW()
-      WHERE id = ? AND user_id = ?
-      `,
-      [conv.id, user.id]
-    );
 
     return NextResponse.json({
       ok: true,
@@ -152,7 +139,7 @@ export async function POST(req: Request) {
       conversation_id: conv.id,
       chat_mode: "limited_human",
       human_message_limit: limit,
-      human_message_used: nextUsed,
+      human_message_used: effectiveUsed,
       human_access_expires_at: conv.human_access_expires_at,
       ended: false,
     });
