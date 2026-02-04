@@ -78,8 +78,7 @@ export async function POST(req: Request) {
     const limit = Number(conv.human_message_limit || 0);
     const used = Number(conv.human_message_used || 0);
 
-    // Idempotent usage sync:
-    // Quick-chat quota should track specialist replies delivered in this conversation.
+    // Count specialist replies currently in this conversation.
     const agentReplyRow = await queryOne<RowDataPacket & { agent_count: number }>(
       `
       SELECT COUNT(*) AS agent_count
@@ -90,12 +89,12 @@ export async function POST(req: Request) {
       [conv.id]
     );
     const agentReplyCount = Number(agentReplyRow?.agent_count || 0);
-    const effectiveUsed = Math.max(used, agentReplyCount);
+    const diff = Math.max(0, agentReplyCount - used);
 
     const exp = conv.human_access_expires_at ? Date.parse(conv.human_access_expires_at) : NaN;
     const expired = Number.isFinite(exp) ? Date.now() > exp : false;
 
-    if (expired || (limit > 0 && effectiveUsed >= limit)) {
+    if (expired || (limit > 0 && used >= limit)) {
       await exec(
         `
         UPDATE linescout_conversations
@@ -121,7 +120,38 @@ export async function POST(req: Request) {
       });
     }
 
-    if (effectiveUsed !== used) {
+    // Consume exactly one newly delivered specialist reply per call.
+    // If diff > 1 (historical backlog/sync case), do not auto-burn all remaining quota on reload.
+    if (diff === 1) {
+      const nextUsed = used + 1;
+      const nowExhausted = limit > 0 && nextUsed >= limit;
+
+      if (nowExhausted) {
+        await exec(
+          `
+          UPDATE linescout_conversations
+          SET chat_mode = 'ai_only',
+              human_message_limit = 0,
+              human_message_used = 0,
+              human_access_expires_at = NULL,
+              updated_at = NOW()
+          WHERE id = ? AND user_id = ?
+          `,
+          [conv.id, user.id]
+        );
+
+        return NextResponse.json({
+          ok: true,
+          route_type,
+          conversation_id: conv.id,
+          chat_mode: "ai_only",
+          human_message_limit: 0,
+          human_message_used: 0,
+          human_access_expires_at: null,
+          ended: true,
+        });
+      }
+
       await exec(
         `
         UPDATE linescout_conversations
@@ -129,8 +159,18 @@ export async function POST(req: Request) {
             updated_at = NOW()
         WHERE id = ? AND user_id = ?
         `,
-        [effectiveUsed, conv.id, user.id]
+        [nextUsed, conv.id, user.id]
       );
+      return NextResponse.json({
+        ok: true,
+        route_type,
+        conversation_id: conv.id,
+        chat_mode: "limited_human",
+        human_message_limit: limit,
+        human_message_used: nextUsed,
+        human_access_expires_at: conv.human_access_expires_at,
+        ended: false,
+      });
     }
 
     return NextResponse.json({
@@ -139,7 +179,7 @@ export async function POST(req: Request) {
       conversation_id: conv.id,
       chat_mode: "limited_human",
       human_message_limit: limit,
-      human_message_used: effectiveUsed,
+      human_message_used: used,
       human_access_expires_at: conv.human_access_expires_at,
       ended: false,
     });

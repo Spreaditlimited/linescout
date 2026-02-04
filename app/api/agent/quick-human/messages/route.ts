@@ -54,10 +54,34 @@ export async function GET(req: Request) {
       // Ensure this is a quick-human conversation
       const [crows]: any = await conn.query(
         `
-        SELECT id, conversation_kind, project_status, chat_mode
-        FROM linescout_conversations
-        WHERE id = ?
-          AND conversation_kind = 'quick_human'
+        SELECT
+          c.id,
+          c.conversation_kind,
+          c.project_status,
+          c.chat_mode,
+          COALESCE(
+            NULLIF(
+              SUBSTRING_INDEX(
+                TRIM((
+                  SELECT l.name
+                  FROM linescout_leads l
+                  WHERE l.email = u.email
+                    AND LOWER(TRIM(COALESCE(l.name, ''))) <> 'unknown'
+                  ORDER BY l.created_at DESC
+                  LIMIT 1
+                )),
+                ' ',
+                1
+              ),
+              ''
+            ),
+            NULLIF(SUBSTRING_INDEX(TRIM(u.display_name), ' ', 1), ''),
+            'Customer'
+          ) AS customer_name
+        FROM linescout_conversations c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id = ?
+          AND c.conversation_kind = 'quick_human'
         LIMIT 1
         `,
         [conversationId]
@@ -187,6 +211,10 @@ export async function GET(req: Request) {
         ok: true,
         conversation_id: conversationId,
         items: rows || [],
+        meta: {
+          customer_name: String(crows[0].customer_name || "Customer"),
+          agent_name: String(agent.name || "Agent"),
+        },
         last_id: lastId,
         attachments,
         attachments_by_message_id: attachmentsByMessageId,

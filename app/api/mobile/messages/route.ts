@@ -97,12 +97,40 @@ export async function GET(req: Request) {
     try {
       // Ensure user owns this conversation
       const [rows]: any = await conn.query(
-        `SELECT id FROM linescout_conversations WHERE id = ? AND user_id = ? LIMIT 1`,
+        `
+        SELECT
+          c.id,
+          c.conversation_kind,
+          COALESCE(
+            NULLIF(
+              SUBSTRING_INDEX(
+                TRIM((
+                  SELECT l.name
+                  FROM linescout_leads l
+                  WHERE l.email = u.email
+                    AND LOWER(TRIM(COALESCE(l.name, ''))) <> 'unknown'
+                  ORDER BY l.created_at DESC
+                  LIMIT 1
+                )),
+                ' ',
+                1
+              ),
+              ''
+            ),
+            NULLIF(SUBSTRING_INDEX(TRIM(u.display_name), ' ', 1), ''),
+            'Customer'
+          ) AS customer_name
+        FROM linescout_conversations c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id = ? AND c.user_id = ?
+        LIMIT 1
+        `,
         [conversationId, userId]
       );
       if (!rows?.length) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
       }
+      const conv = rows[0] || {};
 
       let msgs: any[] = [];
       let hasMore = false;
@@ -202,6 +230,13 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         items: msgs || [],
+        meta:
+          String(conv?.conversation_kind || "") === "quick_human"
+            ? {
+                customer_name: String(conv?.customer_name || "Customer"),
+                agent_name: "Specialist",
+              }
+            : undefined,
         attachments,
         attachments_by_message_id: attachmentsByMessageId,
         has_more: hasMore,

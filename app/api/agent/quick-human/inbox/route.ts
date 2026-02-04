@@ -61,18 +61,22 @@ export async function GET(req: Request) {
         c.user_id,
         COALESCE(
           NULLIF(
-            TRIM((
+            SUBSTRING_INDEX(
+              TRIM((
               SELECT l.name
               FROM linescout_leads l
               WHERE l.email = u.email
+                AND LOWER(TRIM(COALESCE(l.name, ''))) <> 'unknown'
               ORDER BY l.created_at DESC
               LIMIT 1
-            )),
+              )),
+              ' ',
+              1
+            ),
             ''
           ),
-          NULLIF(TRIM(u.display_name), ''),
-          NULLIF(TRIM(SUBSTRING_INDEX(u.email, '@', 1)), ''),
-          'User'
+          NULLIF(SUBSTRING_INDEX(TRIM(u.display_name), ' ', 1), ''),
+          'Customer'
         ) AS customer_name,
         c.route_type,
         c.chat_mode,
