@@ -164,8 +164,7 @@ export async function POST(req: Request) {
 
   // defensive size guard (keep consistent with upload route)
   if (hasFile && file.bytes) {
-    const m = String(file.mime || "").toLowerCase();
-    const max = m === "application/pdf" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+    const max = 10 * 1024 * 1024;
     if (file.bytes > max) {
       return NextResponse.json(
         { ok: false, error: `File too large. Max ${Math.floor(max / (1024 * 1024))}MB` },

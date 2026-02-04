@@ -16,18 +16,12 @@ function safeName(s: string) {
 
 function isAllowedMime(m: string) {
   const t = String(m || "").toLowerCase().trim();
-  return (
-    t === "image/jpeg" ||
-    t === "image/jpg" ||
-    t === "image/png" ||
-    t === "application/pdf"
-  );
+  return t === "image/jpeg" || t === "image/jpg" || t === "image/png";
 }
 
 function maxBytesForMime(m: string) {
-  const t = String(m || "").toLowerCase().trim();
-  if (t === "application/pdf") return 5 * 1024 * 1024; // 5MB
-  return 3 * 1024 * 1024; // 3MB images
+  const _t = String(m || "").toLowerCase().trim();
+  return 10 * 1024 * 1024; // 10MB images
 }
 
 function requireEnv(name: string) {
@@ -69,7 +63,7 @@ export async function POST(req: Request) {
     const mime = String(file.type || "").toLowerCase().trim();
     if (!isAllowedMime(mime)) {
       return NextResponse.json(
-        { ok: false, error: "Only JPG, PNG, and PDF are allowed" },
+        { ok: false, error: "Only JPG and PNG images are supported for now." },
         { status: 400 }
       );
     }
@@ -122,21 +116,17 @@ export async function POST(req: Request) {
     const buf = Buffer.from(ab);
 
     const originalName = safeName(file.name || "upload");
-    const isPdf = mime === "application/pdf";
-
     const folder = `linescout/paid/${conversationId}`;
 
     const uploadResult: any = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
           folder,
-          // PDFs should be uploaded as raw for reliable browser/mobile preview links.
-          resource_type: isPdf ? "raw" : "image",
+          resource_type: "image",
           public_id: `${Date.now()}_${originalName}`.replace(/\.[a-z0-9]+$/i, ""),
           overwrite: false,
           use_filename: true,
           unique_filename: true,
-          format: isPdf ? "pdf" : undefined,
         },
         (err, res) => {
           if (err) return reject(err);

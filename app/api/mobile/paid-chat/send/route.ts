@@ -129,8 +129,7 @@ export async function POST(req: Request) {
 
     // Optional: keep limits consistent with upload route (defensive)
     if (hasAttachment && bytesNum) {
-      const m = String(mime || "").toLowerCase();
-      const max = m === "application/pdf" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+      const max = 10 * 1024 * 1024;
       if (bytesNum > max) {
         return NextResponse.json(
           { ok: false, error: `File too large. Max ${Math.floor(max / (1024 * 1024))}MB` },
