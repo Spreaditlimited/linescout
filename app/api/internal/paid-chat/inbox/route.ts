@@ -178,8 +178,8 @@ export async function GET(req: Request) {
 
         h.id AS handoff_id,
         COALESCE(
-          NULLIF(TRIM(h.customer_name), ''),
           NULLIF(TRIM(u.display_name), ''),
+          NULLIF(TRIM(h.customer_name), ''),
           NULLIF(SUBSTRING_INDEX(u.email, '@', 1), ''),
           'Customer'
         ) AS customer_name,
