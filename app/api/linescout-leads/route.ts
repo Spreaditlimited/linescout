@@ -160,21 +160,21 @@ export async function POST(req: Request) {
       ]
     );
 
-    // Don’t block lead saving if WhatsApp fails
+    // WhatsApp notification intentionally disabled for now.
+    // Keep response keys for compatibility with existing clients.
     let waSent = false;
     let waError: string | null = null;
-
-    try {
-      await sendWhatsAppLeadMessage({
-        to: String(whatsapp),
-        name: String(name),
-        sourcingRequest: String(sourcingRequest),
-      });
-      waSent = true;
-    } catch (err: any) {
-      waError = err?.message || String(err);
-      console.error("WhatsApp lead message failed:", waError);
-    }
+    // try {
+    //   await sendWhatsAppLeadMessage({
+    //     to: String(whatsapp),
+    //     name: String(name),
+    //     sourcingRequest: String(sourcingRequest),
+    //   });
+    //   waSent = true;
+    // } catch (err: any) {
+    //   waError = err?.message || String(err);
+    //   console.error("WhatsApp lead message failed:", waError);
+    // }
 
     return NextResponse.json({ ok: true, waSent, waError });
   } catch (err: any) {
