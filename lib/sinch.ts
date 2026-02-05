@@ -1,4 +1,4 @@
-type SmsResult = { ok: true; responseText?: string } | { ok: false; error: string; status?: number };
+type SmsResult = { ok: true } | { ok: false; error: string; status?: number };
 
 function isEnabled() {
   return String(process.env.SINCH_SMS_ENABLED || "").trim() === "1";
@@ -38,5 +38,5 @@ export async function sendSinchSms(opts: { to: string; body: string }): Promise<
     return { ok: false, status: res.status, error: responseText || "Sinch SMS failed" };
   }
 
-  return { ok: true, responseText };
+  return { ok: true };
 }
