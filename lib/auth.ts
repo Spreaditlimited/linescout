@@ -11,9 +11,28 @@ type StaffRow = RowDataPacket & {
   is_active: 0 | 1;
 };
 
-export async function requireUser(req: Request) {
+function readCookie(cookieHeader: string | null, name: string) {
+  if (!cookieHeader) return "";
+  const parts = cookieHeader.split(";");
+  for (const part of parts) {
+    const [k, v] = part.trim().split("=");
+    if (k === name) return decodeURIComponent(v || "");
+  }
+  return "";
+}
+
+export function getUserTokenFromRequest(req: Request) {
   const auth = req.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (bearer) return bearer;
+
+  const cookie = req.headers.get("cookie");
+  const fromCookie = readCookie(cookie, "linescout_session");
+  return fromCookie || "";
+}
+
+export async function requireUser(req: Request) {
+  const token = getUserTokenFromRequest(req);
 
   if (!token) throw new Error("Unauthorized");
 

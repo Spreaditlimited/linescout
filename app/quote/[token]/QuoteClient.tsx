@@ -230,22 +230,18 @@ export default function QuoteClient({
     let cancelled = false;
     async function loadWallet() {
       if (typeof window === "undefined") return;
-      const token =
-        window.localStorage.getItem("linescout_refresh_token") ||
-        window.localStorage.getItem("linescout_user_token") ||
-        "";
-      if (!token) {
-        if (!cancelled) setWalletAuthMissing(true);
-        return;
-      }
       setWalletLoading(true);
       try {
         const res = await fetch("/api/mobile/wallet", {
-          headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
+          credentials: "include",
         });
         const json = await res.json().catch(() => null);
-        if (!cancelled && res.ok && json?.ok) {
+        if (!res.ok) {
+          if (!cancelled) setWalletAuthMissing(true);
+          return;
+        }
+        if (!cancelled && json?.ok) {
           setWalletBalance(Number(json.wallet?.balance || 0));
           setWalletCurrency(String(json.wallet?.currency || "NGN"));
           setWalletAccount(json.virtual_account || null);

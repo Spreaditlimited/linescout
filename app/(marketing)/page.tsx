@@ -65,8 +65,8 @@ export default function HomePage() {
         </div>
 
         <main className="relative flex-1">
-        <header className="sticky top-0 z-40 border-b border-emerald-100 bg-[#F7F6F2]/95 shadow-sm backdrop-blur">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <header className="z-40 border-b border-emerald-100 bg-[#F7F6F2]/95 shadow-sm backdrop-blur md:sticky md:top-0">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex items-center gap-3">
               <Image src="/linescout-logo.png" alt="LineScout" width={130} height={36} priority />
             </div>
@@ -83,8 +83,8 @@ export default function HomePage() {
             </nav>
             <div className="flex items-center gap-2">
               <Link
-                href="/machine-sourcing"
-                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:border-emerald-300"
+                href="/sign-in"
+                className="rounded-full border border-neutral-300 bg-white px-3 py-2 text-[11px] font-semibold text-neutral-900 shadow-sm hover:border-emerald-300 sm:px-4 sm:py-2 sm:text-xs"
               >
                 Continue on web
               </Link>
@@ -92,56 +92,81 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-6 pb-16 pt-24 md:grid-cols-[1.05fr_0.95fr] md:pt-28">
+        <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-8 px-4 pb-12 pt-12 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-12 md:pt-24 md:pb-16">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 sm:text-xs">
               <Sparkles className="h-4 w-4" />
               LineScout is better on the app
             </div>
-            <h1 className="mt-5 text-4xl font-semibold tracking-tight md:text-5xl">
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
               Source smarter from China with Nigeria-first guidance.
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-neutral-700">
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
               LineScout helps you think through specs, quotes, and shipping before you commit to a supplier. When you are
               ready, our specialists take over and execute with verified manufacturers.
             </p>
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-5 grid grid-cols-2 gap-2">
               <Link
                 href="#app-download"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-200/70 hover:bg-emerald-700"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-3.5 py-2 text-[11px] font-semibold text-white shadow-lg shadow-emerald-200/70 hover:bg-emerald-700 sm:px-6 sm:py-3 sm:text-sm"
               >
-                Get the app <ArrowRight className="h-4 w-4" />
+                Get the app <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Link>
               <Link
-                href="/machine-sourcing"
-                className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-6 py-3 text-sm font-semibold text-neutral-900 hover:border-emerald-300"
+                href="/sign-in"
+                className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-3.5 py-2 text-[11px] font-semibold text-neutral-900 hover:border-emerald-300 sm:px-6 sm:py-3 sm:text-sm"
               >
                 Start on the web
               </Link>
             </div>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <Stat label="8+ years" desc="China sourcing experience" />
-              <Stat label="40k+" desc="Registered customers" />
-              <Stat label="4.7/5" desc="Google rating" />
+            <div className="mt-4 flex items-center gap-2 text-[11px] font-semibold text-neutral-600 sm:hidden">
+              <Link
+                href="#features"
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1"
+              >
+                Features
+              </Link>
+              <Link
+                href="#how"
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1"
+              >
+                How it works
+              </Link>
+              <Link
+                href="#agents"
+                className="rounded-full border border-neutral-200 bg-white px-3 py-1"
+              >
+                Agents
+              </Link>
+            </div>
+
+            <div className="mt-5">
+              <div className="hide-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-3 sm:px-0">
+                <Stat label="8+ years" desc="China sourcing experience" />
+                <Stat label="40k+" desc="Registered customers" />
+                <Stat label="4.7/5" desc="Google rating" />
+              </div>
             </div>
           </div>
 
-          <div className="relative">
-            <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-200/40 blur-2xl" />
-            <div className="rounded-[32px] border border-neutral-200 bg-white p-4 shadow-2xl">
-              <div className="rounded-[28px] border border-neutral-200 bg-neutral-50 p-3">
+          <div className="relative mt-6 md:mt-0">
+            <div className="hero-orb hero-orb--a -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-200/50 sm:-right-8 sm:-top-8 sm:h-28 sm:w-28" />
+            <div className="hero-orb hero-orb--b -left-8 top-10 h-20 w-20 rounded-full bg-sky-200/50 sm:h-24 sm:w-24" />
+            <div className="hero-orb hero-orb--a bottom-4 right-6 h-16 w-16 rounded-full bg-amber-200/50 sm:h-20 sm:w-20" />
+            <div className="hero-float rounded-[26px] border border-neutral-200 bg-white p-2.5 shadow-2xl sm:rounded-[32px] sm:p-4">
+              <div className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-2 sm:rounded-[28px] sm:p-3">
                 <Image
-                  src="/linescout-social.PNG"
-                  alt="LineScout app preview"
+                  src="/hero.png"
+                  alt="LineScout dashboard preview"
                   width={520}
                   height={980}
-                  className="h-auto w-full rounded-[22px]"
+                  className="h-auto w-full rounded-[16px] sm:rounded-[22px]"
                 />
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-neutral-600">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-neutral-600 sm:text-xs">
               <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Secure payments</span>
               <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Verified specialists</span>
               <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Quote tracking</span>
@@ -149,14 +174,23 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="features" className="mx-auto max-w-6xl px-6 pb-14">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl border border-emerald-100 bg-white p-8 shadow-sm">
-              <h2 className="text-2xl font-semibold tracking-tight">Everything you need to source confidently.</h2>
+        <section id="features" className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 md:pb-14">
+          <div className="grid gap-3 md:grid-cols-2 md:gap-4">
+            <div className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm sm:p-8">
+              <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
+                <Image
+                  src="/everything.png"
+                  alt="Everything you need to source confidently"
+                  width={960}
+                  height={540}
+                  className="h-auto w-full"
+                />
+              </div>
+              <h2 className="mt-5 text-xl font-semibold tracking-tight sm:text-2xl">Everything you need to source confidently.</h2>
               <p className="mt-3 text-sm leading-relaxed text-neutral-600">
                 From clarity to execution, LineScout keeps the process structured, transparent, and Nigeria-ready.
               </p>
-              <div className="mt-6 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              <div className="mt-5 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700 sm:text-sm">
                 <CheckCircle2 className="h-4 w-4" />
                 App-first experience with web access when you need it.
               </div>
@@ -169,10 +203,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="how" className="mx-auto max-w-6xl px-6 pb-14">
+        <section id="how" className="mx-auto max-w-6xl px-4 pb-10 sm:px-6 md:pb-14">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight">How LineScout works</h2>
+              <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">How LineScout works</h2>
               <p className="mt-2 text-sm text-neutral-600">
                 A simple flow that protects you from costly sourcing mistakes.
               </p>
@@ -182,18 +216,18 @@ export default function HomePage() {
               Verified suppliers + escrowed execution
             </div>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="mt-5 grid gap-3 md:grid-cols-3 md:gap-4">
             {steps.map((step) => (
               <StepCard key={step.step} {...step} />
             ))}
           </div>
         </section>
 
-        <section id="agents" className="mx-auto max-w-6xl px-6 pb-16">
-          <div className="rounded-3xl border border-neutral-200 bg-white p-8 shadow-sm md:p-10">
+        <section id="agents" className="mx-auto max-w-6xl px-4 pb-14 sm:px-6 md:pb-16">
+          <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8 md:p-10">
             <div className="grid gap-8 md:grid-cols-[1.1fr_0.9fr]">
               <div>
-                <h3 className="text-2xl font-semibold tracking-tight">Built for agents in China</h3>
+                <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">Built for agents in China</h3>
                 <p className="mt-3 text-sm leading-relaxed text-neutral-600">
                   Claim projects, update milestones, build quotes, and stay aligned with the LineScout admin team.
                 </p>
@@ -206,13 +240,13 @@ export default function HomePage() {
               <div className="flex flex-col gap-3">
                 <Link
                   href="#app-download"
-                  className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-200/70 hover:bg-emerald-700"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-200/70 hover:bg-emerald-700 sm:w-auto"
                 >
                   Download Agent App
                 </Link>
                 <Link
                   href="/agents"
-                  className="inline-flex items-center justify-center rounded-full border border-neutral-200 bg-white px-6 py-3 text-sm font-semibold text-neutral-800 hover:border-emerald-300"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-neutral-200 bg-white px-6 py-3 text-sm font-semibold text-neutral-800 hover:border-emerald-300 sm:w-auto"
                 >
                   View agent agreement
                 </Link>
@@ -221,11 +255,11 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="app-download" className="mx-auto max-w-6xl px-6 pb-20">
-          <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-8 md:p-10">
+        <section id="app-download" className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 md:pb-20">
+          <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-6 sm:p-8 md:p-10">
             <div className="grid gap-6 md:grid-cols-[1.1fr_0.9fr] md:items-center">
               <div>
-                <h3 className="text-2xl font-semibold tracking-tight text-neutral-900">
+                <h3 className="text-xl font-semibold tracking-tight text-neutral-900 sm:text-2xl">
                   LineScout is better on the app.
                 </h3>
                 <p className="mt-3 text-sm text-neutral-700">
@@ -235,13 +269,13 @@ export default function HomePage() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <a
                   href="#"
-                  className="inline-flex items-center justify-center rounded-full bg-neutral-900 px-5 py-3 text-sm font-semibold text-white"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-neutral-900 px-5 py-3 text-sm font-semibold text-white sm:w-auto"
                 >
                   App Store
                 </a>
                 <a
                   href="#"
-                  className="inline-flex items-center justify-center rounded-full border border-neutral-900 bg-white px-5 py-3 text-sm font-semibold text-neutral-900"
+                  className="inline-flex w-full items-center justify-center rounded-full border border-neutral-900 bg-white px-5 py-3 text-sm font-semibold text-neutral-900 sm:w-auto"
                 >
                   Google Play
                 </a>
@@ -269,33 +303,33 @@ function FeatureCard({
   icon: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex items-center gap-3">
         <span className="rounded-full bg-emerald-50 p-2 text-emerald-700">
           <Icon className="h-4 w-4" />
         </span>
         <h3 className="text-sm font-semibold text-neutral-900">{title}</h3>
       </div>
-      <p className="mt-3 text-sm text-neutral-600">{desc}</p>
+      <p className="mt-2 text-xs text-neutral-600 sm:text-sm">{desc}</p>
     </div>
   );
 }
 
 function StepCard({ step, title, desc }: { step: string; title: string; desc: string }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold text-emerald-700">Step {step}</p>
-      <h3 className="mt-2 text-base font-semibold text-neutral-900">{title}</h3>
-      <p className="mt-2 text-sm text-neutral-600">{desc}</p>
+    <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-5">
+      <p className="text-[11px] font-semibold text-emerald-700 sm:text-xs">Step {step}</p>
+      <h3 className="mt-1.5 text-sm font-semibold text-neutral-900 sm:text-base">{title}</h3>
+      <p className="mt-2 text-xs text-neutral-600 sm:text-sm">{desc}</p>
     </div>
   );
 }
 
 function Stat({ label, desc }: { label: string; desc: string }) {
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm shadow-sm">
-      <p className="text-base font-semibold text-neutral-900">{label}</p>
-      <p className="text-xs text-neutral-600">{desc}</p>
+    <div className="min-w-[150px] rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[11px] shadow-sm sm:min-w-0 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm">
+      <p className="text-xs font-semibold text-neutral-900 sm:text-base">{label}</p>
+      <p className="text-[10px] text-neutral-600 sm:text-xs">{desc}</p>
     </div>
   );
 }

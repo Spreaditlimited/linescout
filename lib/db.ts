@@ -2,14 +2,27 @@
 import mysql, { RowDataPacket } from "mysql2/promise";
 import type { ResultSetHeader } from "mysql2/promise";
 
-export const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+declare global {
+  // eslint-disable-next-line no-var
+  var __linescoutDbPool: mysql.Pool | undefined;
+}
+
+const pool =
+  global.__linescoutDbPool ??
+  mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+  });
+
+if (process.env.NODE_ENV !== "production") {
+  global.__linescoutDbPool = pool;
+}
+
+export const db = pool;
 
 export async function queryRows<T extends RowDataPacket>(
   sql: string,

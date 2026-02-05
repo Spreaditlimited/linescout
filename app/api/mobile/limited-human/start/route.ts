@@ -60,7 +60,7 @@ export async function POST(req: Request) {
               ok: false,
               code: "LIMITED_HUMAN_COOLDOWN",
               retry_after_hours: retryAfterHours,
-              error: "Quick specialist chat is temporarily unavailable due to cooldown.",
+              error: `Brief chat with our specialists is temporarily unavailable. Check back after ${retryAfterHours} hours.`,
             },
             { status: 429 }
           );

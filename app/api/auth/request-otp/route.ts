@@ -1,8 +1,9 @@
 // app/api/auth/request-otp/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import mysql from "mysql2/promise";
+import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
+import type { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodemailer = require("nodemailer");
@@ -24,16 +25,7 @@ function getClientIp(req: Request) {
 }
 
 async function getDb() {
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_NAME;
-
-  if (!host || !user || !password || !database) {
-    throw new Error("Missing DB env vars (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)");
-  }
-
-  return mysql.createConnection({ host, user, password, database });
+  return db.getConnection();
 }
 
 function getSmtp() {
@@ -65,6 +57,7 @@ function getSmtp() {
 }
 
 export async function POST(req: Request) {
+  let conn: PoolConnection | null = null;
   try {
     const body = await req.json().catch(() => ({}));
     const emailRaw = String(body?.email || "");
@@ -77,10 +70,10 @@ export async function POST(req: Request) {
     const userAgent = req.headers.get("user-agent");
     const ip = getClientIp(req);
 
-    const conn = await getDb();
+    conn = await getDb();
 
     // 1) Create or fetch user
-    const [existing] = await conn.execute<mysql.RowDataPacket[]>(
+    const [existing] = await conn.execute<RowDataPacket[]>(
       "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
       [email]
     );
@@ -90,7 +83,7 @@ export async function POST(req: Request) {
     if (existing.length) {
       userId = Number(existing[0].id);
     } else {
-      const [ins] = await conn.execute<mysql.ResultSetHeader>(
+      const [ins] = await conn.execute<ResultSetHeader>(
         "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
         [emailRaw.trim(), email]
       );
@@ -98,7 +91,7 @@ export async function POST(req: Request) {
     }
 
     // 2) Basic rate limit: max 3 OTPs per 15 minutes per user
-    const [recent] = await conn.execute<mysql.RowDataPacket[]>(
+    const [recent] = await conn.execute<RowDataPacket[]>(
       `
       SELECT COUNT(*) AS cnt
       FROM email_otps
@@ -110,7 +103,6 @@ export async function POST(req: Request) {
 
     const cnt = Number(recent[0]?.cnt || 0);
     if (cnt >= 3) {
-      await conn.end();
       return NextResponse.json(
         { ok: false, error: "Too many requests. Try again later." },
         { status: 429 }
@@ -128,8 +120,6 @@ export async function POST(req: Request) {
       `,
       [userId, otpHash, ip, userAgent]
     );
-
-    await conn.end();
 
     // 4) Send OTP email via SMTP
     const smtp = getSmtp();
@@ -160,5 +150,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }

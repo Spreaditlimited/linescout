@@ -101,6 +101,7 @@ export default function ProjectActivationPage() {
                   You will review your Project File before any payment.
                 </p>
               </div>
+
             </div>
           </div>
         </section>

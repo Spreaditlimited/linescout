@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import mysql from "mysql2/promise";
+import { db } from "@/lib/db";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -15,16 +16,7 @@ function randomToken(bytes = 32) {
 }
 
 async function getDb() {
-  const host = process.env.DB_HOST;
-  const user = process.env.DB_USER;
-  const password = process.env.DB_PASSWORD;
-  const database = process.env.DB_NAME;
-
-  if (!host || !user || !password || !database) {
-    throw new Error("Missing DB env vars (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)");
-  }
-
-  return mysql.createConnection({ host, user, password, database });
+  return db.getConnection();
 }
 
 function getClientIp(req: Request) {
@@ -34,6 +26,7 @@ function getClientIp(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let conn: PoolConnection | null = null;
   try {
     const body = await req.json().catch(() => ({}));
 
@@ -52,21 +45,20 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     const userAgent = req.headers.get("user-agent");
 
-    const conn = await getDb();
+    conn = await getDb();
 
     // 1) Find user
-    const [urows] = await conn.execute<mysql.RowDataPacket[]>(
+    const [urows] = await conn.execute<RowDataPacket[]>(
       "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
       [email]
     );
     if (!urows.length) {
-      await conn.end();
       return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 401 });
     }
     const userId = Number(urows[0].id);
 
     // 2) Find latest unconsumed, unexpired OTP matching hash
-    const [orows] = await conn.execute<mysql.RowDataPacket[]>(
+    const [orows] = await conn.execute<RowDataPacket[]>(
       `
       SELECT id
       FROM email_otps
@@ -81,7 +73,6 @@ export async function POST(req: Request) {
     );
 
     if (!orows.length) {
-      await conn.end();
       return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 401 });
     }
 
@@ -105,17 +96,28 @@ export async function POST(req: Request) {
       [userId, refreshHash, userAgent, ip]
     );
 
-    await conn.end();
-
-    // MVP: return refresh token directly.
-    // Later: add short-lived access token + refresh endpoint.
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
-      refresh_token: refreshToken,
       user_id: userId,
+      // keep for compatibility (mobile). Web should rely on cookies only.
+      refresh_token: refreshToken,
     });
+
+    res.cookies.set({
+      name: "linescout_session",
+      value: refreshToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    return res;
   } catch (e: any) {
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+  } finally {
+    if (conn) conn.release();
   }
 }
