@@ -173,24 +173,24 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="min-w-0 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-neutral-900">Latest project updates</h2>
           <div className="mt-4 grid gap-3">
             {summaries.slice(0, 4).map((item) => (
               <Link
                 key={item.conversation_id}
                 href={`/projects/${item.conversation_id}`}
-                className="rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700 hover:border-emerald-200"
+                className="min-w-0 rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700 hover:border-emerald-200"
               >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-semibold text-neutral-900">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-semibold text-neutral-900">
                     Project #{item.conversation_id}
                   </span>
-                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                     {item.stage}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-2 text-xs text-neutral-600">
+                <p className="mt-2 line-clamp-2 break-words text-xs text-neutral-600">
                   {item.summary || "No summary yet."}
                 </p>
               </Link>
@@ -203,12 +203,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="min-w-0 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-neutral-900">Recent payments</h2>
           <div className="mt-4 grid gap-3">
             {recentPayments.map((p) => (
-              <div key={p.id} className="rounded-2xl border border-neutral-200 p-4">
-                <p className="text-sm font-semibold text-neutral-900">{money.format(Number(p.amount || 0))}</p>
+              <div key={p.id} className="min-w-0 rounded-2xl border border-neutral-200 p-4">
+                <p className="break-words text-sm font-semibold text-neutral-900">
+                  {money.format(Number(p.amount || 0))}
+                </p>
                 <p className="mt-1 text-xs text-neutral-600">
                   {p.paid_at
                     ? `Paid ${shortDate.format(new Date(p.paid_at))}`

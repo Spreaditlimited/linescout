@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
-import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, Settings, MessageSquare, Bot } from "lucide-react";
+import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, MessageSquare, Bot, User } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -13,7 +13,7 @@ const navItems = [
   { href: "/quotes", label: "Quotes", icon: FileText },
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/wallet", label: "Wallet", icon: Wallet },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 
 function NavLink({

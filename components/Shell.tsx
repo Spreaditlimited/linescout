@@ -8,7 +8,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isInternal = pathname.startsWith("/internal");
   const isLanding = pathname === "/";
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
-  const isApp = pathname.startsWith("/dashboard") || pathname.startsWith("/machine") || pathname.startsWith("/conversations") || pathname.startsWith("/projects") || pathname.startsWith("/quotes") || pathname.startsWith("/payments") || pathname.startsWith("/wallet") || pathname.startsWith("/settings");
+  const isApp = pathname.startsWith("/dashboard") || pathname.startsWith("/machine") || pathname.startsWith("/conversations") || pathname.startsWith("/projects") || pathname.startsWith("/quotes") || pathname.startsWith("/payments") || pathname.startsWith("/wallet") || pathname.startsWith("/profile");
 
   return (
     <div className={isLanding ? "flex min-h-screen flex-col" : "min-h-screen flex flex-col"}>
