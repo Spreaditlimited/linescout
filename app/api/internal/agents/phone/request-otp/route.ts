@@ -100,16 +100,20 @@ export async function POST(req: Request) {
     });
 
     const phoneTail = phone.slice(-4);
-    if (smsResult.skipped) {
-      console.warn(\`Sinch SMS skipped for agent phone ***${phoneTail}: \${smsResult.error}\`);
-    } else if (!smsResult.ok) {
-      console.error(\`Sinch SMS failed for agent phone ***${phoneTail}:\`, smsResult);
-      return NextResponse.json(
-        { ok: false, error: "Failed to send OTP SMS. Please try again." },
-        { status: 502 }
-      );
+    if (!smsResult.ok) {
+      const err = smsResult.error || "UNKNOWN_ERROR";
+      const isSkipped = err === "SINCH_SMS_DISABLED";
+      if (isSkipped) {
+        console.warn(`Sinch SMS skipped for agent phone ***${phoneTail}: ${err}`);
+      } else {
+        console.error(`Sinch SMS failed for agent phone ***${phoneTail}:`, smsResult);
+        return NextResponse.json(
+          { ok: false, error: "Failed to send OTP SMS. Please try again." },
+          { status: 502 }
+        );
+      }
     } else {
-      console.log(\`Sinch SMS sent for agent phone ***${phoneTail}\`);
+      console.log(`Sinch SMS sent for agent phone ***${phoneTail}`);
     }
 
     return NextResponse.json({
