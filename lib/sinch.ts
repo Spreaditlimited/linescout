@@ -1,11 +1,11 @@
-type SmsResult = { ok: true } | { ok: false; skipped?: boolean; error: string; status?: number };
+type SmsResult = { ok: true; responseText?: string } | { ok: false; error: string; status?: number };
 
 function isEnabled() {
   return String(process.env.SINCH_SMS_ENABLED || "").trim() === "1";
 }
 
 export async function sendSinchSms(opts: { to: string; body: string }): Promise<SmsResult> {
-  if (!isEnabled()) return { ok: false, skipped: true, error: "SINCH_SMS_DISABLED" };
+  if (!isEnabled()) return { ok: false, error: "SINCH_SMS_DISABLED" };
 
   const servicePlanId = String(process.env.SINCH_SMS_SERVICE_PLAN_ID || "").trim();
   const bearer = String(process.env.SINCH_SMS_BEARER_TOKEN || "").trim();
@@ -32,10 +32,11 @@ export async function sendSinchSms(opts: { to: string; body: string }): Promise<
     body: JSON.stringify(payload),
   });
 
+  const responseText = await res.text().catch(() => "");
+
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return { ok: false, status: res.status, error: text || "Sinch SMS failed" };
+    return { ok: false, status: res.status, error: responseText || "Sinch SMS failed" };
   }
 
-  return { ok: true };
+  return { ok: true, responseText };
 }
