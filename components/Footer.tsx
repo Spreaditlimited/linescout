@@ -5,7 +5,7 @@ export default function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="flex-shrink-0 border-t border-neutral-800 bg-neutral-950">
+    <footer className="flex-shrink-0 border-t border-emerald-900/40 bg-[#0F1C18]">
       <div className="mx-auto w-full max-w-[1400px] px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
@@ -20,7 +20,7 @@ export default function Footer() {
               />
             </div>
 
-            <p className="mt-3 text-sm leading-relaxed text-neutral-300">
+            <p className="mt-3 text-sm leading-relaxed text-emerald-50/80">
               LineScout is a Trademark of Sure Importers Limited focused on machine sourcing and white labeling products
               for Nigerian businesses in China.
             </p>
@@ -28,18 +28,18 @@ export default function Footer() {
 
           {/* Contact */}
           <div>
-            <div className="text-sm font-semibold text-white">Contact</div>
+            <div className="text-sm font-semibold text-emerald-50">Contact</div>
 
-            <div className="mt-3 space-y-3 text-sm text-neutral-300">
+            <div className="mt-3 space-y-3 text-sm text-emerald-50/75">
               <div>
-                <div className="text-neutral-400">Email</div>
+                <div className="text-emerald-50/50">Email</div>
                 <a href="mailto:hello@sureimports.com" className="hover:text-white hover:underline">
                   hello@sureimports.com
                 </a>
               </div>
 
               <div>
-                <div className="text-neutral-400">Nigeria Office</div>
+                <div className="text-emerald-50/50">Nigeria Office</div>
                 <div>5 Olutosin Ajayi (Martins Adegboyega) Street, Ajao Estate, Lagos, Nigeria</div>
                 <div className="mt-2 space-y-1">
                   <div>08037649956</div>
@@ -49,7 +49,7 @@ export default function Footer() {
               </div>
 
               <div>
-                <div className="text-neutral-400">China Office</div>
+                <div className="text-emerald-50/50">China Office</div>
                 <div>广州市白云区机场路111号建发广场5FB3-1</div>
               </div>
             </div>
@@ -57,8 +57,8 @@ export default function Footer() {
 
           {/* Legal & Support */}
           <div>
-            <div className="text-sm font-semibold text-white">Legal &amp; Support</div>
-            <ul className="mt-3 space-y-2 text-sm text-neutral-300">
+            <div className="text-sm font-semibold text-emerald-50">Legal &amp; Support</div>
+            <ul className="mt-3 space-y-2 text-sm text-emerald-50/75">
               <li>
                 <a
                   href="https://www.sureimports.com/about"
@@ -124,8 +124,8 @@ export default function Footer() {
 
           {/* Follow */}
           <div>
-            <div className="text-sm font-semibold text-white">Follow us</div>
-            <ul className="mt-3 space-y-2 text-sm text-neutral-300">
+            <div className="text-sm font-semibold text-emerald-50">Follow us</div>
+            <ul className="mt-3 space-y-2 text-sm text-emerald-50/75">
               <li>
                 <a
                   href="https://www.facebook.com/share/1BEjP95X7E/?mibextid=wwXIfr"
@@ -170,7 +170,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-neutral-800 pt-6 text-xs text-neutral-500">
+        <div className="mt-10 border-t border-emerald-900/40 pt-6 text-xs text-emerald-50/50">
           © {year} LineScout. Built by Sure Importers Limited.
         </div>
       </div>
