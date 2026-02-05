@@ -115,7 +115,8 @@ export async function POST(req: Request) {
         );
       }
     } else {
-      console.log(`Sinch SMS sent for agent phone ***${phoneTail}`);
+      const resp = smsResult.responseText ? ` | ${smsResult.responseText}` : "";
+      console.log(`Sinch SMS sent for agent phone ***${phoneTail}${resp}`);
     }
 
     return NextResponse.json({
