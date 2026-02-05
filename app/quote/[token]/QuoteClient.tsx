@@ -644,7 +644,7 @@ export default function QuoteClient({
             {paymentOption === "product" && commitmentDueNgn > 0 ? (
               <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-xs text-neutral-400">
                 <div className="flex items-center justify-between">
-                  <span>Product total (includes markup)</span>
+                  <span>Product total</span>
                   <span>{fmtNaira(productTotalDisplay)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
@@ -668,38 +668,59 @@ export default function QuoteClient({
 
           <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <div className="text-xs text-neutral-500">Payment method</div>
-            <div className="mt-3 flex items-center gap-3">
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={() => setUseWallet(false)}
-                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  !useWallet ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  !useWallet
+                    ? "border-emerald-300/60 bg-emerald-300/10 text-emerald-200"
+                    : "border-neutral-800 bg-neutral-900/60 text-neutral-200"
                 }`}
               >
-                Card/bank only
+                <div className="text-sm font-semibold">Card/bank</div>
+                <div className="mt-1 text-xs text-neutral-400">Pay with debit card or bank transfer.</div>
+                <div className="mt-3 flex items-center gap-2">
+                  {["VISA", "Mastercard", "Verve"].map((brand) => (
+                    <span
+                      key={brand}
+                      className="rounded-full border border-neutral-700 px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-300"
+                    >
+                      {brand}
+                    </span>
+                  ))}
+                </div>
               </button>
+
               <button
                 type="button"
                 onClick={() => canUseWallet && setUseWallet(true)}
                 disabled={!canUseWallet}
-                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  useWallet ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                  useWallet
+                    ? "border-emerald-300/60 bg-emerald-300/10 text-emerald-200"
+                    : "border-neutral-800 bg-neutral-900/60 text-neutral-200"
                 } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
               >
-                Wallet + card/bank
+                <div className="text-sm font-semibold">Wallet + card/bank</div>
+                <div className="mt-1 text-xs text-neutral-400">
+                  Use wallet balance first, then complete the rest.
+                </div>
+                {walletLoading ? (
+                  <div className="mt-3 text-xs text-neutral-500">Loading wallet…</div>
+                ) : walletBalance != null ? (
+                  <div className="mt-3 text-xs text-neutral-300">
+                    Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
+                  </div>
+                ) : null}
               </button>
-              {walletLoading ? (
-                <span className="text-xs text-neutral-500">Loading wallet…</span>
-              ) : walletBalance != null ? (
-                <span className="text-xs text-neutral-400">
-                  Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
-                </span>
-              ) : walletAuthMissing ? (
-                <span className="text-xs text-neutral-500">
-                  To use wallet, sign in to your LineScout account in the LineScout mobile app, then reopen this quote link.
-                </span>
-              ) : null}
             </div>
+
+            {walletAuthMissing ? (
+              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2 text-xs text-neutral-400">
+                To use wallet, sign in to your LineScout account in the LineScout mobile app, then reopen this quote link.
+              </div>
+            ) : null}
             {walletAccount ? (
               <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-xs text-neutral-300">
                 <div className="text-[11px] uppercase text-neutral-500">Wallet funding account</div>

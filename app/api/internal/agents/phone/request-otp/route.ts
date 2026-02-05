@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
+import { sendSinchSms } from "@/lib/sinch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,9 +94,22 @@ export async function POST(req: Request) {
       process.env.NODE_ENV !== "production" ||
       String(process.env.REVEAL_AGENT_PHONE_OTP || "") === "1";
 
+    const smsResult = await sendSinchSms({
+      to: phone,
+      body: `Your LineScout OTP is ${otp}`,
+    });
+
+    if (!smsResult.ok && !smsResult.skipped) {
+      return NextResponse.json(
+        { ok: false, error: "Failed to send OTP SMS. Please try again." },
+        { status: 502 }
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       dev_otp: revealOtp ? otp : undefined,
+      sms_sent: smsResult.ok === true,
     });
   } catch (e: any) {
     try {
