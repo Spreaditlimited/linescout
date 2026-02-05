@@ -6,6 +6,8 @@ import { sendSinchSms } from "@/lib/sinch";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// noop: deploy trigger
+
 function clean(v: any) {
   return String(v ?? "").trim();
 }
