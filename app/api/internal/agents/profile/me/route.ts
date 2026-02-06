@@ -80,6 +80,24 @@ export async function GET() {
 
   const conn = await db.getConnection();
   try {
+    const [modeCols]: any = await conn.query(
+      `
+      SELECT COLUMN_NAME
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'linescout_settings'
+        AND column_name = 'agent_otp_mode'
+      LIMIT 1
+      `
+    );
+    let otpMode: "phone" | "email" = "phone";
+    if (modeCols?.length) {
+      const [modeRows]: any = await conn.query(
+        `SELECT agent_otp_mode FROM linescout_settings ORDER BY id DESC LIMIT 1`
+      );
+      otpMode = String(modeRows?.[0]?.agent_otp_mode || "phone").toLowerCase() === "email" ? "email" : "phone";
+    }
+
     // Profile (canonical)
     const profile: any = await (async () => {
       const [rows]: any = await conn.query(
@@ -145,6 +163,31 @@ export async function GET() {
     }
 
     const phoneVerified = !!profile?.china_phone_verified_at;
+    let otpVerified = phoneVerified;
+    if (auth.role === "agent" && otpMode === "email") {
+      const [emailTable]: any = await conn.query(
+        `
+        SELECT TABLE_NAME
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = 'internal_agent_email_otps'
+        LIMIT 1
+        `
+      );
+      if (emailTable?.length) {
+        const [usedEmailRows]: any = await conn.query(
+          `SELECT id
+           FROM internal_agent_email_otps
+           WHERE user_id = ?
+             AND used_at IS NOT NULL
+           LIMIT 1`,
+          [auth.userId]
+        );
+        otpVerified = !!usedEmailRows?.length;
+      } else {
+        otpVerified = false;
+      }
+    }
     const ninProvided = !!(profile?.nin && String(profile.nin).trim().length > 0);
     const ninVerified = !!profile?.nin_verified_at;
     const addressProvided = !!(profile?.full_address && String(profile.full_address).trim().length > 0);
@@ -188,6 +231,8 @@ export async function GET() {
         : null,
       checklist: {
         phone_verified: phoneVerified,
+        otp_mode: otpMode,
+        otp_verified: otpVerified,
         nin_provided: ninProvided,
         nin_verified: ninVerified,
         bank_provided: bankProvided,

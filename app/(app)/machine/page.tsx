@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 import { MessageSquarePlus, Sparkles, User, Send } from "lucide-react";
 
@@ -70,6 +70,7 @@ function upsertConversation(list: ConversationRow[], incoming: ConversationRow) 
 }
 
 export default function MachineChatPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const routeType = (searchParams.get("route_type") || "machine_sourcing") as RouteType;
   const paramConversationId = Number(searchParams.get("conversation_id") || 0) || null;
@@ -251,30 +252,24 @@ export default function MachineChatPage() {
     }
   }
 
-  async function startQuickChat() {
-    const res = await authFetch("/api/mobile/limited-human/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ route_type: routeType, source_conversation_id: activeId }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      setError(json?.error || "Quick specialist chat unavailable.");
-      return;
-    }
-    const id = Number(json.conversation_id || 0);
-    if (id) {
-      setActiveId(id);
-      setQuickMeta({
-        limit: Number(json.human_message_limit || 0),
-        used: Number(json.human_message_used || 0),
-        ended: Boolean(json.ended),
-      });
-    }
-  }
-
   const activeConv = conversations.find((c) => c.id === activeId) || null;
   const isQuick = activeConv?.chat_mode === "limited_human";
+
+  function goToMachineSourcingProject() {
+    const qs = new URLSearchParams({
+      route_type: "machine_sourcing",
+      ...(activeId ? { source_conversation_id: String(activeId) } : {}),
+    });
+    router.push(`/sourcing-project?${qs.toString()}`);
+  }
+
+  function goToWhiteLabelWizard() {
+    const qs = new URLSearchParams({
+      ...(activeId ? { source_conversation_id: String(activeId) } : {}),
+    });
+    const suffix = qs.toString();
+    router.push(`/white-label/start${suffix ? `?${suffix}` : ""}`);
+  }
 
   return (
     <div className="px-6 py-10">
@@ -341,15 +336,27 @@ export default function MachineChatPage() {
             <div>
               <h1 className="text-lg font-semibold text-neutral-900 sm:text-xl">LineScout Assistant</h1>
               <p className="text-xs text-neutral-600 sm:text-sm">
-                {isQuick ? "Brief specialist chat" : "AI guidance for sourcing decisions"}
+                {isQuick ? "Specialist conversation" : "AI guidance for sourcing decisions"}
               </p>
             </div>
-            {!isQuick ? (
-              <button type="button" onClick={startQuickChat} className="btn btn-primary px-3 py-2 text-[11px] sm:px-4 sm:text-xs">
-                Brief specialist chat
-              </button>
-            ) : null}
           </div>
+
+          {!isQuick ? (
+            <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+              <p className="text-sm font-semibold text-neutral-900">Ready to start a project?</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-600">
+                Choose what you want to do. You can attach this chat as context.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <button type="button" onClick={goToMachineSourcingProject} className="btn btn-primary px-4 py-2 text-xs">
+                  Machine Sourcing
+                </button>
+                <button type="button" onClick={goToWhiteLabelWizard} className="btn btn-outline px-4 py-2 text-xs">
+                  White Label
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {quickMeta && !quickMeta.ended ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">

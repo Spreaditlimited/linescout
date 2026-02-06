@@ -8,7 +8,8 @@ export default function FooterGate() {
 
   const hideFooter =
     pathname.startsWith("/machine-sourcing") ||
-    pathname.startsWith("/white-label/wizard");
+    pathname.startsWith("/white-label/step-") ||
+    pathname.startsWith("/white-label/start");
 
   if (hideFooter) return null;
 

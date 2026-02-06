@@ -47,13 +47,31 @@ async function requireAdmin() {
 }
 
 async function ensureRow(conn: mysql.PoolConnection) {
+  const [columns]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'agent_otp_mode'
+    LIMIT 1
+    `
+  );
+
+  const hasOtpMode = !!columns?.length;
+  if (!hasOtpMode) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN agent_otp_mode VARCHAR(16) NOT NULL DEFAULT 'phone'`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email)
-     VALUES (0, 5, 40, 20, 0, 0, NULL)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone')`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -92,6 +110,10 @@ export async function POST(req: Request) {
   const exchange_rate_rmb = num(body.exchange_rate_rmb);
   const payout_summary_email =
     typeof body.payout_summary_email === "string" ? body.payout_summary_email.trim() : "";
+  const agent_otp_mode =
+    body?.agent_otp_mode === "email" || body?.agent_otp_mode === "phone"
+      ? body.agent_otp_mode
+      : "phone";
 
   const values = {
     commitment_due_ngn,
@@ -119,6 +141,7 @@ export async function POST(req: Request) {
            exchange_rate_usd = ?,
            exchange_rate_rmb = ?,
            payout_summary_email = ?,
+           agent_otp_mode = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -129,6 +152,7 @@ export async function POST(req: Request) {
         exchange_rate_usd,
         exchange_rate_rmb,
         payout_summary_email || null,
+        agent_otp_mode,
         row.id,
       ]
     );

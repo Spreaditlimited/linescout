@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserTokenFromRequest } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,9 +19,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
     }
 
-    const auth = req.headers.get("authorization") || "";
-    if (!auth.toLowerCase().startsWith("bearer ")) {
-      return NextResponse.json({ ok: false, error: "Missing Authorization header" }, { status: 401 });
+    const token = getUserTokenFromRequest(req);
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     // ✅ Always correct in prod + preview + local
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(`${origin}/api/conversations/me?route_type=${routeType}`, {
       method: "GET",
       headers: {
-        authorization: auth,
+        authorization: `Bearer ${token}`,
         "content-type": "application/json",
       },
       cache: "no-store",

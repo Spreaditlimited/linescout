@@ -157,7 +157,12 @@ export default function ProjectsPage() {
           <h1 className="text-2xl font-semibold text-neutral-900">Projects</h1>
           <p className="mt-1 text-sm text-neutral-600">Track paid sourcing projects and milestones.</p>
         </div>
-        <div />
+        <Link
+          href="/projects/new"
+          className="btn btn-primary px-4 py-2 text-xs"
+        >
+          Start new project
+        </Link>
       </div>
 
       <div className="mt-6 grid gap-4">

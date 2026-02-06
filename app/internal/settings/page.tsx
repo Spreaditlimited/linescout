@@ -32,6 +32,7 @@ type SettingsItem = {
   exchange_rate_usd: number;
   exchange_rate_rmb: number;
   payout_summary_email?: string | null;
+  agent_otp_mode?: "phone" | "email" | null;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -77,6 +78,7 @@ export default function InternalSettingsPage() {
   const [exchangeUsd, setExchangeUsd] = useState("0");
   const [exchangeRmb, setExchangeRmb] = useState("0");
   const [payoutSummaryEmail, setPayoutSummaryEmail] = useState("");
+  const [agentOtpMode, setAgentOtpMode] = useState<"phone" | "email">("phone");
 
   // Shipping types & rates
   const [shippingTypes, setShippingTypes] = useState<ShippingTypeItem[]>([]);
@@ -143,6 +145,7 @@ export default function InternalSettingsPage() {
       setExchangeUsd(String(item.exchange_rate_usd ?? 0));
       setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
       setPayoutSummaryEmail(String(item.payout_summary_email || ""));
+      setAgentOtpMode(item.agent_otp_mode === "email" ? "email" : "phone");
     } catch (e: any) {
       setSettingsErr(e?.message || "Failed to load settings");
     } finally {
@@ -167,6 +170,7 @@ export default function InternalSettingsPage() {
         exchange_rate_usd: Number(exchangeUsd),
         exchange_rate_rmb: Number(exchangeRmb),
         payout_summary_email: payoutSummaryEmail.trim(),
+        agent_otp_mode: agentOtpMode,
       };
 
       const res = await fetch("/api/internal/settings", {
@@ -401,6 +405,7 @@ export default function InternalSettingsPage() {
     const usdRate = Number(exchangeUsd);
     const rmbRate = Number(exchangeRmb);
     const payoutEmail = payoutSummaryEmail.trim();
+    const otpModeOk = agentOtpMode === "phone" || agentOtpMode === "email";
 
     if (!Number.isFinite(commitment) || commitment < 0) {
       errors.push("Commitment fee must be 0 or more.");
@@ -423,6 +428,9 @@ export default function InternalSettingsPage() {
     if (payoutEmail && !payoutEmail.includes("@")) {
       errors.push("Payout summary email must be a valid email.");
     }
+    if (!otpModeOk) {
+      errors.push("Agent OTP mode must be phone or email.");
+    }
 
     return { ok: errors.length === 0, errors };
   }, [
@@ -433,6 +441,7 @@ export default function InternalSettingsPage() {
     exchangeUsd,
     exchangeRmb,
     payoutSummaryEmail,
+    agentOtpMode,
   ]);
 
   const rateReady = useMemo(() => {
@@ -700,6 +709,20 @@ export default function InternalSettingsPage() {
             />
             <div className="mt-1 text-[11px] text-neutral-500">
               Receives a daily payout summary at 8:00 AM Lagos time.
+            </div>
+          </div>
+          <div className="sm:col-span-3">
+            <label className="text-xs text-neutral-400">Agent OTP mode</label>
+            <select
+              value={agentOtpMode}
+              onChange={(e) => setAgentOtpMode(e.target.value === "email" ? "email" : "phone")}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+            >
+              <option value="phone">Phone OTP (SMS)</option>
+              <option value="email">Email OTP</option>
+            </select>
+            <div className="mt-1 text-[11px] text-neutral-500">
+              Controls agent verification during sign in and onboarding.
             </div>
           </div>
         </div>

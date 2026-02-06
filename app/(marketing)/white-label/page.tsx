@@ -32,7 +32,7 @@ export default function ProjectActivationPage() {
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
-                  href="/white-label/wizard"
+                  href="/white-label/start"
                   className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90"
                 >
                   Start Your Project <ArrowRight className="h-4 w-4" />
@@ -91,7 +91,7 @@ export default function ProjectActivationPage() {
             </div>
 
                 <Link
-                  href="/white-label/wizard"
+                  href="/white-label/start"
                   className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90"
                 >
                   Continue <ArrowRight className="h-4 w-4" />
@@ -165,7 +165,7 @@ export default function ProjectActivationPage() {
             </div>
 
             <Link
-              href="/white-label/wizard"
+              href="/white-label/start"
               className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3 text-sm font-semibold text-neutral-950 hover:bg-white/90 md:w-auto"
             >
               Start Your White Label Project <ArrowRight className="h-4 w-4" />

@@ -1,4 +1,4 @@
-import FooterGate from "@/components/FooterGate";
+import Footer from "@/components/Footer";
 
 export const metadata = {
   title: "LineScout Agents Agreement",
@@ -150,7 +150,7 @@ export default function AgentsAgreementPage() {
           </div>
         </div>
       </main>
-      <FooterGate />
+      <Footer variant="agent" />
     </>
   );
 }

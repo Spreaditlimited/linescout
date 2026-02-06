@@ -19,6 +19,21 @@ function rand(len: number) {
   return Math.random().toString(36).slice(2, 2 + len).toUpperCase();
 }
 
+function safeCallbackUrl(req: Request, raw: any) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const origin = req.headers.get("origin");
+    const host = req.headers.get("host");
+    if (origin && url.origin === origin) return url.toString();
+    if (host && url.host === host) return url.toString();
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Prices in kobo (sourcing uses admin settings)
 async function amountForPurpose(purpose: string) {
   if (purpose === "business_plan") return 2000000; // ₦20,000 (example)
@@ -53,6 +68,7 @@ export async function POST(req: Request) {
 
     const purpose = String(body?.purpose || "sourcing").trim();
     const routeType = body?.route_type;
+    const callbackUrl = safeCallbackUrl(req, body?.callback_url);
 
     if (!isValidRouteType(routeType)) {
       return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
@@ -84,6 +100,7 @@ export async function POST(req: Request) {
       email,
       amount,
       reference,
+      ...(callbackUrl ? { callback_url: callbackUrl } : {}),
       // IMPORTANT: This metadata is how we carry AI context into paid project later.
       metadata: {
         app: "linescout_mobile",
