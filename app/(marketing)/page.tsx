@@ -11,6 +11,7 @@ import {
   Sparkles,
   Truck,
 } from "lucide-react";
+import { useState } from "react";
 import Footer from "@/components/Footer";
 import MarketingFrame from "@/components/MarketingFrame";
 
@@ -62,6 +63,8 @@ const stats = [
 ];
 
 export default function HomePage() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <MarketingFrame>
       <div className="relative flex min-h-screen flex-col bg-[#F7F6F2] text-neutral-900">
@@ -83,7 +86,7 @@ export default function HomePage() {
                 <p className="text-xs text-neutral-500">AI clarity + specialist execution</p>
               </div>
             </div>
-            <nav className="hidden items-center gap-6 text-sm font-semibold text-neutral-700 md:flex">
+            <nav className="hidden items-center gap-6 text-sm font-semibold text-neutral-700 lg:flex">
               <Link href="#features" className="hover:text-emerald-700">
                 Features
               </Link>
@@ -97,12 +100,38 @@ export default function HomePage() {
             <div className="flex items-center gap-2">
               <Link
                 href="/sign-in"
-                className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:border-emerald-300"
+                className="hidden rounded-full border border-neutral-300 bg-white px-4 py-2 text-xs font-semibold text-neutral-900 shadow-sm hover:border-emerald-300 lg:inline-flex"
               >
                 Continue on web
               </Link>
+              <button
+                type="button"
+                aria-label="Toggle menu"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-emerald-100 bg-white text-emerald-900 shadow-sm lg:hidden"
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <span className="text-lg font-semibold">≡</span>
+              </button>
             </div>
           </div>
+          {menuOpen ? (
+            <div className="border-t border-emerald-100 bg-white/90 px-4 py-3 text-sm font-semibold text-neutral-700 lg:hidden">
+              <div className="flex flex-col gap-3">
+                <Link href="#features" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
+                  Features
+                </Link>
+                <Link href="#how" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
+                  How it works
+                </Link>
+                <Link href="#agents" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
+                  For agents
+                </Link>
+                <Link href="/sign-in" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
+                  Continue on web
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </header>
 
         <main className="relative flex-1">
