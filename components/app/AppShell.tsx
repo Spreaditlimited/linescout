@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
-import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, MessageSquare, Bot, User } from "lucide-react";
+import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, MessageSquare, Bot, User, ArrowLeft } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -73,10 +73,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [router]);
 
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/dashboard");
+  };
+
   return (
     <div className="min-h-screen bg-[#F7F6F2] text-neutral-900">
       <div className="mx-auto flex w-full max-w-7xl gap-6 px-4 py-6 lg:py-8">
-        <aside className="hidden w-56 shrink-0 flex-col gap-3 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:flex">
+        <aside className="hidden w-56 shrink-0 flex-col gap-3 self-start rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm lg:flex h-fit">
           <div className="px-2 pt-2">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">LineScout</p>
             <p className="mt-1 text-lg font-semibold text-neutral-900">User App</p>
@@ -126,6 +134,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="min-h-[70vh] rounded-3xl border border-neutral-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3 sm:px-6">
+              <button
+                type="button"
+                onClick={goBack}
+                className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-semibold text-neutral-700 shadow-sm hover:border-emerald-200"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            </div>
             {checking ? (
               <div className="p-6">
                 <div className="animate-pulse space-y-4">

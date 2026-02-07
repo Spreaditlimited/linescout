@@ -1,9 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Link from "next/link";
-import Image from "next/image";
-
 export default function AuthShell({
   title,
   subtitle,
@@ -22,30 +19,7 @@ export default function AuthShell({
       </div>
 
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10">
-        <header className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/linescout-logo.png"
-              alt="LineScout logo"
-              width={150}
-              height={34}
-              className="h-auto w-28 sm:w-32"
-              priority
-            />
-            <span className="hidden h-8 w-px rounded-full bg-[rgba(45,52,97,0.2)] sm:inline-block" />
-            <p className="hidden text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461] sm:block">
-              Agent App
-            </p>
-          </div>
-          <Link
-            href="/agent-app"
-            className="text-xs font-semibold text-neutral-600 hover:text-neutral-900"
-          >
-            Back to landing
-          </Link>
-        </header>
-
-        <section className="mt-10 grid flex-1 items-center">
+        <section className="grid flex-1 items-center">
           <div className="mx-auto w-full max-w-md">
             <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">LineScout Agent</p>

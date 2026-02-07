@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Bolt, Briefcase, ShieldCheck, Smartphone } from "lucide-react";
 import Footer from "@/components/Footer";
+import MarketingTopNav from "@/components/MarketingTopNav";
 
 const highlights = [
   {
@@ -43,7 +43,7 @@ export default function AgentAppLandingPage() {
   const brandBlue = "#2D3461";
   return (
     <main
-      className="relative min-h-screen overflow-hidden bg-white text-neutral-900"
+      className="relative min-h-screen overflow-hidden bg-white text-neutral-900 font-sans"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
       {/* Ambient background */}
@@ -54,41 +54,26 @@ export default function AgentAppLandingPage() {
       </div>
 
       <div className="relative">
-        <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:gap-6 sm:px-6 sm:py-8">
-          <div className="flex items-center gap-4">
-            <Image
-              src="/linescout-logo.png"
-              alt="LineScout logo"
-              width={150}
-              height={34}
-              className="h-auto w-32 sm:w-36 md:w-40"
-              priority
-            />
-            <span className="hidden h-10 w-px rounded-full bg-[rgba(45,52,97,0.2)] sm:inline-block" />
-            <div className="hidden sm:block">
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--agent-blue)]">
-                Agent Workspace
-              </p>
-              <p className="text-sm text-neutral-500">LineScout Agent App</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-5">
-            <Link
-              href="/agents"
-              className="hidden text-sm font-semibold text-neutral-600 hover:text-neutral-900 lg:inline-flex"
-            >
-              Agent agreement
-            </Link>
-            <Link
-              href="/agent-app/sign-in"
-              className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm font-semibold text-neutral-900 shadow-[0_8px_20px_rgba(15,23,42,0.12)] sm:px-4 md:px-5 md:py-2.5"
-            >
-              Sign in <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </header>
+        <MarketingTopNav
+          backgroundClassName="bg-white/95"
+          borderClassName="border-transparent"
+          dividerClassName="bg-[rgba(45,52,97,0.2)]"
+          accentClassName="text-[var(--agent-blue)]"
+          navTextClassName="text-neutral-600"
+          navHoverClassName="hover:text-[var(--agent-blue)]"
+          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
+          buttonTextClassName="text-[var(--agent-blue)]"
+          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
+          menuBgClassName="bg-white/95"
+          menuTextClassName="text-neutral-700"
+          menuHoverClassName="hover:text-[var(--agent-blue)]"
+          disabledNavClassName="text-neutral-400"
+        />
 
-        <section className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <section
+          id="features"
+          className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center md:pt-20"
+        >
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
               <BadgeCheck className="h-4 w-4" />
@@ -109,7 +94,7 @@ export default function AgentAppLandingPage() {
                 Open agent web app <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
-                href="#agent-app"
+                href="#app-download"
                 className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-6 py-3 text-sm font-semibold text-[var(--agent-blue)]"
               >
                 Download mobile app <Smartphone className="h-4 w-4" />
@@ -184,7 +169,10 @@ export default function AgentAppLandingPage() {
               </div>
             </div>
 
-            <div id="agent-app" className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
+            <div
+              id="app-download"
+              className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]"
+            >
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--agent-blue)]">Mobile first</p>
               <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Claim jobs faster on the mobile app</h2>
               <p className="mt-2 text-sm text-neutral-600">
@@ -241,7 +229,7 @@ export default function AgentAppLandingPage() {
                   Sign in to web <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
-                  href="#agent-app"
+                  href="#app-download"
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/30 px-6 py-3 text-sm font-semibold text-white"
                 >
                   Download mobile app

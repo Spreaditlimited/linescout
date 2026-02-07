@@ -16,6 +16,7 @@ type RouteStatus = {
   handoff_id: number | null;
   has_active_project: boolean;
   is_cancelled: boolean;
+  commitment_due_ngn?: number;
   error?: string;
 };
 
@@ -69,6 +70,10 @@ export default function SourcingProjectPage() {
   const [activeProjects, setActiveProjects] = useState<ProjectItem[]>([]);
   const mostRecentActive = useMemo(() => pickMostRecent(activeProjects), [activeProjects]);
   const [working, setWorking] = useState<"pay" | "human" | null>(null);
+  const commitmentDue = useMemo(() => {
+    const raw = Number(status?.commitment_due_ngn || 0);
+    return Number.isFinite(raw) && raw > 0 ? raw : 100000;
+  }, [status?.commitment_due_ngn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +215,7 @@ export default function SourcingProjectPage() {
                     order.
                   </p>
                   <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-700">
-                    Commitment fee: ₦100,000
+                    Commitment fee: ₦{commitmentDue.toLocaleString()}
                   </div>
                 </div>
 

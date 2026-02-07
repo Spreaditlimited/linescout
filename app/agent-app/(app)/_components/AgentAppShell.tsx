@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -27,9 +27,18 @@ export default function AgentAppShell({
   subtitle?: string;
   children: ReactNode;
 }) {
+  const router = useRouter();
   const pathname = usePathname();
   const active = useMemo(() => pathname || "", [pathname]);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  const goBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/agent-app/dashboard");
+  };
 
   return (
     <div className="min-h-screen bg-white text-neutral-900">
@@ -150,7 +159,16 @@ export default function AgentAppShell({
           <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_20px_50px_rgba(15,23,42,0.08)] sm:p-6 lg:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">Agent app</p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.2)] bg-white px-3 py-1 text-xs font-semibold text-[#2D3461] shadow-sm hover:bg-[rgba(45,52,97,0.06)]"
+                  >
+                    ← Back
+                  </button>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">Agent app</p>
+                </div>
                 <h1 className="mt-2 text-xl font-semibold text-neutral-900 sm:text-2xl lg:text-3xl">{title}</h1>
                 {subtitle ? <p className="mt-2 text-sm text-neutral-600">{subtitle}</p> : null}
               </div>

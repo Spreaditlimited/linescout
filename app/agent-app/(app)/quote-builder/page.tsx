@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AgentAppShell from "../_components/AgentAppShell";
+import PremiumSelect from "../_components/PremiumSelect";
 
 type ShippingRate = {
   id: number;
@@ -105,6 +106,7 @@ function QuoteBuilderInner() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [linkMsg, setLinkMsg] = useState<string | null>(null);
   const [locked, setLocked] = useState(queryReadOnly);
   const [lockReason, setLockReason] = useState<string | null>(queryReadOnly ? "Delivered projects are read-only." : null);
 
@@ -142,6 +144,16 @@ function QuoteBuilderInner() {
   const totals = useMemo(() => {
     return computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
   }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent]);
+
+  const publicLink = useMemo(() => {
+    if (!latestQuoteToken) return "";
+    if (typeof window !== "undefined" && window.location?.origin) {
+      return `${window.location.origin}/quote/${latestQuoteToken}`;
+    }
+    const base =
+      (process.env.NEXT_PUBLIC_APP_URL || "https://linescout.sureimports.com").replace(/\/$/, "");
+    return `${base}/quote/${latestQuoteToken}`;
+  }, [latestQuoteToken]);
 
   const selectedRate = useMemo(() => {
     if (!shippingRates.length) return null;
@@ -186,22 +198,22 @@ function QuoteBuilderInner() {
     if (!latest) return;
 
     setItems(ensureItems(latest.items_json));
-    setExchangeRmb(num(latest.exchange_rate_rmb, exchangeRmb));
-    setExchangeUsd(num(latest.exchange_rate_usd, exchangeUsd));
-    setShippingRateUsd(num(latest.shipping_rate_usd, shippingRateUsd));
+    setExchangeRmb((prev) => num(latest.exchange_rate_rmb, prev));
+    setExchangeUsd((prev) => num(latest.exchange_rate_usd, prev));
+    setShippingRateUsd((prev) => num(latest.shipping_rate_usd, prev));
     if (latest.shipping_rate_unit === "per_cbm") setShippingRateUnit("per_cbm");
     setShippingTypeId(latest.shipping_type_id ?? null);
-    setMarkupPercent(num(latest.markup_percent, markupPercent));
-    setAgentPercent(num(latest.agent_percent, agentPercent));
-    setAgentCommitmentPercent(num(latest.agent_commitment_percent, agentCommitmentPercent));
-    setCommitmentDueNgn(num(latest.commitment_due_ngn, commitmentDueNgn));
+    setMarkupPercent((prev) => num(latest.markup_percent, prev));
+    setAgentPercent((prev) => num(latest.agent_percent, prev));
+    setAgentCommitmentPercent((prev) => num(latest.agent_commitment_percent, prev));
+    setCommitmentDueNgn((prev) => num(latest.commitment_due_ngn, prev));
     setDepositEnabled(!!latest.deposit_enabled);
-    setDepositPercent(num(latest.deposit_percent, depositPercent));
+    setDepositPercent((prev) => num(latest.deposit_percent, prev));
     if (latest.payment_purpose) setPaymentPurpose(String(latest.payment_purpose));
     setAgentNote(String(latest.agent_note || ""));
     setLatestQuoteToken(latest.token || null);
     setLatestQuoteId(latest.id || null);
-  }, [handoffId, exchangeRmb, exchangeUsd, shippingRateUsd, markupPercent, agentPercent, agentCommitmentPercent, commitmentDueNgn, depositPercent]);
+  }, [handoffId]);
 
   const loadHandoffStatus = useCallback(async () => {
     if (!handoffId) return;
@@ -239,6 +251,12 @@ function QuoteBuilderInner() {
     setShippingRateUnit(rate.rate_unit === "per_cbm" ? "per_cbm" : "per_kg");
     setShippingTypeId(rate.shipping_type_id);
   }, [shippingRateId, shippingRates]);
+
+  useEffect(() => {
+    if (!linkMsg) return;
+    const t = setTimeout(() => setLinkMsg(null), 2200);
+    return () => clearTimeout(t);
+  }, [linkMsg]);
 
   const addItem = () => {
     setItems((prev) => [
@@ -412,55 +430,60 @@ function QuoteBuilderInner() {
                     <div>
                       <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Quantity</label>
                       <input
-                        type="number"
+                        type="text"
                         value={item.quantity}
                         onChange={(e) => updateItem(idx, { quantity: num(e.target.value, 0) })}
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
+                        inputMode="numeric"
                         className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Unit price (RMB)</label>
                       <input
-                        type="number"
+                        type="text"
                         value={item.unit_price_rmb}
                         onChange={(e) => updateItem(idx, { unit_price_rmb: num(e.target.value, 0) })}
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
+                        inputMode="decimal"
                         className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Unit weight (kg)</label>
                       <input
-                        type="number"
+                        type="text"
                         value={item.unit_weight_kg}
                         onChange={(e) => updateItem(idx, { unit_weight_kg: num(e.target.value, 0) })}
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
+                        inputMode="decimal"
                         className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Unit CBM</label>
                       <input
-                        type="number"
+                        type="text"
                         value={item.unit_cbm}
                         onChange={(e) => updateItem(idx, { unit_cbm: num(e.target.value, 0) })}
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
+                        inputMode="decimal"
                         className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm"
                       />
                     </div>
                     <div>
                       <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Local transport (RMB)</label>
                       <input
-                        type="number"
+                        type="text"
                         value={item.local_transport_rmb}
                         onChange={(e) => updateItem(idx, { local_transport_rmb: num(e.target.value, 0) })}
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
+                        inputMode="decimal"
                         className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm"
                       />
                     </div>
@@ -487,26 +510,20 @@ function QuoteBuilderInner() {
               <p className="mt-2 text-xs text-neutral-500">
                 Using admin rates. Select a shipping type to update the estimate.
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {shippingRates.map((rate) => {
-                  const selected = rate.id === (shippingRateId || selectedRate?.id);
-                  const unitLabel = rate.rate_unit === "per_cbm" ? "CBM" : "KG";
-                  return (
-                    <button
-                      key={rate.id}
-                      type="button"
-                      onClick={() => setShippingRateId(rate.id)}
-                      disabled={isReadOnly}
-                      className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                        selected
-                          ? "bg-[#2D3461] text-white"
-                          : "border border-[rgba(45,52,97,0.2)] text-[#2D3461]"
-                      } ${isReadOnly ? "opacity-60" : ""}`}
-                    >
-                      {rate.shipping_type_name || "Shipping"} · {rate.rate_value}/{unitLabel}
-                    </button>
-                  );
-                })}
+              <div className="mt-4">
+                <PremiumSelect
+                  label="Shipping type"
+                  value={String(shippingRateId || selectedRate?.id || "")}
+                  onChange={(value) => setShippingRateId(Number(value))}
+                  options={shippingRates.map((rate) => ({
+                    value: String(rate.id),
+                    label: `${rate.shipping_type_name || "Shipping"} · ${rate.rate_value}/${
+                      rate.rate_unit === "per_cbm" ? "CBM" : "KG"
+                    }`,
+                  }))}
+                  placeholder="Select shipping type"
+                  disabled={isReadOnly}
+                />
               </div>
               <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Selected</p>
@@ -572,6 +589,45 @@ function QuoteBuilderInner() {
                       {saving ? "Saving…" : latestQuoteId ? "Save quote" : "Create quote"}
                     </button>
                   )}
+                  {publicLink ? (
+                    <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Public link</p>
+                      <p className="mt-2 break-all text-xs text-neutral-600">{publicLink}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(publicLink);
+                              setLinkMsg("Link copied.");
+                            } catch {
+                              setLinkMsg("Unable to copy link.");
+                            }
+                          }}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-white"
+                        >
+                          Copy link
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              if (navigator.share) {
+                                await navigator.share({ title: "LineScout quote", url: publicLink });
+                              } else {
+                                await navigator.clipboard.writeText(publicLink);
+                                setLinkMsg("Link copied.");
+                              }
+                            } catch {}
+                          }}
+                          className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.2)]"
+                        >
+                          Share
+                        </button>
+                      </div>
+                      {linkMsg ? <p className="mt-2 text-[11px] text-neutral-500">{linkMsg}</p> : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -580,32 +636,22 @@ function QuoteBuilderInner() {
           <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <p className="text-sm font-semibold text-neutral-900">Payment purpose</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {[
-                  { value: "commitment_fee", label: "Commitment fee" },
-                  { value: "deposit", label: "Deposit" },
-                  { value: "product_balance", label: "Product balance" },
-                  { value: "full_product_payment", label: "Full product payment" },
-                  { value: "shipping_payment", label: "Shipping payment" },
-                  { value: "additional_payment", label: "Additional payment" },
-                ].map((opt) => {
-                  const selected = paymentPurpose === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setPaymentPurpose(opt.value)}
-                      disabled={isReadOnly}
-                      className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                        selected
-                          ? "bg-[#2D3461] text-white"
-                          : "border border-[rgba(45,52,97,0.2)] text-[#2D3461]"
-                      } ${isReadOnly ? "opacity-60" : ""}`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
+              <div className="mt-4">
+                <PremiumSelect
+                  label="Purpose"
+                  value={paymentPurpose}
+                  onChange={(value) => setPaymentPurpose(value)}
+                  options={[
+                    { value: "commitment_fee", label: "Commitment fee" },
+                    { value: "deposit", label: "Deposit" },
+                    { value: "product_balance", label: "Product balance" },
+                    { value: "full_product_payment", label: "Full product payment" },
+                    { value: "shipping_payment", label: "Shipping payment" },
+                    { value: "additional_payment", label: "Additional payment" },
+                  ]}
+                  placeholder="Select payment purpose"
+                  disabled={isReadOnly}
+                />
               </div>
               <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-4 text-sm text-neutral-600">
                 <div className="flex items-center justify-between">
