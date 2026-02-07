@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserTokenFromRequest } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -48,6 +49,18 @@ export async function GET(req: NextRequest) {
     const conv = data?.conversation || null;
     const conversation_status = conv?.project_status ?? null;
 
+    let commitmentDueNgn = 100000;
+    const conn = await db.getConnection();
+    try {
+      const [rows]: any = await conn.query(
+        "SELECT commitment_due_ngn FROM linescout_settings ORDER BY id DESC LIMIT 1"
+      );
+      const ngn = Number(rows?.[0]?.commitment_due_ngn || 0);
+      if (Number.isFinite(ngn) && ngn > 0) commitmentDueNgn = ngn;
+    } finally {
+      conn.release();
+    }
+
     return NextResponse.json(
       {
         ok: true,
@@ -59,6 +72,7 @@ export async function GET(req: NextRequest) {
         handoff_id: conv?.handoff_id ?? null,
         has_active_project: Boolean(conv?.handoff_id && conversation_status === "active"),
         is_cancelled: conversation_status === "cancelled",
+        commitment_due_ngn: commitmentDueNgn,
       },
       { status: 200 }
     );

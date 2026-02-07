@@ -5,6 +5,7 @@ import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AuthShell from "../_components/AuthShell";
+import { fetchAgentOtpMode } from "../lib/otp";
 
 function clean(v: unknown) {
   return String(v ?? "").trim();
@@ -51,8 +52,10 @@ function AgentAppSignInInner() {
       }
 
       const role = String(me?.user?.role || "").toLowerCase();
-      const otpMode = String(me?.user?.otp_mode || "phone").toLowerCase();
-      const otpVerified = me?.user?.otp_verified ?? me?.user?.phone_verified;
+      const otpMode = await fetchAgentOtpMode();
+      const emailVerified = !!me?.user?.email_verified;
+      const phoneVerified = !!(me?.user?.phone_verified ?? me?.user?.otp_verified);
+      const otpVerified = otpMode === "email" ? emailVerified : phoneVerified;
       const userId = Number(me?.user?.id || 0);
       const email = String(me?.user?.email || "");
 

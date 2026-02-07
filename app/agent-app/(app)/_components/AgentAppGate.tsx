@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { fetchAgentOtpMode } from "../../lib/otp";
 
 export default function AgentAppGate({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -29,8 +30,10 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
         }
 
         const role = String(data?.user?.role || "").toLowerCase();
-        const otpMode = String(data?.user?.otp_mode || "phone").toLowerCase();
-        const otpVerified = data?.user?.otp_verified ?? data?.user?.phone_verified;
+        const otpMode = await fetchAgentOtpMode();
+        const emailVerified = !!data?.user?.email_verified;
+        const phoneVerified = !!(data?.user?.phone_verified ?? data?.user?.otp_verified);
+        const otpVerified = otpMode === "email" ? emailVerified : phoneVerified;
         const userId = Number(data?.user?.id || 0);
         const email = String(data?.user?.email || "");
 

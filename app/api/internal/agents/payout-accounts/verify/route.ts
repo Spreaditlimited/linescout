@@ -133,11 +133,23 @@ export async function POST(req: Request) {
     const bankCode = bodyBankCode || String(existing?.bank_code || "").trim();
     const accountNumber = bodyAccountNumber || String(existing?.account_number || "").trim();
 
+    const existingBank = String(existing?.bank_code || "").trim();
+    const existingAcct = String(existing?.account_number || "").trim();
+    const hasExisting = !!existingBank && !!existingAcct;
+    const isChange = hasExisting && (existingBank !== bankCode || existingAcct !== accountNumber);
+
     if (!bankCode) {
       return NextResponse.json({ ok: false, error: "bank_code is required" }, { status: 400 });
     }
     if (!/^\d{10}$/.test(accountNumber)) {
       return NextResponse.json({ ok: false, error: "account_number must be 10 digits" }, { status: 400 });
+    }
+
+    if (isChange) {
+      return NextResponse.json(
+        { ok: false, error: "OTP required to change bank details" },
+        { status: 409 }
+      );
     }
 
     // Ensure a row exists and store latest submitted values as pending before resolving

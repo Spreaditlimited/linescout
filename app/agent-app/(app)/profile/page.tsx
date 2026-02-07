@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AgentAppShell from "../_components/AgentAppShell";
+import { fetchAgentOtpMode, type AgentOtpMode } from "../../lib/otp";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -9,12 +10,16 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null);
   const [checklist, setChecklist] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
+  const [otpMode, setOtpMode] = useState<AgentOtpMode | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch("/api/internal/agents/profile/me", { cache: "no-store", credentials: "include" });
+      const [res, mode] = await Promise.all([
+        fetch("/api/internal/agents/profile/me", { cache: "no-store", credentials: "include" }),
+        fetchAgentOtpMode(),
+      ]);
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setErr(String(json?.error || `Failed (${res.status})`));
@@ -23,6 +28,7 @@ export default function ProfilePage() {
       setProfile(json.profile || null);
       setChecklist(json.checklist || null);
       setUser(json.user || null);
+      setOtpMode(mode);
     } catch (e: any) {
       setErr(e?.message || "Failed to load profile.");
     } finally {
@@ -46,8 +52,11 @@ export default function ProfilePage() {
     return `•••••••${raw.slice(-4)}`;
   }, [profile?.nin]);
 
-  const otpLabel = checklist?.otp_mode === "email" ? "Email verified" : "China phone verified";
-  const otpOk = checklist?.otp_verified ?? checklist?.phone_verified;
+  const resolvedOtpMode = otpMode || (checklist?.otp_mode === "email" ? "email" : "phone");
+  const phoneOk = !!(checklist?.phone_verified ?? checklist?.otp_verified);
+  const emailOk = !!checklist?.email_verified;
+  const otpLabel = resolvedOtpMode === "email" ? "Email verified" : "China phone verified";
+  const otpOk = resolvedOtpMode === "email" ? emailOk : phoneOk;
 
   return (
     <AgentAppShell title="Profile" subtitle="Your agent identity and approval checklist.">

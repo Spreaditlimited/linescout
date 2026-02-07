@@ -163,8 +163,8 @@ export async function GET() {
     }
 
     const phoneVerified = !!profile?.china_phone_verified_at;
-    let otpVerified = phoneVerified;
-    if (auth.role === "agent" && otpMode === "email") {
+    let emailVerified = false;
+    if (auth.role === "agent") {
       const [emailTable]: any = await conn.query(
         `
         SELECT TABLE_NAME
@@ -183,11 +183,10 @@ export async function GET() {
            LIMIT 1`,
           [auth.userId]
         );
-        otpVerified = !!usedEmailRows?.length;
-      } else {
-        otpVerified = false;
+        emailVerified = !!usedEmailRows?.length;
       }
     }
+    const otpVerified = otpMode === "email" ? emailVerified : phoneVerified;
     const ninProvided = !!(profile?.nin && String(profile.nin).trim().length > 0);
     const ninVerified = !!profile?.nin_verified_at;
     const addressProvided = !!(profile?.full_address && String(profile.full_address).trim().length > 0);
@@ -231,6 +230,7 @@ export async function GET() {
         : null,
       checklist: {
         phone_verified: phoneVerified,
+        email_verified: emailVerified,
         otp_mode: otpMode,
         otp_verified: otpVerified,
         nin_provided: ninProvided,

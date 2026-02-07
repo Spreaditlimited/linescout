@@ -83,6 +83,7 @@ export async function GET() {
     // - Agents are "verified" if ANY OTP has been successfully used (used_at IS NOT NULL)
     let phone = "";
     let phone_verified = r.role === "admin" ? true : false;
+    let email_verified = r.role === "admin" ? true : false;
     let otp_verified = r.role === "admin" ? true : false;
 
     // Pull latest phone (if any) so UI can display it.
@@ -101,41 +102,51 @@ export async function GET() {
 
     // For agents, verification is durable: existence of any used OTP record
     if (r.role === "agent") {
-      if (otpMode === "email") {
-        const [emailTable]: any = await conn.query(
-          `
-          SELECT TABLE_NAME
-          FROM information_schema.tables
-          WHERE table_schema = DATABASE()
-            AND table_name = 'internal_agent_email_otps'
-          LIMIT 1
-          `
-        );
-        if (emailTable?.length) {
-          const [usedEmailRows]: any = await conn.query(
-            `SELECT id
-             FROM internal_agent_email_otps
-             WHERE user_id = ?
-               AND used_at IS NOT NULL
-             LIMIT 1`,
-            [r.id]
-          );
-          otp_verified = !!usedEmailRows?.length;
-        } else {
-          otp_verified = false;
-        }
-      } else {
-        const [usedOtpRows]: any = await conn.query(
+      const [emailTable]: any = await conn.query(
+        `
+        SELECT TABLE_NAME
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = 'internal_agent_email_otps'
+        LIMIT 1
+        `
+      );
+      if (emailTable?.length) {
+        const [usedEmailRows]: any = await conn.query(
           `SELECT id
-           FROM internal_agent_phone_otps
+           FROM internal_agent_email_otps
            WHERE user_id = ?
              AND used_at IS NOT NULL
            LIMIT 1`,
           [r.id]
         );
-        phone_verified = !!usedOtpRows?.length;
-        otp_verified = phone_verified;
+        email_verified = !!usedEmailRows?.length;
+      } else {
+        email_verified = false;
       }
+
+      const [usedOtpRows]: any = await conn.query(
+        `SELECT id
+         FROM internal_agent_phone_otps
+         WHERE user_id = ?
+           AND used_at IS NOT NULL
+         LIMIT 1`,
+        [r.id]
+      );
+      phone_verified = !!usedOtpRows?.length;
+
+      if (!phone_verified) {
+        const [profileRows]: any = await conn.query(
+          `SELECT china_phone_verified_at
+           FROM linescout_agent_profiles
+           WHERE internal_user_id = ?
+           LIMIT 1`,
+          [r.id]
+        );
+        phone_verified = !!profileRows?.[0]?.china_phone_verified_at;
+      }
+
+      otp_verified = otpMode === "email" ? email_verified : phone_verified;
     }
 
     return NextResponse.json({
@@ -147,6 +158,7 @@ export async function GET() {
         email: r.email || "",
         phone,
         phone_verified,
+        email_verified,
         otp_mode: otpMode,
         otp_verified,
         permissions: {
