@@ -9,6 +9,9 @@ const CATEGORIES = new Set([
   "Home Goods",
   "Fashion",
   "Food & Beverage",
+  "Phone & Computer Accessories",
+  "Tech / Smart Utility",
+  "Fitness / Wellness",
   "Other",
 ]);
 const QTIERS = new Set(["test", "scale"]);
