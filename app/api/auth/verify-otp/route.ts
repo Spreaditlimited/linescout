@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
+import { findReviewerByEmail, normalizeEmail } from "@/lib/reviewer-accounts";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -41,11 +38,71 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 400 });
     }
 
-    const otpHash = sha256(otpRaw);
     const ip = getClientIp(req);
     const userAgent = req.headers.get("user-agent");
 
     conn = await getDb();
+
+    // Reviewer bypass
+    const reviewer = await findReviewerByEmail(conn, "mobile", email);
+    if (reviewer) {
+      const fixedOtp = String(reviewer.fixed_otp || "").trim();
+      if (!/^\d{6}$/.test(fixedOtp)) {
+        return NextResponse.json({ ok: false, error: "Reviewer OTP not configured" }, { status: 400 });
+      }
+      if (otpRaw !== fixedOtp) {
+        return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 401 });
+      }
+
+      // Ensure user exists
+      const [urows] = await conn.execute<RowDataPacket[]>(
+        "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
+        [email]
+      );
+      let userId: number;
+      if (urows.length) {
+        userId = Number(urows[0].id);
+      } else {
+        const [ins]: any = await conn.execute(
+          "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
+          [emailRaw.trim(), email]
+        );
+        userId = Number(ins.insertId);
+      }
+
+      const refreshToken = randomToken(32);
+      const refreshHash = sha256(refreshToken);
+
+      await conn.execute(
+        `
+        INSERT INTO linescout_user_sessions
+          (user_id, refresh_token_hash, expires_at, user_agent, ip_address, last_seen_at)
+        VALUES
+          (?, ?, (NOW() + INTERVAL 30 DAY), ?, ?, NOW())
+        `,
+        [userId, refreshHash, userAgent, ip]
+      );
+
+      const res = NextResponse.json({
+        ok: true,
+        user_id: userId,
+        refresh_token: refreshToken,
+      });
+
+      res.cookies.set({
+        name: "linescout_session",
+        value: refreshToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+
+      return res;
+    }
+
+    const otpHash = sha256(otpRaw);
 
     // 1) Find user
     const [urows] = await conn.execute<RowDataPacket[]>(

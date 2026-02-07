@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
+import { findReviewerByEmail } from "@/lib/reviewer-accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,6 +99,19 @@ export async function POST(req: Request) {
 
     if (emailInput && emailInput !== email) {
       return NextResponse.json({ ok: false, error: "Email does not match account" }, { status: 400 });
+    }
+
+    const reviewer = await findReviewerByEmail(conn, "agent", email);
+    if (reviewer) {
+      const fixedOtp = String(reviewer.fixed_otp || "").trim();
+      if (!/^\d{6}$/.test(fixedOtp)) {
+        return NextResponse.json({ ok: false, error: "Reviewer OTP not configured." }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        ok: true,
+        dev_otp: fixedOtp,
+      });
     }
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));

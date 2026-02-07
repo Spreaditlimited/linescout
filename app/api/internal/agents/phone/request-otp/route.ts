@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { sendSinchSms } from "@/lib/sinch";
+import { findReviewerByPhone } from "@/lib/reviewer-accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,8 +52,14 @@ export async function POST(req: Request) {
     if (String(rows[0].role) !== "agent") return NextResponse.json({ ok: false, error: "Not an agent" }, { status: 403 });
     if (!rows[0].is_active) return NextResponse.json({ ok: false, error: "Account disabled" }, { status: 403 });
 
+    const reviewer = await findReviewerByPhone(conn, "agent", phone);
+    const reviewerOtp = reviewer ? String(reviewer.fixed_otp || "").trim() : "";
+    if (reviewer && !/^\d{6}$/.test(reviewerOtp)) {
+      return NextResponse.json({ ok: false, error: "Reviewer OTP not configured." }, { status: 400 });
+    }
+
     // OTP: 6 digits
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp = reviewer ? reviewerOtp : String(Math.floor(100000 + Math.random() * 900000));
     const salt = crypto.randomBytes(16).toString("hex");
     const otpHash = hashOtp(otp, salt);
 
@@ -93,18 +100,21 @@ export async function POST(req: Request) {
 
     // Dev convenience: only reveal OTP when explicitly enabled
     const revealOtp =
+      reviewer ||
       process.env.NODE_ENV !== "production" ||
       String(process.env.REVEAL_AGENT_PHONE_OTP || "") === "1";
 
-    const smsResult = await sendSinchSms({
-      to: phone,
-      body: `Your LineScout OTP is ${otp}`,
-    });
+    const smsResult = reviewer
+      ? { ok: false as const, error: "SKIPPED_REVIEWER" }
+      : await sendSinchSms({
+          to: phone,
+          body: `Your LineScout OTP is ${otp}`,
+        });
 
     const phoneTail = phone.slice(-4);
     if (!smsResult.ok) {
       const err = smsResult.error || "UNKNOWN_ERROR";
-      const isSkipped = err === "SINCH_SMS_DISABLED";
+      const isSkipped = err === "SINCH_SMS_DISABLED" || err === "SKIPPED_REVIEWER";
       if (isSkipped) {
         console.warn(`Sinch SMS skipped for agent phone ***${phoneTail}: ${err}`);
       } else {

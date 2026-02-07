@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
+import { findReviewerByEmail } from "@/lib/reviewer-accounts";
 import type { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -88,6 +89,24 @@ export async function POST(req: Request) {
         [emailRaw.trim(), email]
       );
       userId = Number(ins.insertId);
+    }
+
+    // Reviewer bypass (no email/OTP send)
+    const reviewer = await findReviewerByEmail(conn, "mobile", email);
+    if (reviewer) {
+      const fixedOtp = String(reviewer.fixed_otp || "").trim();
+      if (!/^\d{6}$/.test(fixedOtp)) {
+        return NextResponse.json(
+          { ok: false, error: "Reviewer OTP not configured. Contact support." },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        reviewer: true,
+        dev_otp: fixedOtp,
+      });
     }
 
     // 2) Basic rate limit: max 3 OTPs per 15 minutes per user

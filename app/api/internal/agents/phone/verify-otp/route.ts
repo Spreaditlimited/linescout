@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
+import { findReviewerByPhone } from "@/lib/reviewer-accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,69 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    const reviewer = await findReviewerByPhone(conn, "agent", phone);
+    if (reviewer) {
+      const fixedOtp = String(reviewer.fixed_otp || "").trim();
+      if (!/^\d{6}$/.test(fixedOtp)) {
+        return NextResponse.json({ ok: false, error: "Reviewer OTP not configured." }, { status: 400 });
+      }
+      if (otp !== fixedOtp) {
+        return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 400 });
+      }
+
+      await conn.beginTransaction();
+
+      const salt = crypto.randomBytes(16).toString("hex");
+      const otpHash = hashOtp(otp, salt);
+
+      await conn.query(
+        `
+        INSERT INTO internal_agent_phone_otps (user_id, phone, otp_hash, expires_at, used_at)
+        VALUES (?, ?, ?, NOW(), NOW())
+        `,
+        [userId, phone, `${salt}:${otpHash}`]
+      );
+
+      const [upd]: any = await conn.query(
+        `
+        UPDATE linescout_agent_profiles
+        SET
+          china_phone = ?,
+          china_phone_verified_at = NOW(),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE internal_user_id = ?
+        LIMIT 1
+        `,
+        [phone, userId]
+      );
+
+      if (!upd?.affectedRows) {
+        await conn.query(
+          `
+          INSERT INTO linescout_agent_profiles
+            (internal_user_id, first_name, last_name, email, china_phone, china_phone_verified_at, china_city, nationality, payout_status)
+          SELECT
+            u.id,
+            COALESCE(u.first_name, ''),
+            COALESCE(u.last_name, ''),
+            COALESCE(u.email, ''),
+            ?,
+            NOW(),
+            'pending',
+            'Nigeria',
+            'pending'
+          FROM internal_users u
+          WHERE u.id = ?
+          LIMIT 1
+          `,
+          [phone, userId]
+        );
+      }
+
+      await conn.commit();
+      return NextResponse.json({ ok: true });
+    }
+
     await conn.beginTransaction();
 
     // latest valid OTP row (un-used, not expired)

@@ -231,6 +231,7 @@ export default function InternalTopBar() {
   if (isAdmin) {
     adminItems.push({ label: "Agents", href: "/internal/agents" });
     adminItems.push({ label: "App Users", href: "/internal/admin/app-users" });
+    adminItems.push({ label: "Reviewer Access", href: "/internal/admin/reviewer-accounts" });
     adminItems.push({ label: "Agent Approval", href: "/internal/admin/agent-approval" });
     adminItems.push({ label: "Payouts", href: "/internal/admin/payouts" });
     adminItems.push({ label: "Agent Support", href: "/internal/agent-support" });
