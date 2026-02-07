@@ -53,7 +53,15 @@ async function requireInternalSession() {
     const role = String(rows[0].role || "");
     const canView = role === "admin" ? true : !!rows[0].can_view_handoffs;
 
-    if (!canView) return { ok: false as const, status: 403 as const, error: "Forbidden" };
+    if (!canView) {
+      const isAgent = role === "agent";
+      return {
+        ok: false as const,
+        status: 403 as const,
+        error: isAgent ? "You need to be approved to use this feature." : "Forbidden",
+        code: isAgent ? "AGENT_NOT_APPROVED" : "FORBIDDEN",
+      };
+    }
 
     return {
       ok: true as const,
