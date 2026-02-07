@@ -503,22 +503,28 @@ export async function seedWhiteLabelProducts(conn: PoolConnection) {
 }
 
 export function computeLandedRange(opts: {
-  fob_low_usd?: number | null;
-  fob_high_usd?: number | null;
-  cbm_per_1000?: number | null;
-  fx_rate_ngn?: number;
-  cbm_rate_ngn?: number;
-  markup_percent?: number;
+  fob_low_usd?: number | string | null;
+  fob_high_usd?: number | string | null;
+  cbm_per_1000?: number | string | null;
+  fx_rate_ngn?: number | string;
+  cbm_rate_ngn?: number | string;
+  markup_percent?: number | string;
 }) {
-  const fx = Number.isFinite(opts.fx_rate_ngn) ? Number(opts.fx_rate_ngn) : WHITE_LABEL_PRICING_DEFAULTS.fx_rate_ngn;
-  const cbmRate = Number.isFinite(opts.cbm_rate_ngn) ? Number(opts.cbm_rate_ngn) : WHITE_LABEL_PRICING_DEFAULTS.cbm_rate_ngn;
-  const markup = Number.isFinite(opts.markup_percent) ? Number(opts.markup_percent) : WHITE_LABEL_PRICING_DEFAULTS.markup_percent;
-  const cbm = Number.isFinite(opts.cbm_per_1000) ? Number(opts.cbm_per_1000) : 0;
+  const fxRaw = Number(opts.fx_rate_ngn);
+  const cbmRateRaw = Number(opts.cbm_rate_ngn);
+  const markupRaw = Number(opts.markup_percent);
+  const cbmRaw = Number(opts.cbm_per_1000);
+
+  const fx = Number.isFinite(fxRaw) ? fxRaw : WHITE_LABEL_PRICING_DEFAULTS.fx_rate_ngn;
+  const cbmRate = Number.isFinite(cbmRateRaw) ? cbmRateRaw : WHITE_LABEL_PRICING_DEFAULTS.cbm_rate_ngn;
+  const markup = Number.isFinite(markupRaw) ? markupRaw : WHITE_LABEL_PRICING_DEFAULTS.markup_percent;
+  const cbm = Number.isFinite(cbmRaw) ? cbmRaw : 0;
   const freightPerUnit = cbm > 0 ? (cbm * cbmRate) / 1000 : 0;
 
-  function compute(val?: number | null) {
-    if (!Number.isFinite(val)) return null;
-    const base = Number(val) * fx + freightPerUnit;
+  function compute(val?: number | string | null) {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return null;
+    const base = n * fx + freightPerUnit;
     const landed = base * (1 + markup);
     return landed;
   }
