@@ -23,7 +23,7 @@ export async function GET(req: Request) {
       await ensureWhiteLabelProductsTable(conn);
       await seedWhiteLabelProducts(conn);
 
-      const clauses = ["is_active = 1"];
+      const clauses = ["is_active = 1", "COALESCE(image_url, '') <> ''"];
       const params: any[] = [];
 
       if (category) {

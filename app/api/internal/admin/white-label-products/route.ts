@@ -75,6 +75,7 @@ export async function GET(req: Request) {
   const q = clean(url.searchParams.get("q")).toLowerCase();
   const category = clean(url.searchParams.get("category"));
   const active = clean(url.searchParams.get("active"));
+  const image = clean(url.searchParams.get("image"));
 
   const conn = await db.getConnection();
   try {
@@ -92,6 +93,12 @@ export async function GET(req: Request) {
     if (active === "0" || active === "1") {
       clauses.push("is_active = ?");
       params.push(active === "1" ? 1 : 0);
+    }
+
+    if (image === "with") {
+      clauses.push("COALESCE(image_url, '') <> ''");
+    } else if (image === "missing") {
+      clauses.push("COALESCE(image_url, '') = ''");
     }
 
     if (q) {
@@ -210,6 +217,45 @@ export async function POST(req: Request) {
   } catch (e: any) {
     console.error("POST /api/internal/admin/white-label-products error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to create product" }, { status: 500 });
+  } finally {
+    conn.release();
+  }
+}
+
+export async function PATCH(req: Request) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+  const body = await req.json().catch(() => ({}));
+  const ids = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: any) => Number.isFinite(v)) : [];
+  const isActive = body?.is_active;
+
+  if (!ids.length) {
+    return NextResponse.json({ ok: false, error: "Missing ids" }, { status: 400 });
+  }
+  if (typeof isActive !== "boolean") {
+    return NextResponse.json({ ok: false, error: "Missing is_active" }, { status: 400 });
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await ensureWhiteLabelProductsTable(conn);
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const params = [isActive ? 1 : 0, ...ids];
+    const [res]: any = await conn.query(
+      `
+      UPDATE linescout_white_label_products
+      SET is_active = ?
+      WHERE id IN (${placeholders})
+      `,
+      params
+    );
+
+    return NextResponse.json({ ok: true, updated: res?.affectedRows || 0 });
+  } catch (e: any) {
+    console.error("PATCH /api/internal/admin/white-label-products error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to update products" }, { status: 500 });
   } finally {
     conn.release();
   }

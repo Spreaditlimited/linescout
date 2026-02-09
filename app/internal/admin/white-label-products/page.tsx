@@ -63,6 +63,7 @@ export default function WhiteLabelProductsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [category, setCategory] = useState("");
   const [activeFilter, setActiveFilter] = useState("1");
+  const [imageFilter, setImageFilter] = useState("");
 
   const [form, setForm] = useState<EditState>(emptyForm);
   const [savingNew, setSavingNew] = useState(false);
@@ -70,6 +71,9 @@ export default function WhiteLabelProductsPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [edits, setEdits] = useState<Record<number, EditState>>({});
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 200);
@@ -84,6 +88,7 @@ export default function WhiteLabelProductsPage() {
       if (debouncedSearch.trim()) qs.set("q", debouncedSearch.trim());
       if (category.trim()) qs.set("category", category.trim());
       if (activeFilter === "0" || activeFilter === "1") qs.set("active", activeFilter);
+      if (imageFilter === "with" || imageFilter === "missing") qs.set("image", imageFilter);
 
       const res = await fetch(`/api/internal/admin/white-label-products?${qs.toString()}`, {
         cache: "no-store",
@@ -92,7 +97,10 @@ export default function WhiteLabelProductsPage() {
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || "Failed to load products");
       }
-      setItems(data.items || []);
+      const nextItems = data.items || [];
+      setItems(nextItems);
+      const nextIds = new Set(nextItems.map((i: WhiteLabelProduct) => i.id));
+      setSelectedIds((prev) => prev.filter((id) => nextIds.has(id)));
     } catch (e: any) {
       setErr(e?.message || "Failed to load products");
     } finally {
@@ -103,13 +111,75 @@ export default function WhiteLabelProductsPage() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, category, activeFilter]);
+  }, [debouncedSearch, category, activeFilter, imageFilter]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
     items.forEach((i) => set.add(i.category));
     return Array.from(set).sort();
   }, [items]);
+
+  const missingImageCount = useMemo(
+    () => items.filter((i) => !String(i.image_url || "").trim()).length,
+    [items]
+  );
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(items.map((i) => i.id));
+  }
+
+  function clearSelection() {
+    setSelectedIds([]);
+  }
+
+  async function bulkSetActive(next: boolean) {
+    if (!selectedIds.length || bulkSaving) return;
+    setErr(null);
+    setBulkSaving(true);
+    try {
+      const res = await fetch("/api/internal/admin/white-label-products", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds, is_active: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to update");
+      }
+      clearSelection();
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to update");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  async function quickToggle(id: number, next: boolean) {
+    if (togglingId) return;
+    setErr(null);
+    setTogglingId(id);
+    try {
+      const res = await fetch(`/api/internal/admin/white-label-products/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: next }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to update");
+      }
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to update");
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   function startEdit(item: WhiteLabelProduct) {
     setExpandedId(item.id);
@@ -372,6 +442,49 @@ export default function WhiteLabelProductsPage() {
             <option value="0">Inactive only</option>
             <option value="">All</option>
           </select>
+          <select
+            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            value={imageFilter}
+            onChange={(e) => setImageFilter(e.target.value)}
+          >
+            <option value="">All images</option>
+            <option value="with">With images</option>
+            <option value="missing">Missing images</option>
+          </select>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-400">
+          <span>Missing images: {missingImageCount}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span>{selectedIds.length} selected</span>
+            <button
+              className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white"
+              onClick={selectAllVisible}
+              disabled={!items.length}
+            >
+              Select all visible
+            </button>
+            <button
+              className="rounded-lg border border-white/10 px-2 py-1 text-xs text-white"
+              onClick={clearSelection}
+              disabled={!selectedIds.length}
+            >
+              Clear selection
+            </button>
+            <button
+              className="rounded-lg border border-emerald-500/30 px-2 py-1 text-xs text-emerald-200"
+              onClick={() => bulkSetActive(true)}
+              disabled={!selectedIds.length || bulkSaving}
+            >
+              Activate selected
+            </button>
+            <button
+              className="rounded-lg border border-amber-500/30 px-2 py-1 text-xs text-amber-200"
+              onClick={() => bulkSetActive(false)}
+              disabled={!selectedIds.length || bulkSaving}
+            >
+              Deactivate selected
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -381,16 +494,25 @@ export default function WhiteLabelProductsPage() {
             {items.map((item) => {
               const open = expandedId === item.id;
               const edit = edits[item.id];
+              const hasImage = !!String(item.image_url || "").trim();
               return (
                 <div key={item.id} className="rounded-xl border border-white/10 bg-black/30">
                   <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                    <div>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(item.id)}
+                        onChange={() => toggleSelected(item.id)}
+                      />
+                      <div>
                       <p className="text-sm font-semibold text-white">{item.product_name}</p>
                       <p className="text-xs text-neutral-400">{item.category}</p>
                       <p className="text-xs text-neutral-500">
                         ₦{Math.round(item.landed_ngn_per_unit_low || 0).toLocaleString()}–₦
                         {Math.round(item.landed_ngn_per_unit_high || 0).toLocaleString()} per unit
                       </p>
+                      <p className="text-xs text-neutral-500">Image: {hasImage ? "Yes" : "Missing"}</p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span
@@ -400,6 +522,13 @@ export default function WhiteLabelProductsPage() {
                       >
                         {item.is_active ? "Active" : "Inactive"}
                       </span>
+                      <button
+                        className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white"
+                        onClick={() => quickToggle(item.id, !item.is_active)}
+                        disabled={togglingId === item.id}
+                      >
+                        {item.is_active ? "Deactivate" : "Activate"}
+                      </button>
                       <button
                         className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white"
                         onClick={() => (open ? setExpandedId(null) : startEdit(item))}

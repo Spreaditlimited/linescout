@@ -40,6 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+scripts/white-label-bulk-update.js
+
 Screenshots/
 app/linescout-agent.code-workspace
 
