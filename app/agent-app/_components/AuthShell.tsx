@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 export default function AuthShell({
   title,
   subtitle,
+  topSlot,
   children,
 }: {
   title: string;
   subtitle?: string;
+  topSlot?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -21,12 +23,13 @@ export default function AuthShell({
       <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10">
         <section className="grid flex-1 items-center">
           <div className="mx-auto w-full max-w-md">
+            {topSlot ? <div className="mb-4">{topSlot}</div> : null}
             <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">LineScout Agent</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">
+                LineScout Agent
+              </p>
               <h1 className="mt-3 text-2xl font-semibold text-neutral-900">{title}</h1>
-              {subtitle ? (
-                <p className="mt-2 text-sm text-neutral-600">{subtitle}</p>
-              ) : null}
+              {subtitle ? <p className="mt-2 text-sm text-neutral-600">{subtitle}</p> : null}
               <div className="mt-6 space-y-4">{children}</div>
             </div>
           </div>

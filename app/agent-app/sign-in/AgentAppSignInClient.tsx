@@ -88,6 +88,11 @@ export default function AgentAppSignInClient() {
     <AuthShell
       title="Sign in"
       subtitle="Use your LineScout agent credentials to access the workspace."
+      topSlot={
+        <Link href="/agent-app" className="btn btn-ghost text-xs">
+          ← Back to agent app
+        </Link>
+      }
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div>

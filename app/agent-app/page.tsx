@@ -82,17 +82,17 @@ export default function AgentAppLandingPage() {
 
         <section
           id="features"
-          className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center md:pt-20"
+          className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 md:pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-16"
         >
-          <div>
+          <div className="lg:pt-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
               <BadgeCheck className="h-4 w-4" />
               Built for approved LineScout agents
             </div>
-            <h1 className="mt-6 text-4xl font-semibold tracking-tight text-neutral-900 md:text-5xl">
+            <h1 className="mt-6 max-w-2xl text-4xl font-semibold tracking-tight text-neutral-900 md:text-5xl">
               Operate like a premium sourcing desk in China.
             </h1>
-            <p className="mt-5 max-w-xl text-base leading-relaxed text-neutral-600">
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-neutral-600">
               The LineScout Agent app keeps every paid project moving. Claim chats, manage milestones, and
               withdraw earnings without leaving your workflow. Built for speed, accuracy, and trust.
             </p>
@@ -111,11 +111,11 @@ export default function AgentAppLandingPage() {
                 Download mobile app <Smartphone className="h-4 w-4" />
               </button>
             </div>
-            <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            <div className="mt-10 grid max-w-2xl gap-4 sm:grid-cols-2 lg:grid-cols-2">
               {highlights.map((h) => (
                 <div
                   key={h.title}
-                  className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+                  className="h-full rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
                 >
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--agent-blue)] text-white">
                     {h.icon}
@@ -127,7 +127,7 @@ export default function AgentAppLandingPage() {
             </div>
           </div>
 
-          <div className="rounded-[32px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_25px_60px_rgba(15,23,42,0.12)]">
+          <div className="rounded-[32px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_25px_60px_rgba(15,23,42,0.12)] lg:mt-2">
             <div className="rounded-3xl bg-[var(--agent-blue)] p-6 text-white">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[rgba(255,255,255,0.7)]">Agent app</p>
               <h2 className="mt-2 text-2xl font-semibold">Your desk in your pocket</h2>
@@ -215,6 +215,66 @@ export default function AgentAppLandingPage() {
                   <p className="text-sm font-semibold text-neutral-900">Instant payouts</p>
                   <p className="mt-1 text-xs text-neutral-600">
                     Submit withdrawal requests in seconds once earnings are available.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-6 pb-20">
+          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[28px] border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--agent-blue)]">Rewards</p>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Points that convert to NGN rewards</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Earn points based on speed between payment, shipping, and delivery, plus response time on paid chats.
+                Points are converted to NGN at a configurable rate, and appear in your payouts summary.
+              </p>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
+                  <p className="text-sm font-semibold text-neutral-900">Speed milestones</p>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Complete key transitions quickly to unlock higher point tiers.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
+                  <p className="text-sm font-semibold text-neutral-900">Fast responses</p>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Reply promptly in paid chats to keep your response score strong.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
+                  <p className="text-sm font-semibold text-neutral-900">Transparent value</p>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Points convert to NGN using an admin‑set value shown in the app.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
+                  <p className="text-sm font-semibold text-neutral-900">In your payouts</p>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    Track total points and rewards alongside commission earnings.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
+              <div className="rounded-3xl border border-[rgba(45,52,97,0.16)] bg-white p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--agent-blue)]">
+                  Earn more
+                </p>
+                <h3 className="mt-2 text-lg font-semibold text-neutral-900">
+                  The faster you execute, the more you earn
+                </h3>
+                <p className="mt-2 text-sm text-neutral-600">
+                  Points reward precision and speed. They’re designed to recognize agents who keep projects moving and
+                  customers confident.
+                </p>
+                <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.06)] p-4">
+                  <p className="text-xs font-semibold text-[var(--agent-blue)]">Admin configurable</p>
+                  <p className="mt-2 text-xs text-neutral-600">
+                    LineScout can adjust thresholds and NGN value per point as we scale the agent program.
                   </p>
                 </div>
               </div>

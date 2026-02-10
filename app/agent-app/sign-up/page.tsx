@@ -117,6 +117,11 @@ export default function AgentAppSignUpPage() {
     <AuthShell
       title="Create account"
       subtitle="Join the LineScout agent workspace. Approval is required to access live handoffs."
+      topSlot={
+        <Link href="/agent-app" className="btn btn-ghost text-xs">
+          ← Back to agent app
+        </Link>
+      }
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
