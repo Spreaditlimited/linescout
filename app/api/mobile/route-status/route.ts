@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserTokenFromRequest } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,45 +20,63 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
     }
 
-    const token = getUserTokenFromRequest(req);
-    if (!token) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
+    const user = await requireUser(req);
 
-    // ✅ Always correct in prod + preview + local
-    const origin = req.nextUrl.origin;
-
-    const res = await fetch(`${origin}/api/conversations/me?route_type=${routeType}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    const data = await res.json().catch(() => null);
-
-    if (!res.ok || !data?.ok) {
-      return NextResponse.json(
-        { ok: false, error: data?.error || "Failed to load conversation" },
-        { status: res.status || 500 }
+    const conn = await db.getConnection();
+    let conv: any = null;
+    try {
+      const [rows]: any = await conn.query(
+        `SELECT *
+         FROM linescout_conversations
+         WHERE user_id = ? AND route_type = ?
+         LIMIT 1`,
+        [user.id, routeType]
       );
+
+      conv = rows?.[0] || null;
+
+      if (!conv) {
+        const [ins]: any = await conn.query(
+          `INSERT INTO linescout_conversations
+            (user_id, route_type, chat_mode, human_message_limit, human_message_used, payment_status, project_status)
+           VALUES
+            (?, ?, 'ai_only', 0, 0, 'unpaid', 'active')`,
+          [user.id, routeType]
+        );
+
+        const id = Number(ins?.insertId || 0);
+        if (!id) {
+          return NextResponse.json(
+            { ok: false, error: "Conversation could not be created" },
+            { status: 500 }
+          );
+        }
+
+        const [created]: any = await conn.query(
+          `SELECT * FROM linescout_conversations WHERE id = ? LIMIT 1`,
+          [id]
+        );
+        conv = created?.[0] || null;
+      }
+    } finally {
+      conn.release();
     }
 
-    const conv = data?.conversation || null;
+    if (!conv) {
+      return NextResponse.json({ ok: false, error: "Conversation not found" }, { status: 404 });
+    }
     const conversation_status = conv?.project_status ?? null;
 
     let commitmentDueNgn = 100000;
-    const conn = await db.getConnection();
+    const settingsConn = await db.getConnection();
     try {
-      const [rows]: any = await conn.query(
+      const [rows]: any = await settingsConn.query(
         "SELECT commitment_due_ngn FROM linescout_settings ORDER BY id DESC LIMIT 1"
       );
       const ngn = Number(rows?.[0]?.commitment_due_ngn || 0);
       if (Number.isFinite(ngn) && ngn > 0) commitmentDueNgn = ngn;
     } finally {
-      conn.release();
+      settingsConn.release();
     }
 
     return NextResponse.json(
@@ -77,6 +95,10 @@ export async function GET(req: NextRequest) {
       { status: 200 }
     );
   } catch (e: any) {
+    const message = String(e?.message || "");
+    if (message.toLowerCase().includes("unauthorized")) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }
