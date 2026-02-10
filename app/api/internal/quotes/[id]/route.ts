@@ -173,6 +173,21 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    const [handoffStageRows]: any = await conn.query(
+      `SELECT h.status
+       FROM linescout_quotes q
+       LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
+       WHERE q.id = ?
+       LIMIT 1`,
+      [quoteId]
+    );
+    const stage = String(handoffStageRows?.[0]?.status || "").toLowerCase();
+    if (stage && !["manufacturer_found", "paid", "shipped", "delivered"].includes(stage)) {
+      return NextResponse.json(
+        { ok: false, error: "Quote can only be created after manufacturer is found." },
+        { status: 400 }
+      );
+    }
 
     const [rows]: any = await conn.query(
       `SELECT q.*

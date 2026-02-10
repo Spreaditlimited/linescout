@@ -7,7 +7,6 @@ import Link from "next/link";
 type NavItem = { href: string; label: string };
 
 const navItems: NavItem[] = [
-  { href: "#features", label: "Features" },
   { href: "#app-download", label: "Get the app" },
   { href: "/white-label", label: "White Label" },
   { href: "/agent-app", label: "For agents" },

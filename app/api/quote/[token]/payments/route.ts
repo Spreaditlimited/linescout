@@ -12,15 +12,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
   const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
-      `SELECT id
-       FROM linescout_quotes
-       WHERE token = ?
+      `SELECT q.id, h.status AS handoff_status
+       FROM linescout_quotes q
+       LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
+       WHERE q.token = ?
        LIMIT 1`,
       [safeToken]
     );
     if (!rows?.length) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
     const quoteId = Number(rows[0].id);
+    const handoffStatus = String(rows[0].handoff_status || "").trim() || null;
     const [sumRows]: any = await conn.query(
       `SELECT
          COALESCE(SUM(CASE WHEN purpose = 'deposit' AND status = 'paid' THEN amount ELSE 0 END), 0) AS deposit_paid,
@@ -43,6 +45,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     const row = sumRows?.[0] || {};
     return NextResponse.json({
       ok: true,
+      handoff_status: handoffStatus,
       totals: {
         deposit_paid: Number(row.deposit_paid || 0),
         product_paid: Number(row.product_paid || 0),

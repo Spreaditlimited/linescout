@@ -15,14 +15,17 @@ export async function POST(req: Request) {
 
   const login = clean(body?.login || body?.email || body?.username);
   const password = clean(body?.password);
+  const app = clean(body?.app || "admin").toLowerCase();
 
   if (!login || !password) {
     return NextResponse.json({ ok: false, error: "Missing credentials" }, { status: 400 });
   }
 
-  const cookieName = clean(process.env.INTERNAL_AUTH_COOKIE_NAME);
+  const adminCookieName = clean(process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session");
+  const agentCookieName = clean(process.env.AGENT_AUTH_COOKIE_NAME || "linescout_agent_session");
+  const cookieName = app === "agent" ? agentCookieName : adminCookieName;
   if (!cookieName) {
-    return NextResponse.json({ ok: false, error: "Missing INTERNAL_AUTH_COOKIE_NAME" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Missing auth cookie name" }, { status: 500 });
   }
 
   const conn = await db.getConnection();
@@ -47,6 +50,14 @@ export async function POST(req: Request) {
 
     if (!user.is_active) {
       return NextResponse.json({ ok: false, error: "Account disabled" }, { status: 403 });
+    }
+
+    const role = String(user.role || "").toLowerCase();
+    if (app === "agent" && role !== "agent") {
+      return NextResponse.json({ ok: false, error: "Agent access only" }, { status: 403 });
+    }
+    if (app !== "agent" && role !== "admin") {
+      return NextResponse.json({ ok: false, error: "Admin access only" }, { status: 403 });
     }
 
     const ok = await bcrypt.compare(password, String(user.password_hash || ""));

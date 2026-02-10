@@ -11,9 +11,12 @@ const pool = mysql.createPool({
 });
 
 export async function GET() {
-  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
+  const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
   const hdrs = await headers();
   const cookieHeader = hdrs.get("cookie") || "";
+  const appHeader = String(hdrs.get("x-linescout-app") || "").toLowerCase();
+  const referer = String(hdrs.get("referer") || "");
+  const isAgentApp = appHeader === "agent" || referer.includes("/agent-app");
 
   const token =
     cookieHeader
@@ -73,6 +76,11 @@ export async function GET() {
     }
 
     const r = rows[0];
+    const role = String(r.role || "").toLowerCase();
+
+    if (isAgentApp && role !== "agent") {
+      return NextResponse.json({ ok: false, error: "Agent access only" }, { status: 403 });
+    }
 
     if (!r.is_active) {
       return NextResponse.json({ ok: false, error: "Account disabled" }, { status: 403 });

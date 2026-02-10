@@ -69,7 +69,7 @@ async function requireInternalSession() {
   }
 }
 
-async function canAccessHandoff(conn: any, user: { id: number; role: string }, handoffId: number) {
+async function canAccessHandoff(conn: any, user: { id: number; role: string; username?: string }, handoffId: number) {
   if (user.role === "admin") return true;
   const [rows]: any = await conn.query(
     `SELECT 1
@@ -80,6 +80,18 @@ async function canAccessHandoff(conn: any, user: { id: number; role: string }, h
     [handoffId, user.id]
   );
   if (rows?.length) return true;
+
+  if (user.username) {
+    const [handoffRows]: any = await conn.query(
+      `SELECT 1
+       FROM linescout_handoffs
+       WHERE id = ?
+         AND claimed_by = ?
+       LIMIT 1`,
+      [handoffId, user.username]
+    );
+    if (handoffRows?.length) return true;
+  }
 
   const [quoteRows]: any = await conn.query(
     `SELECT 1
@@ -92,7 +104,7 @@ async function canAccessHandoff(conn: any, user: { id: number; role: string }, h
   return !!quoteRows?.length;
 }
 
-async function canCreateQuote(conn: any, user: { id: number; role: string }, handoffId: number) {
+async function canCreateQuote(conn: any, user: { id: number; role: string; username?: string }, handoffId: number) {
   if (user.role === "admin") return true;
   const [rows]: any = await conn.query(
     `SELECT 1
@@ -102,7 +114,33 @@ async function canCreateQuote(conn: any, user: { id: number; role: string }, han
      LIMIT 1`,
     [handoffId, user.id]
   );
-  return !!rows?.length;
+  if (rows?.length) return true;
+
+  if (user.username) {
+    const [handoffRows]: any = await conn.query(
+      `SELECT 1
+       FROM linescout_handoffs
+       WHERE id = ?
+         AND claimed_by = ?
+      LIMIT 1`,
+      [handoffId, user.username]
+    );
+    return !!handoffRows?.length;
+  }
+
+  return false;
+}
+
+async function isHandoffQuoteStage(conn: any, handoffId: number) {
+  const [rows]: any = await conn.query(
+    `SELECT status
+     FROM linescout_handoffs
+     WHERE id = ?
+     LIMIT 1`,
+    [handoffId]
+  );
+  const status = String(rows?.[0]?.status || "").toLowerCase();
+  return ["manufacturer_found", "paid", "shipped", "delivered"].includes(status);
 }
 
 function num(v: any, fallback = 0) {
@@ -273,6 +311,13 @@ export async function POST(req: Request) {
   try {
     const allowed = await canCreateQuote(conn, auth.user, handoff_id);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    const stageOk = await isHandoffQuoteStage(conn, handoff_id);
+    if (!stageOk) {
+      return NextResponse.json(
+        { ok: false, error: "Quote can only be created after manufacturer is found." },
+        { status: 400 }
+      );
+    }
 
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const insertColumns = supportsAgentNote

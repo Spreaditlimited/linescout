@@ -2,36 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { authFetch } from "@/lib/auth-client";
-
-type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 type VerifyResp = {
   ok: boolean;
-  conversation_id?: number;
-  handoff_id?: number;
-  route_type?: RouteType;
+  token?: string;
   error?: string;
 };
 
-function isValidRouteType(v: any): v is RouteType {
-  return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
-}
-
-export default function PaystackVerifyClient() {
+export default function PaystackQuoteVerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
   const reference = useMemo(() => String(searchParams.get("reference") || "").trim(), [searchParams]);
-  const purpose = useMemo(() => String(searchParams.get("purpose") || "sourcing").trim(), [searchParams]);
-  const routeType = useMemo<RouteType>(() => {
-    const rt = String(searchParams.get("route_type") || "machine_sourcing").trim();
-    return isValidRouteType(rt) ? (rt as RouteType) : "machine_sourcing";
-  }, [searchParams]);
-
+  const token = useMemo(() => String(searchParams.get("token") || "").trim(), [searchParams]);
   const [status, setStatus] = useState<"loading" | "error" | "success">("loading");
   const [message, setMessage] = useState<string | null>(null);
-  const [retryNonce, setRetryNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -45,10 +29,10 @@ export default function PaystackVerifyClient() {
       setStatus("loading");
       setMessage(null);
 
-      const res = await authFetch("/api/payments/paystack/verify", {
+      const res = await fetch("/api/quote/paystack/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reference, purpose }),
+        body: JSON.stringify({ reference }),
       });
 
       const json: VerifyResp = await res.json().catch(() => ({
@@ -60,22 +44,18 @@ export default function PaystackVerifyClient() {
 
       if (!res.ok || !json?.ok) {
         setStatus("error");
-        setMessage(
-          json?.error ||
-            "Payment not confirmed yet. If you were charged, wait 30 seconds and retry."
-        );
+        setMessage(json?.error || "Payment not confirmed yet. Please retry in a few seconds.");
         return;
       }
 
       setStatus("success");
-      setMessage("Payment verified. Redirecting to your project…");
+      setMessage("Payment verified. Redirecting…");
 
-      const conversationId = Number(json.conversation_id || 0);
-      if (conversationId > 0) {
-        router.replace(`/projects/${conversationId}`);
+      const targetToken = json?.token || token;
+      if (targetToken) {
+        router.replace(`/quote/${targetToken}?paid=1`);
         return;
       }
-
       router.replace("/projects");
     }
 
@@ -83,16 +63,31 @@ export default function PaystackVerifyClient() {
     return () => {
       active = false;
     };
-  }, [reference, purpose, routeType, router, retryNonce]);
+  }, [reference, router, token]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    // Best-effort close for in-app browser.
+    const t = setTimeout(() => {
+      try {
+        if (window.opener) {
+          window.close();
+        }
+      } catch {}
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [status]);
 
   return (
     <div className="px-6 py-10">
       <div className="mx-auto w-full max-w-2xl">
         <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Payment verification</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+            Payment verification
+          </p>
           <h1 className="mt-2 text-2xl font-semibold text-neutral-900">Verifying payment</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            We’re confirming your payment with Paystack and setting up your project.
+            We’re confirming your payment with Paystack.
           </p>
 
           {status === "loading" ? (
@@ -107,13 +102,23 @@ export default function PaystackVerifyClient() {
               <div className="mt-4 flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => setRetryNonce((v) => v + 1)}
+                  onClick={() => window.location.reload()}
                   className="btn btn-outline"
                 >
                   Retry verification
                 </button>
-                <button type="button" onClick={() => router.replace("/projects")} className="btn btn-ghost">
-                  Back to projects
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (token) {
+                      router.replace(`/quote/${token}`);
+                    } else {
+                      router.replace("/projects");
+                    }
+                  }}
+                  className="btn btn-ghost"
+                >
+                  Back to quote
                 </button>
               </div>
             </div>

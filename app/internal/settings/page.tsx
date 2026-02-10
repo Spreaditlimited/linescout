@@ -743,7 +743,7 @@ export default function InternalSettingsPage() {
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label className="text-xs text-neutral-400">Commitment fee (NGN)</label>
+            <label className="text-sm font-medium text-neutral-300">Commitment fee (NGN)</label>
             <input
               value={commitmentDue}
               onChange={(e) => setCommitmentDue(e.target.value)}
@@ -756,7 +756,7 @@ export default function InternalSettingsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Agent earning % (products)</label>
+            <label className="text-sm font-medium text-neutral-300">Agent earning % (products)</label>
             <input
               value={agentPercent}
               onChange={(e) => setAgentPercent(e.target.value)}
@@ -766,7 +766,7 @@ export default function InternalSettingsPage() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Agent earning % (commitment)</label>
+            <label className="text-sm font-medium text-neutral-300">Agent earning % (commitment)</label>
             <input
               value={agentCommitmentPercent}
               onChange={(e) => setAgentCommitmentPercent(e.target.value)}
@@ -776,7 +776,7 @@ export default function InternalSettingsPage() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Markup %</label>
+            <label className="text-sm font-medium text-neutral-300">Markup %</label>
             <input
               value={markupPercent}
               onChange={(e) => setMarkupPercent(e.target.value)}
@@ -786,7 +786,7 @@ export default function InternalSettingsPage() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Points value (NGN per point)</label>
+            <label className="text-sm font-medium text-neutral-300">Points value (NGN per point)</label>
             <input
               value={pointsValue}
               onChange={(e) => setPointsValue(e.target.value)}
@@ -799,7 +799,7 @@ export default function InternalSettingsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-neutral-100">Agent points scoring</p>
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1 text-xs text-neutral-400">
                   Configure time thresholds and points for each transition.
                 </p>
               </div>
@@ -807,18 +807,18 @@ export default function InternalSettingsPage() {
 
             <div className="mt-4 grid gap-4">
               <div>
-                <p className="text-xs font-semibold text-neutral-300">Claim speed (hours)</p>
+                <p className="text-sm font-semibold text-neutral-200">Claim speed (hours)</p>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
                   {pointsConfig.claim_hours.map((row, idx) => (
                     <div key={`claim-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <label className="text-[11px] text-neutral-500">Max hours</label>
+                      <label className="text-xs font-medium text-neutral-300">Max hours</label>
                       <input
                         value={row.max}
                         onChange={(e) => updateThreshold("claim_hours", idx, "max", e.target.value)}
                         className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
                         inputMode="decimal"
                       />
-                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <label className="mt-2 block text-xs font-medium text-neutral-300">Points</label>
                       <input
                         value={row.points}
                         onChange={(e) => updateThreshold("claim_hours", idx, "points", e.target.value)}
@@ -831,18 +831,18 @@ export default function InternalSettingsPage() {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-neutral-300">Manufacturer found (hours)</p>
+                <p className="text-sm font-semibold text-neutral-200">Manufacturer found (hours)</p>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
                   {pointsConfig.manufacturer_hours.map((row, idx) => (
                     <div key={`mfg-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <label className="text-[11px] text-neutral-500">Max hours</label>
+                      <label className="text-xs font-medium text-neutral-300">Max hours</label>
                       <input
                         value={row.max}
                         onChange={(e) => updateThreshold("manufacturer_hours", idx, "max", e.target.value)}
                         className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
                         inputMode="decimal"
                       />
-                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <label className="mt-2 block text-xs font-medium text-neutral-300">Points</label>
                       <input
                         value={row.points}
                         onChange={(e) => updateThreshold("manufacturer_hours", idx, "points", e.target.value)}
@@ -855,18 +855,18 @@ export default function InternalSettingsPage() {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-neutral-300">Payment to shipped (days)</p>
+                <p className="text-sm font-semibold text-neutral-200">Payment to shipped (days)</p>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {pointsConfig.ship_days.map((row, idx) => (
                     <div key={`ship-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <label className="text-[11px] text-neutral-500">Max days</label>
+                      <label className="text-xs font-medium text-neutral-300">Max days</label>
                       <input
                         value={row.max}
                         onChange={(e) => updateThreshold("ship_days", idx, "max", e.target.value)}
                         className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
                         inputMode="decimal"
                       />
-                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <label className="mt-2 block text-xs font-medium text-neutral-300">Points</label>
                       <input
                         value={row.points}
                         onChange={(e) => updateThreshold("ship_days", idx, "points", e.target.value)}
@@ -879,18 +879,18 @@ export default function InternalSettingsPage() {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-neutral-300">Response time (minutes)</p>
+                <p className="text-sm font-semibold text-neutral-200">Response time (minutes)</p>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
                   {pointsConfig.response_minutes.map((row, idx) => (
                     <div key={`resp-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
-                      <label className="text-[11px] text-neutral-500">Max minutes</label>
+                      <label className="text-xs font-medium text-neutral-300">Max minutes</label>
                       <input
                         value={row.max}
                         onChange={(e) => updateThreshold("response_minutes", idx, "max", e.target.value)}
                         className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
                         inputMode="decimal"
                       />
-                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <label className="mt-2 block text-xs font-medium text-neutral-300">Points</label>
                       <input
                         value={row.points}
                         onChange={(e) => updateThreshold("response_minutes", idx, "points", e.target.value)}
@@ -904,7 +904,7 @@ export default function InternalSettingsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Exchange rate (USD → NGN)</label>
+            <label className="text-sm font-medium text-neutral-300">Exchange rate (USD → NGN)</label>
             <input
               value={exchangeUsd}
               onChange={(e) => setExchangeUsd(e.target.value)}
@@ -914,7 +914,7 @@ export default function InternalSettingsPage() {
             />
           </div>
           <div>
-            <label className="text-xs text-neutral-400">Exchange rate (RMB → NGN)</label>
+            <label className="text-sm font-medium text-neutral-300">Exchange rate (RMB → NGN)</label>
             <input
               value={exchangeRmb}
               onChange={(e) => setExchangeRmb(e.target.value)}
@@ -924,7 +924,7 @@ export default function InternalSettingsPage() {
             />
           </div>
           <div className="sm:col-span-3">
-            <label className="text-xs text-neutral-400">Payout summary email (daily)</label>
+            <label className="text-sm font-medium text-neutral-300">Payout summary email (daily)</label>
             <input
               value={payoutSummaryEmail}
               onChange={(e) => setPayoutSummaryEmail(e.target.value)}
@@ -932,12 +932,12 @@ export default function InternalSettingsPage() {
               placeholder="hello@sureimports.com"
               inputMode="email"
             />
-            <div className="mt-1 text-[11px] text-neutral-500">
+            <div className="mt-1 text-xs text-neutral-400">
               Receives a daily payout summary at 8:00 AM Lagos time.
             </div>
           </div>
           <div className="sm:col-span-3">
-            <label className="text-xs text-neutral-400">Agent OTP mode</label>
+            <label className="text-sm font-medium text-neutral-300">Agent OTP mode</label>
             <select
               value={agentOtpMode}
               onChange={(e) => setAgentOtpMode(e.target.value === "email" ? "email" : "phone")}
@@ -946,7 +946,7 @@ export default function InternalSettingsPage() {
               <option value="phone">Phone OTP (SMS)</option>
               <option value="email">Email OTP</option>
             </select>
-            <div className="mt-1 text-[11px] text-neutral-500">
+            <div className="mt-1 text-xs text-neutral-400">
               Controls agent verification during sign in and onboarding.
             </div>
           </div>

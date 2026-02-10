@@ -240,6 +240,7 @@ export async function computeAgentPointsForHandoff(conn: mysql.Connection, hando
 }
 
 export async function getAgentPointsSummary(conn: mysql.Connection, agentId: number) {
+  await ensureAgentPointsTable(conn);
   const [rows]: any = await conn.execute(
     `
     SELECT

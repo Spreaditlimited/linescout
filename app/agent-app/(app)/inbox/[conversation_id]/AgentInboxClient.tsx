@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentAppShell from "../../_components/AgentAppShell";
+import { ImagePlus, Send } from "lucide-react";
 
 type Msg = {
   id: number;
@@ -18,6 +19,13 @@ type MsgRes = {
   conversation_id: number;
   assigned_agent_id?: number | null;
   assigned_agent_username?: string | null;
+  meta?: {
+    can_send?: boolean;
+    send_blocked_reason?: string | null;
+    customer_name?: string | null;
+    agent_name?: string | null;
+  };
+  attachments_by_message_id?: Record<string, Attachment[]>;
   items: Msg[];
   last_id: number;
   error?: string;
@@ -26,6 +34,7 @@ type MsgRes = {
 type SendRes = {
   ok: boolean;
   item?: Msg | null;
+  attachments?: Attachment[] | null;
   error?: string;
 };
 
@@ -38,6 +47,15 @@ type ClaimRes = {
   already_assigned?: boolean;
   taken_over?: boolean;
   error?: string;
+};
+
+type Attachment = {
+  id: number;
+  message_id: number;
+  kind: string | null;
+  original_filename: string | null;
+  secure_url: string | null;
+  mime_type: string | null;
 };
 
 const URL_RE = /(https?:\/\/[^\s]+)/g;
@@ -79,6 +97,7 @@ function AgentChatThreadInner() {
   const searchParams = useSearchParams();
   const conversationId = Number(params?.conversation_id || 0);
   const kind = String(searchParams.get("kind") || "paid");
+  const isQuick = kind === "quick";
 
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [items, setItems] = useState<Msg[]>([]);
@@ -89,11 +108,18 @@ function AgentChatThreadInner() {
   const [claimNote, setClaimNote] = useState<string>("");
   const [assignedAgentId, setAssignedAgentId] = useState<number | null>(null);
   const [assignedAgentUsername, setAssignedAgentUsername] = useState<string | null>(null);
+  const [canSend, setCanSend] = useState(true);
+  const [sendBlockedReason, setSendBlockedReason] = useState<string>("");
+  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
+  const [customerName, setCustomerName] = useState<string>("Customer");
+  const [agentName, setAgentName] = useState<string>("You");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<number | null>(null);
 
-  const canSend = useMemo(() => !!input.trim() && !sending, [input, sending]);
+  const canSendNow = useMemo(() => (!!input.trim() || !!selectedFile) && !sending, [input, selectedFile, sending]);
 
   useEffect(() => {
     lastIdRef.current = lastId;
@@ -111,9 +137,15 @@ function AgentChatThreadInner() {
     last: number;
     assigned_agent_id: number | null;
     assigned_agent_username: string | null;
+    can_send: boolean;
+    send_blocked_reason: string;
+    customer_name: string;
+    agent_name: string;
+    attachments_by_message_id: Record<string, Attachment[]>;
   }> {
+    const endpoint = isQuick ? "/api/agent/quick-human/messages" : "/api/internal/paid-chat/messages";
     const res = await fetch(
-      `/api/internal/paid-chat/messages?conversation_id=${conversationId}&after_id=${after}&limit=120`,
+      `${endpoint}?conversation_id=${conversationId}&after_id=${after}&limit=120`,
       { method: "GET", credentials: "include" }
     );
 
@@ -133,7 +165,26 @@ function AgentChatThreadInner() {
         ? data.assigned_agent_username.trim()
         : null;
 
-    return { rows, last, assigned_agent_id, assigned_agent_username };
+    const can_send = isQuick ? true : data?.meta?.can_send !== false;
+    const send_blocked_reason = isQuick ? "" : String(data?.meta?.send_blocked_reason || "").trim();
+    const customer_name = String(data?.meta?.customer_name || "Customer").trim() || "Customer";
+    const agent_name = String(data?.meta?.agent_name || "You").trim() || "You";
+    const attachments_by_message_id =
+      typeof data?.attachments_by_message_id === "object" && data.attachments_by_message_id
+        ? data.attachments_by_message_id
+        : {};
+
+    return {
+      rows,
+      last,
+      assigned_agent_id,
+      assigned_agent_username,
+      can_send,
+      send_blocked_reason,
+      customer_name,
+      agent_name,
+      attachments_by_message_id,
+    };
   }
 
   async function claimConversation() {
@@ -176,12 +227,16 @@ function AgentChatThreadInner() {
     (async () => {
       try {
         setBootErr(null);
-        await claimConversation();
         const initial = await fetchNew(0);
         if (cancelled) return;
 
         setAssignedAgentId(initial.assigned_agent_id);
         setAssignedAgentUsername(initial.assigned_agent_username);
+        setCanSend(initial.can_send);
+        setSendBlockedReason(initial.send_blocked_reason);
+        setCustomerName(initial.customer_name);
+        setAgentName(initial.agent_name);
+        setAttachmentsByMessageId(initial.attachments_by_message_id);
 
         setItems(initial.rows);
         setLastId(initial.last);
@@ -195,11 +250,28 @@ function AgentChatThreadInner() {
       try {
         const after = lastIdRef.current || 0;
 
-        const { rows, last, assigned_agent_id, assigned_agent_username } =
+        const {
+          rows,
+          last,
+          assigned_agent_id,
+          assigned_agent_username,
+          can_send,
+          send_blocked_reason,
+          customer_name,
+          agent_name,
+          attachments_by_message_id,
+        } =
           await fetchNew(after);
 
         setAssignedAgentId(assigned_agent_id);
         setAssignedAgentUsername(assigned_agent_username);
+        setCanSend(can_send);
+        setSendBlockedReason(send_blocked_reason);
+        setCustomerName(customer_name);
+        setAgentName(agent_name);
+        if (Object.keys(attachments_by_message_id).length) {
+          setAttachmentsByMessageId((prev) => ({ ...prev, ...attachments_by_message_id }));
+        }
 
         if (!rows.length) return;
 
@@ -228,7 +300,7 @@ function AgentChatThreadInner() {
 
   async function send() {
     const text = input.trim();
-    if (!text || !canSend) return;
+    if ((!text && !selectedFile) || !canSendNow || !canSend) return;
 
     setSending(true);
     setInput("");
@@ -247,11 +319,35 @@ function AgentChatThreadInner() {
     scrollToBottom();
 
     try {
-      const res = await fetch("/api/internal/paid-chat/send", {
+      let attachmentPayload: any = null;
+      if (selectedFile) {
+        const form = new FormData();
+        form.append("conversation_id", String(conversationId));
+        form.append("file", selectedFile);
+        const uploadRes = await fetch("/api/internal/paid-chat/upload", {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+        const uploadJson = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || !uploadJson?.ok) {
+          setClaimNote(uploadJson?.error || "Unable to upload image.");
+          setSending(false);
+          return;
+        }
+        attachmentPayload = { file: uploadJson.file };
+      }
+
+      const sendEndpoint = isQuick ? "/api/agent/quick-human/send" : "/api/internal/paid-chat/send";
+      const res = await fetch(sendEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ conversation_id: conversationId, message_text: text }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_text: text,
+          ...(attachmentPayload || {}),
+        }),
       });
 
       const data: SendRes | null = await res.json().catch(() => null);
@@ -268,6 +364,12 @@ function AgentChatThreadInner() {
       }
 
       setItems((prev) => prev.map((m) => (m.id === optimisticId ? data.item! : m)));
+      if (Array.isArray(data?.attachments) && data.attachments.length) {
+        setAttachmentsByMessageId((prev) => ({
+          ...prev,
+          [String(data.item!.id)]: data.attachments || [],
+        }));
+      }
 
       const realId = Number(data.item.id || 0);
       if (realId > lastIdRef.current) {
@@ -286,6 +388,9 @@ function AgentChatThreadInner() {
       );
     } finally {
       setSending(false);
+      setSelectedFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
     }
   }
 
@@ -300,12 +405,30 @@ function AgentChatThreadInner() {
 
   return (
     <AgentAppShell title={title} subtitle={subtitle}>
-      <div className="flex h-[70vh] min-h-[520px] max-h-[74vh] flex-col rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+      <div className="flex h-[80vh] min-h-[70vh] max-h-[84vh] flex-col rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:h-[70vh] sm:min-h-[520px] sm:max-h-[74vh]">
         <div className="border-b border-[rgba(45,52,97,0.12)] px-4 py-3">
-          <p className="text-xs text-neutral-500">
-            {assignmentLine}
-            {claimNote ? ` • ${claimNote}` : ""}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-neutral-500">
+              {assignmentLine}
+              {claimNote ? ` • ${claimNote}` : ""}
+            </p>
+            {kind !== "quick" && !assignedAgentId ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  await claimConversation();
+                }}
+                className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+              >
+                Claim chat
+              </button>
+            ) : null}
+          </div>
+          {!canSend && sendBlockedReason ? (
+            <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+              {sendBlockedReason}
+            </div>
+          ) : null}
         </div>
 
         {bootErr ? (
@@ -326,7 +449,13 @@ function AgentChatThreadInner() {
 
                   const metaColor = isAgent ? "text-white/70" : "text-neutral-500";
                   const label =
-                    m.sender_type === "ai" ? "AI" : m.sender_type === "user" ? "Customer" : "You";
+                    m.sender_type === "ai"
+                      ? "AI"
+                      : m.sender_type === "user"
+                      ? customerName || "Customer"
+                      : agentName || "You";
+
+                  const attachments = attachmentsByMessageId[String(m.id)] || [];
 
                   return (
                     <div
@@ -339,6 +468,31 @@ function AgentChatThreadInner() {
                       <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
                         {renderMessageWithLinks(m.message_text)}
                       </div>
+                      {attachments.length ? (
+                        <div className="mt-2 grid gap-2">
+                          {attachments.map((a) =>
+                            a.kind === "image" ? (
+                              <a key={a.id} href={a.secure_url || "#"} target="_blank" rel="noreferrer">
+                                <img
+                                  src={a.secure_url || ""}
+                                  alt={a.original_filename || "Attachment"}
+                                  className="max-h-48 rounded-xl object-cover"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={a.id}
+                                href={a.secure_url || "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-xl border border-[rgba(45,52,97,0.12)] bg-white/70 px-3 py-2 text-xs font-semibold text-[#2D3461]"
+                              >
+                                {a.original_filename || "Attachment"}
+                              </a>
+                            )
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -346,22 +500,72 @@ function AgentChatThreadInner() {
             </div>
 
             <div className="border-t border-[rgba(45,52,97,0.12)] px-3 py-3 sm:px-4">
-              <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a message…"
-                  className="min-h-[46px] max-h-[160px] flex-1 resize-none rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 outline-none focus:border-[rgba(45,52,97,0.4)]"
-                />
+              {previewUrl ? (
+                <div className="mb-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <img src={previewUrl} alt="Upload preview" className="h-16 w-16 rounded-xl object-cover" />
+                      <div>
+                        <p className="text-xs font-semibold text-neutral-700">Image ready</p>
+                        <p className="text-[10px] text-neutral-500">{selectedFile?.name || "attachment"}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFile(null);
+                        if (previewUrl) URL.revokeObjectURL(previewUrl);
+                        setPreviewUrl(null);
+                      }}
+                      className="btn btn-ghost px-3 py-1 text-xs"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                send();
+              }} className="mx-auto flex w-full max-w-3xl items-center gap-2">
+                <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-[rgba(45,52,97,0.18)] focus-within:shadow-[0_0_0_4px_rgba(45,52,97,0.18)]">
+                  <label
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
+                    aria-label="Add image"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (!file) return;
+                        setSelectedFile(file);
+                        setPreviewUrl(URL.createObjectURL(file));
+                      }}
+                      disabled={!canSend || sending}
+                    />
+                  </label>
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Type your message"
+                    className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                    disabled={!canSend || sending}
+                  />
+                </div>
 
                 <button
-                  onClick={send}
-                  disabled={!canSend}
-                  className="shrink-0 rounded-2xl bg-[#2D3461] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.25)] disabled:opacity-60"
+                  type="submit"
+                  disabled={!canSendNow || !canSend}
+                  className="btn btn-primary px-4 py-3 text-xs"
+                  aria-label="Send message"
                 >
-                  Send
+                  <Send className="h-4 w-4" />
                 </button>
-              </div>
+              </form>
             </div>
           </>
         )}

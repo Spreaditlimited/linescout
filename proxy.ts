@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
 export const config = {
-  matcher: ["/internal/:path*"],
+  matcher: ["/internal/:path*", "/api/internal/:path*"],
 };
 
 const pool = mysql.createPool({
@@ -14,6 +14,10 @@ const pool = mysql.createPool({
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (pathname.startsWith("/api/internal/")) {
+    return handleInternalApi(req);
+  }
 
   // allow auth endpoints
   if (pathname === "/internal/sign-in") return NextResponse.next();
@@ -94,4 +98,34 @@ function redirectToSignIn(req: NextRequest, pathname: string) {
   url.pathname = "/internal/sign-in";
   url.searchParams.set("next", pathname);
   return NextResponse.redirect(url);
+}
+
+function handleInternalApi(req: NextRequest) {
+  const adminCookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
+  const agentCookieName = (process.env.AGENT_AUTH_COOKIE_NAME || "linescout_agent_session").trim();
+
+  const appHeader = String(req.headers.get("x-linescout-app") || "").toLowerCase();
+  const referer = String(req.headers.get("referer") || "");
+  const isAgent = appHeader === "agent" || referer.includes("/agent-app");
+
+  if (!isAgent) return NextResponse.next();
+
+  const agentToken = req.cookies.get(agentCookieName)?.value || "";
+  const cookieHeader = req.headers.get("cookie") || "";
+  const filtered = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => {
+      const [name] = part.split("=");
+      return name && name !== adminCookieName && name !== agentCookieName;
+    });
+
+  if (agentToken) {
+    filtered.push(`${adminCookieName}=${agentToken}`);
+  }
+
+  const headers = new Headers(req.headers);
+  headers.set("cookie", filtered.join("; "));
+
+  return NextResponse.next({ request: { headers } });
 }

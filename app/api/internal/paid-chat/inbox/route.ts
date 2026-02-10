@@ -33,8 +33,10 @@ async function requireInternalAccess() {
     const [rows]: any = await conn.query(
       `SELECT
          u.id,
+         u.username,
          u.role,
          u.is_active,
+         ap.approval_status,
          COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs
        FROM internal_sessions s
        JOIN internal_users u ON u.id = s.user_id
@@ -50,12 +52,13 @@ async function requireInternalAccess() {
     if (!rows?.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
 
     const userId = Number(rows[0].id);
+    const username = String(rows[0].username || "");
     const role = String(rows[0].role || "");
     let canViewHandoffs = !!rows[0].can_view_handoffs;
     const approvalStatus = String(rows[0].approval_status || "").toLowerCase();
 
     if (role === "admin") {
-      return { ok: true as const, userId, role };
+      return { ok: true as const, userId, username, role };
     }
 
     if (approvalStatus === "approved" && !canViewHandoffs) {
@@ -73,7 +76,7 @@ async function requireInternalAccess() {
     }
 
     if (canViewHandoffs) {
-      return { ok: true as const, userId, role };
+      return { ok: true as const, userId, username, role };
     }
 
     return {
@@ -138,14 +141,15 @@ export async function GET(req: Request) {
         const wantUnclaimed = scope === "unclaimed" || !scope;
 
         if (wantMine) {
-          where += ` AND c.assigned_agent_id = ?`;
-          params.push(auth.userId);
+          where += ` AND (c.assigned_agent_id = ? OR h.claimed_by = ?)`;
+          params.push(auth.userId, auth.username || "");
         } else if (wantUnclaimed) {
           where += ` AND c.assigned_agent_id IS NULL`;
           where += ` AND (h.status IS NULL OR LOWER(h.status) = 'pending')`;
+          where += ` AND (h.claimed_by IS NULL OR TRIM(h.claimed_by) = '')`;
         } else {
-          where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
-          params.push(auth.userId);
+          where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL OR h.claimed_by = ?)`;
+          params.push(auth.userId, auth.username || "");
         }
       } else {
         where += ` AND (c.assigned_agent_id = ? OR c.assigned_agent_id IS NULL)`;
@@ -173,6 +177,7 @@ export async function GET(req: Request) {
 
         c.assigned_agent_id,
         ia.username AS assigned_agent_username,
+        h.claimed_by AS handoff_claimed_by,
 
         c.updated_at,
 

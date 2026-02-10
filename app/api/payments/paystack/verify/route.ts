@@ -746,6 +746,67 @@ export async function POST(req: Request) {
       const handoffId = Number(insH?.insertId || 0);
       if (!handoffId) throw new Error("Failed to create handoff");
 
+      if (typeof amountNaira === "number" && amountNaira > 0) {
+        await conn.query(
+          `
+          INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            total_due = GREATEST(total_due, VALUES(total_due)),
+            currency = VALUES(currency)
+          `,
+          [handoffId, currency, amountNaira]
+        );
+
+        await conn.query(
+          `
+          INSERT INTO linescout_handoff_payments
+            (handoff_id, amount, currency, purpose, note, paid_at, created_at)
+          VALUES
+            (?, ?, ?, 'full_payment', 'Sourcing fee (Paystack)', NOW(), NOW())
+          `,
+          [handoffId, amountNaira, currency]
+        );
+      }
+
+      // Store identifiers on the token metadata for idempotent verification
+      try {
+        const metaForToken = {
+          paystack: {
+            reference,
+            paid_at: data.paid_at || null,
+            channel: data.channel || null,
+            gateway_response: data.gateway_response || null,
+          },
+          app: metadata.app || "linescout_mobile",
+          route_type: finalRouteType,
+          user_id: userId,
+          source_conversation_id: sourceConversationId || null,
+          reorder_of_conversation_id: reorderOfConversationId || null,
+          reorder_of_handoff_id: reorderOfHandoffId || null,
+          reorder_original_agent_id: reorderOriginalAgentId || null,
+          reorder_user_note: reorderUserNote || null,
+          product: productMeta || null,
+          raw: {
+            amount_kobo: amountRaw,
+          },
+          conversation_id: conversationId,
+          handoff_id: handoffId,
+        };
+
+        await conn.query(
+          `
+          UPDATE linescout_tokens
+          SET metadata = ?
+          WHERE paystack_ref = ?
+          LIMIT 1
+          `,
+          [JSON.stringify(metaForToken), reference]
+        );
+      } catch {
+        // non-fatal
+      }
+
       // 4) Link conversation -> handoff
       await conn.query(
         `
@@ -971,8 +1032,66 @@ export async function POST(req: Request) {
       // If insert failed due to duplicate paystack_ref, return a helpful message
       const msg = String(e?.message || "");
       if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("paystack_ref")) {
+        try {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token, metadata
+            FROM linescout_tokens
+            WHERE paystack_ref = ?
+            LIMIT 1
+            `,
+            [reference]
+          );
+
+          const tokenRow = trows?.[0];
+          const token = String(tokenRow?.token || "").trim();
+          let meta: any = null;
+          if (tokenRow?.metadata) {
+            try {
+              meta = typeof tokenRow.metadata === "string" ? JSON.parse(tokenRow.metadata) : tokenRow.metadata;
+            } catch {
+              meta = null;
+            }
+          }
+
+          let handoffId = Number(meta?.handoff_id || 0) || null;
+          let conversationId = Number(meta?.conversation_id || 0) || null;
+
+          if (!handoffId && token) {
+            const [hrows]: any = await conn.query(
+              `
+              SELECT id, conversation_id
+              FROM linescout_handoffs
+              WHERE token = ?
+              LIMIT 1
+              `,
+              [token]
+            );
+            handoffId = Number(hrows?.[0]?.id || 0) || null;
+            conversationId = Number(hrows?.[0]?.conversation_id || 0) || conversationId;
+          }
+
+          if (handoffId || conversationId) {
+            return NextResponse.json({
+              ok: true,
+              purpose,
+              route_type: finalRouteType,
+              receipt_token: token || null,
+              paystack_ref: reference,
+              amount: amountNaira,
+              currency,
+              source_conversation_id: sourceConversationId || null,
+              handoff_id: handoffId,
+              conversation_id: conversationId,
+              already_processed: true,
+            });
+          }
+        } catch (lookupErr: any) {
+          console.error("paystack/verify duplicate lookup error:", lookupErr?.message || lookupErr);
+        }
+
         return NextResponse.json(
-          { ok: false, error: "This payment reference has already been processed." },
+          { ok: false, error: "Payment already verified, but project details were not found. Please contact support." },
           { status: 409 }
         );
       }

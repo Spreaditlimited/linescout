@@ -208,6 +208,12 @@ export default function PayoutsPage() {
                 <span className="font-semibold text-neutral-900">{formatNaira(Number(points?.total_reward_ngn || 0))}</span>
               </div>
               <div className="flex items-center justify-between">
+                <span>Value per point</span>
+                <span className="font-semibold text-neutral-900">
+                  {formatNaira(Number(commission?.points_value_ngn || 0))}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span>Projects scored</span>
                 <span className="font-semibold text-neutral-900">{Number(points?.projects_scored || 0)}</span>
               </div>

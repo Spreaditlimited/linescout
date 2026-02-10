@@ -46,6 +46,7 @@ type SummaryResponse = {
   route_type?: string | null;
   stage: string;
   summary: string | null;
+  handoff_context?: string | null;
   quote_summary: QuoteSummary | null;
   payments: PaymentItem[];
 };
@@ -63,8 +64,12 @@ export default function ProjectDetailPage() {
   const [reorderBusy, setReorderBusy] = useState(false);
   const [reorderMsg, setReorderMsg] = useState<string | null>(null);
   const [reorderMsgType, setReorderMsgType] = useState<"ok" | "err" | null>(null);
+  const [briefExpanded, setBriefExpanded] = useState(false);
 
   const hasPayments = useMemo(() => (data?.payments || []).length > 0, [data]);
+  const handoffContext = String(data?.handoff_context || "").trim();
+  const briefPreview =
+    handoffContext.length > 520 ? `${handoffContext.slice(0, 520).trim()}…` : handoffContext;
   const canReorder = useMemo(
     () => String(data?.stage || "").trim().toLowerCase() === "delivered",
     [data?.stage]
@@ -176,6 +181,24 @@ export default function ProjectDetailPage() {
               {data.summary || "No summary yet. Your agent will update this once progress begins."}
             </p>
           </div>
+
+          {handoffContext ? (
+            <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-neutral-900">Project brief</h2>
+                <button
+                  type="button"
+                  onClick={() => setBriefExpanded((v) => !v)}
+                  className="text-xs font-semibold text-[var(--agent-blue)]"
+                >
+                  {briefExpanded ? "Collapse" : "Read full brief"}
+                </button>
+              </div>
+              <p className="mt-4 whitespace-pre-wrap text-sm text-neutral-600">
+                {briefExpanded ? handoffContext : briefPreview}
+              </p>
+            </div>
+          ) : null}
 
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-neutral-900">Quote snapshot</h2>

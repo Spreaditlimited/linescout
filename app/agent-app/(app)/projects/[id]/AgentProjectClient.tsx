@@ -47,6 +47,13 @@ type PaymentInfo = {
   total_paid: number;
   balance: number;
   currency: string;
+  commitment_payment?: {
+    id: number;
+    purpose: string;
+    amount: number;
+    currency: string;
+    created_at: string | null;
+  } | null;
   quote_summary?: {
     product_due: number;
     product_paid: number;
@@ -104,6 +111,8 @@ function ProjectDetailInner() {
   const [claiming, setClaiming] = useState(false);
   const [shipper, setShipper] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
+  const [showManufacturerForm, setShowManufacturerForm] = useState(false);
+  const [editingManufacturer, setEditingManufacturer] = useState(false);
 
   const [manufacturerName, setManufacturerName] = useState("");
   const [manufacturerAddress, setManufacturerAddress] = useState("");
@@ -133,7 +142,10 @@ function ProjectDetailInner() {
 
   const loadPayments = useCallback(async () => {
     if (!handoffId) return;
-    const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${handoffId}`, { cache: "no-store" });
+    const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${handoffId}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.ok) {
       setPayments(null);
@@ -141,7 +153,12 @@ function ProjectDetailInner() {
     }
     const financials = json?.financials || null;
     const quoteSummary = json?.quote_summary || null;
-    setPayments(financials ? { ...financials, quote_summary: quoteSummary } : null);
+    const commitmentPayment = json?.commitment_payment || null;
+    setPayments(
+      financials
+        ? { ...financials, quote_summary: quoteSummary, commitment_payment: commitmentPayment }
+        : null
+    );
   }, [handoffId]);
 
   const loadQuotes = useCallback(async () => {
@@ -206,12 +223,14 @@ function ProjectDetailInner() {
   const productBalance = payments?.quote_summary?.product_balance ?? payments?.balance ?? 0;
   const productFullyPaid =
     payments?.quote_summary ? Number(payments.quote_summary.product_balance || 0) <= 0 : false;
+  const shippingFullyPaid =
+    payments?.quote_summary ? Number(payments.quote_summary.shipping_balance || 0) <= 0 : false;
 
   const canClaim =
     statusRaw === "pending" && !detail?.assigned_agent_id && !!conversationId;
 
   const claimProject = useCallback(async () => {
-    if (!conversationId) return;
+    if (!conversationId) return false;
     setClaiming(true);
     setErr(null);
     try {
@@ -224,11 +243,13 @@ function ProjectDetailInner() {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setErr(String(json?.error || `Failed (${res.status})`));
-        return;
+        return false;
       }
       await loadDetail();
+      return true;
     } catch (e: any) {
       setErr(e?.message || "Failed to claim project.");
+      return false;
     } finally {
       setClaiming(false);
     }
@@ -241,6 +262,13 @@ function ProjectDetailInner() {
       setErr(null);
       try {
         const body: any = { id: detail.id, status: next };
+        if (next === "manufacturer_found") {
+          body.manufacturer_name = manufacturerName.trim();
+          body.manufacturer_address = manufacturerAddress.trim();
+          body.manufacturer_contact_name = manufacturerContactName.trim();
+          body.manufacturer_contact_email = manufacturerEmail.trim();
+          body.manufacturer_contact_phone = manufacturerPhone.trim();
+        }
         if (next === "shipped") {
           body.shipper = shipper.trim();
           body.tracking_number = trackingNumber.trim();
@@ -347,14 +375,22 @@ function ProjectDetailInner() {
                   </button>
                 ) : null}
                 {conversationId ? (
-                  <Link
-                    href={`/agent-app/inbox/${conversationId}?kind=paid`}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (quoteReadOnly) return;
+                      if (canClaim) {
+                        const ok = await claimProject();
+                        if (!ok) return;
+                      }
+                      window.location.href = `/agent-app/inbox/${conversationId}?kind=paid`;
+                    }}
                     className={`rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] ${
                       quoteReadOnly ? "pointer-events-none opacity-50" : "hover:bg-[rgba(45,52,97,0.08)]"
                     }`}
                   >
                     Open chat
-                  </Link>
+                  </button>
                 ) : null}
                 {quoteAllowed ? (
                   <Link
@@ -405,11 +441,11 @@ function ProjectDetailInner() {
                 {statusRaw === "claimed" ? (
                   <button
                     type="button"
-                    onClick={() => updateStatus("manufacturer_found")}
+                    onClick={() => setShowManufacturerForm((v) => !v)}
                     disabled={updating}
                     className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
                   >
-                    Mark manufacturer found
+                    {showManufacturerForm ? "Cancel manufacturer form" : "Mark manufacturer found"}
                   </button>
                 ) : null}
                 {statusRaw === "manufacturer_found" ? (
@@ -441,13 +477,78 @@ function ProjectDetailInner() {
                   <button
                     type="button"
                     onClick={() => updateStatus("delivered")}
-                    disabled={updating}
+                    disabled={updating || !shippingFullyPaid}
                     className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
                   >
                     Mark delivered
                   </button>
                 ) : null}
+              {statusRaw === "shipped" && !shippingFullyPaid ? (
+                <p className="text-xs text-neutral-500 sm:col-span-2">
+                  Shipping must be fully paid before marking delivered.
+                </p>
+              ) : null}
               </div>
+
+              {statusRaw === "claimed" && showManufacturerForm ? (
+                <div className="mt-5 grid gap-3">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Company name</label>
+                    <input
+                      value={manufacturerName}
+                      onChange={(e) => setManufacturerName(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                      placeholder="Manufacturer name"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Company address</label>
+                    <input
+                      value={manufacturerAddress}
+                      onChange={(e) => setManufacturerAddress(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                      placeholder="Manufacturer address"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Contact name</label>
+                    <input
+                      value={manufacturerContactName}
+                      onChange={(e) => setManufacturerContactName(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                      placeholder="Contact person"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Email</label>
+                    <input
+                      value={manufacturerEmail}
+                      onChange={(e) => setManufacturerEmail(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                      placeholder="Contact email"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Phone</label>
+                    <input
+                      value={manufacturerPhone}
+                      onChange={(e) => setManufacturerPhone(e.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                      placeholder="Contact phone"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => updateStatus("manufacturer_found")}
+                      disabled={updating}
+                      className="mt-2 w-full rounded-2xl bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                    >
+                      Confirm manufacturer found
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               {(statusRaw === "manufacturer_found" || statusRaw === "paid") ? (
                 <div className="mt-5 grid gap-3">
@@ -481,6 +582,14 @@ function ProjectDetailInner() {
                     <span>Total due</span>
                     <span className="font-semibold text-neutral-900">{Number(payments.total_due || 0).toLocaleString()}</span>
                   </div>
+                  {payments.commitment_payment ? (
+                    <div className="flex items-center justify-between">
+                      <span>Commitment fee</span>
+                      <span className="font-semibold text-neutral-900">
+                        {Number(payments.commitment_payment.amount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ) : null}
                   <div className="flex items-center justify-between">
                     <span>Total paid</span>
                     <span className="font-semibold text-neutral-900">{Number(payments.total_paid || 0).toLocaleString()}</span>
@@ -501,70 +610,98 @@ function ProjectDetailInner() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <p className="text-sm font-semibold text-neutral-900">Manufacturer details</p>
-              {canEditManufacturer ? (
-                <button
-                  type="button"
-                  onClick={updateManufacturer}
-                  disabled={updating}
-                  className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white"
-                >
-                  Save changes
-                </button>
-              ) : null}
-            </div>
+          {statusRaw !== "claimed" ? (
+            <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <p className="text-sm font-semibold text-neutral-900">Manufacturer details</p>
+                {canEditManufacturer ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {editingManufacturer ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingManufacturer(false)}
+                          disabled={updating}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await updateManufacturer();
+                            setEditingManufacturer(false);
+                          }}
+                          disabled={updating}
+                          className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white"
+                        >
+                          Save changes
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setEditingManufacturer(true)}
+                        disabled={updating}
+                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
 
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Company name</label>
-                <input
-                  value={manufacturerName}
-                  onChange={(e) => setManufacturerName(e.target.value)}
-                  disabled={!canEditManufacturer}
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                />
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Company name</label>
+                  <input
+                    value={manufacturerName}
+                    readOnly={!editingManufacturer}
+                    disabled={!editingManufacturer}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Contact name</label>
+                  <input
+                    value={manufacturerContactName}
+                    readOnly={!editingManufacturer}
+                    disabled={!editingManufacturer}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Email</label>
+                  <input
+                    value={manufacturerEmail}
+                    readOnly={!editingManufacturer}
+                    disabled={!editingManufacturer}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Phone</label>
+                  <input
+                    value={manufacturerPhone}
+                    readOnly={!editingManufacturer}
+                    disabled={!editingManufacturer}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Address</label>
+                  <textarea
+                    value={manufacturerAddress}
+                    readOnly={!editingManufacturer}
+                    disabled={!editingManufacturer}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                    rows={3}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Contact name</label>
-                <input
-                  value={manufacturerContactName}
-                  onChange={(e) => setManufacturerContactName(e.target.value)}
-                  disabled={!canEditManufacturer}
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Email</label>
-                <input
-                  value={manufacturerEmail}
-                  onChange={(e) => setManufacturerEmail(e.target.value)}
-                  disabled={!canEditManufacturer}
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Phone</label>
-                <input
-                  value={manufacturerPhone}
-                  onChange={(e) => setManufacturerPhone(e.target.value)}
-                  disabled={!canEditManufacturer}
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Address</label>
-                <textarea
-                  value={manufacturerAddress}
-                  onChange={(e) => setManufacturerAddress(e.target.value)}
-                  disabled={!canEditManufacturer}
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                  rows={3}
-                />
-              </div>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
           <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">

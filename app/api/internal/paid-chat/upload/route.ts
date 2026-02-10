@@ -176,8 +176,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
       }
 
-      // Agent restriction (admin bypass): read allowed, send/upload allowed only for claiming agent
-      if (auth.role !== "admin") {
+      // Agent restriction (admin bypass): for paid chats only.
+      // Quick chats allow any approved agent to respond.
+      if (auth.role !== "admin" && !isQuick) {
         const claimedBy = String(conv.claimed_by || "").trim();
         const isAssignedToAgent = !!assignedAgentId && assignedAgentId === auth.userId;
         const isClaimedByAgent = !!claimedBy && !!auth.username && claimedBy === auth.username;

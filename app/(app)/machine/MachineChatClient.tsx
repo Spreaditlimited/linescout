@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
-import { MessageSquarePlus, Sparkles, User, Send } from "lucide-react";
+import { MessageSquarePlus, Sparkles, User, Send, ImagePlus } from "lucide-react";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
@@ -28,11 +28,24 @@ type MessageItem = {
   created_at: string;
 };
 
+type Attachment = {
+  id: number;
+  message_id: number;
+  kind: "image" | "pdf" | "file" | string;
+  original_filename: string | null;
+  mime_type: string | null;
+  bytes: number | null;
+  secure_url: string | null;
+  width: number | null;
+  height: number | null;
+};
+
 type MessagesResponse = {
   ok: boolean;
   items: MessageItem[];
   has_more: boolean;
-  attachments_by_message_id?: Record<string, any[]>;
+  error?: string;
+  attachments_by_message_id?: Record<string, Attachment[]>;
   meta?: {
     customer_name?: string | null;
     agent_name?: string | null;
@@ -83,6 +96,12 @@ export default function MachineChatClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [quickMeta, setQuickMeta] = useState<{ limit: number; used: number; ended: boolean } | null>(null);
+  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
+  const [stickyCollapsed, setStickyCollapsed] = useState(false);
+  const [chatMeta, setChatMeta] = useState<{ customer_name?: string | null; agent_name?: string | null } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
   const aiConversations = useMemo(
@@ -134,7 +153,7 @@ export default function MachineChatClient() {
       setLoading(true);
       setError(null);
       const res = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
-      const json = await res.json().catch(() => ({}));
+      const json: MessagesResponse = await res.json().catch(() => ({} as MessagesResponse));
       if (!res.ok) {
         if (active) setError(json?.error || "Unable to load messages.");
         setLoading(false);
@@ -143,6 +162,10 @@ export default function MachineChatClient() {
       const items: MessageItem[] = Array.isArray(json?.items) ? json.items : [];
       if (!active) return;
       setMessages(items.length ? items : [WELCOME_MSG]);
+      if (json?.meta) setChatMeta(json.meta);
+      if (json?.attachments_by_message_id) {
+        setAttachmentsByMessageId(json.attachments_by_message_id);
+      }
       setLoading(false);
 
       // If quick human, refresh metadata
@@ -180,10 +203,14 @@ export default function MachineChatClient() {
     if (!activeId) return;
     const timer = setInterval(async () => {
       const res = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
-      const json = await res.json().catch(() => ({}));
+      const json: MessagesResponse = await res.json().catch(() => ({} as MessagesResponse));
       if (!res.ok || !json?.ok) return;
       const items: MessageItem[] = Array.isArray(json?.items) ? json.items : [];
       setMessages(items.length ? items : [WELCOME_MSG]);
+      if (json?.meta) setChatMeta(json.meta);
+      if (json?.attachments_by_message_id) {
+        setAttachmentsByMessageId((prev) => ({ ...prev, ...json.attachments_by_message_id }));
+      }
 
       // consume quick human credits if agent responded
       const latestAgent = [...items].reverse().find((m) => m.sender_type === "agent");
@@ -228,32 +255,70 @@ export default function MachineChatClient() {
   }
 
   async function sendQuickMessage() {
-    if (!activeId || !input.trim() || sending) return;
+    const text = input.trim();
+    if (!activeId || (!text && !selectedFile) || sending || quickMeta?.ended) return;
     setSending(true);
-    const res = await authFetch("/api/mobile/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: activeId, message_text: input.trim(), route_type: routeType }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json?.ok) {
-      setError(json?.error || "Unable to send.");
-      setSending(false);
-      return;
-    }
-    setInput("");
-    setSending(false);
+    setUploadErr(null);
+    setError(null);
 
-    const refresh = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
-    const refreshJson = await refresh.json().catch(() => ({}));
-    if (refresh.ok && refreshJson?.ok) {
-      const items: MessageItem[] = Array.isArray(refreshJson.items) ? refreshJson.items : [];
-      setMessages(items.length ? items : [WELCOME_MSG]);
+    try {
+      let attachmentPayload: any = null;
+      if (selectedFile) {
+        const form = new FormData();
+        form.append("conversation_id", String(activeId));
+        form.append("file", selectedFile);
+        const uploadRes = await authFetch("/api/mobile/paid-chat/upload", {
+          method: "POST",
+          body: form,
+        });
+        const uploadJson = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok || !uploadJson?.ok) {
+          setUploadErr(uploadJson?.error || "Unable to upload image.");
+          setSending(false);
+          return;
+        }
+        attachmentPayload = { file: uploadJson.file };
+      }
+
+      const res = await authFetch("/api/mobile/limited-human/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: activeId,
+          message_text: text,
+          route_type: routeType,
+          ...(attachmentPayload || {}),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Unable to send.");
+        return;
+      }
+
+      setInput("");
+      setSelectedFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+
+      const refresh = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
+      const refreshJson = await refresh.json().catch(() => ({}));
+      if (refresh.ok && refreshJson?.ok) {
+        const items: MessageItem[] = Array.isArray(refreshJson.items) ? refreshJson.items : [];
+        setMessages(items.length ? items : [WELCOME_MSG]);
+        if (refreshJson?.attachments_by_message_id) {
+          setAttachmentsByMessageId((prev) => ({ ...prev, ...refreshJson.attachments_by_message_id }));
+        }
+      }
+    } finally {
+      setSending(false);
     }
   }
 
   const activeConv = conversations.find((c) => c.id === activeId) || null;
   const isQuick = activeConv?.chat_mode === "limited_human";
+  const quickCustomer = String(chatMeta?.customer_name || "You");
+  const quickAgent = String(chatMeta?.agent_name || "Specialist");
 
   function goToMachineSourcingProject() {
     const qs = new URLSearchParams({
@@ -331,7 +396,7 @@ export default function MachineChatClient() {
           </div>
         </div>
 
-        <div className="order-1 flex min-h-[480px] max-h-[70vh] flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm sm:min-h-[560px] sm:max-h-[72vh] sm:p-6 lg:order-2">
+        <div className="order-1 flex min-h-[70vh] max-h-[80vh] flex-col overflow-hidden rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm sm:min-h-[560px] sm:max-h-[72vh] sm:p-6 lg:order-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-lg font-semibold text-neutral-900 sm:text-xl">LineScout Assistant</h1>
@@ -343,18 +408,44 @@ export default function MachineChatClient() {
 
           {!isQuick ? (
             <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
-              <p className="text-sm font-semibold text-neutral-900">Ready to start a project?</p>
-              <p className="mt-1 text-xs leading-relaxed text-neutral-600">
-                Choose what you want to do. You can attach this chat as context.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-3">
-                <button type="button" onClick={goToMachineSourcingProject} className="btn btn-primary px-4 py-2 text-xs">
-                  Machine Sourcing
-                </button>
-                <button type="button" onClick={goToWhiteLabelWizard} className="btn btn-outline px-4 py-2 text-xs">
-                  White Label
-                </button>
-              </div>
+              {stickyCollapsed ? (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-neutral-600">Project shortcuts</p>
+                  <button
+                    type="button"
+                    onClick={() => setStickyCollapsed(false)}
+                    className="text-xs font-semibold text-[var(--agent-blue)]"
+                  >
+                    Show
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">Ready to start a project?</p>
+                      <p className="mt-1 text-xs leading-relaxed text-neutral-600">
+                        Choose what you want to do. You can attach this chat as context.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStickyCollapsed(true)}
+                      className="text-xs font-semibold text-neutral-500"
+                    >
+                      Minimize
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    <button type="button" onClick={goToMachineSourcingProject} className="btn btn-primary px-4 py-2 text-xs">
+                      Machine Sourcing
+                    </button>
+                    <button type="button" onClick={goToWhiteLabelWizard} className="btn btn-outline px-4 py-2 text-xs">
+                      White Label
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
 
@@ -386,17 +477,53 @@ export default function MachineChatClient() {
             ref={messagesRef}
             className="hide-scrollbar mt-4 flex-1 space-y-4 overflow-y-auto pr-1 sm:mt-6"
           >
-            {messages.map((m) => (
+            {messages.map((m) => {
+              const attachments = attachmentsByMessageId[String(m.id)] || [];
+              const isUser = m.sender_type === "user";
+              return (
               <div key={m.id} className={`flex ${m.sender_type === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                     m.sender_type === "user" ? "bg-[var(--agent-blue)] text-white" : "bg-neutral-100 text-neutral-900"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words">{m.message_text}</p>
+                  {isQuick ? (
+                    <p className="mb-1 text-[11px] font-semibold opacity-80">
+                      {m.sender_type === "agent" ? quickAgent : isUser ? quickCustomer : "AI"}
+                    </p>
+                  ) : null}
+                  {m.message_text ? (
+                    <p className="whitespace-pre-wrap break-words">{m.message_text}</p>
+                  ) : null}
+                  {attachments.length ? (
+                    <div className={`mt-2 grid gap-2 ${m.message_text ? "" : "-mt-1"}`}>
+                      {attachments.map((a) =>
+                        a.kind === "image" ? (
+                          <a key={a.id} href={a.secure_url || "#"} target="_blank" rel="noreferrer">
+                            <img
+                              src={a.secure_url || ""}
+                              alt={a.original_filename || "Attachment"}
+                              className="max-h-48 rounded-xl object-cover"
+                            />
+                          </a>
+                        ) : (
+                          <a
+                            key={a.id}
+                            href={a.secure_url || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-[rgba(45,52,97,0.12)] bg-white/70 px-3 py-2 text-xs font-semibold text-[#2D3461]"
+                          >
+                            {a.original_filename || "Attachment"}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
 
           <form
@@ -413,18 +540,61 @@ export default function MachineChatClient() {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message"
                 className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-4 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
-                disabled={sending}
+                disabled={sending || (isQuick && quickMeta?.ended)}
               />
             </div>
-            <button
-              type="submit"
-              className="btn btn-primary px-4 py-3 text-xs"
-              disabled={sending}
-              aria-label="Send message"
-            >
-              {sending ? "Sending..." : <Send className="h-4 w-4" />}
-            </button>
+            {isQuick && !input.trim().length && !selectedFile ? (
+              <label className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(45,52,97,0.2)] text-[#2D3461]">
+                <ImagePlus className="h-4 w-4" />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    if (!file) return;
+                    setUploadErr(null);
+                    setSelectedFile(file);
+                    setPreviewUrl(URL.createObjectURL(file));
+                  }}
+                  disabled={sending || quickMeta?.ended}
+                />
+              </label>
+            ) : (
+              <button
+                type="submit"
+                className="btn btn-primary px-4 py-3 text-xs"
+                disabled={sending || (isQuick && quickMeta?.ended)}
+                aria-label="Send message"
+              >
+                {sending ? "Sending..." : <Send className="h-4 w-4" />}
+              </button>
+            )}
           </form>
+          {previewUrl ? (
+            <div className="mt-3 flex items-center justify-between rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] px-3 py-2 text-xs text-neutral-600">
+              <div className="flex items-center gap-2">
+                <img src={previewUrl} alt="Upload preview" className="h-10 w-10 rounded-xl object-cover" />
+                <span>{selectedFile?.name || "attachment"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (previewUrl) URL.revokeObjectURL(previewUrl);
+                  setPreviewUrl(null);
+                }}
+                className="text-xs font-semibold text-[#2D3461]"
+              >
+                Remove
+              </button>
+            </div>
+          ) : null}
+          {uploadErr ? (
+            <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {uploadErr}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

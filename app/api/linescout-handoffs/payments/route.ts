@@ -139,6 +139,38 @@ export async function GET(req: Request) {
       [handoffId]
     );
 
+    let commitmentPayment: any | null = null;
+    const [handoffRows]: any = await conn.query(
+      `SELECT token
+       FROM linescout_handoffs
+       WHERE id = ?
+       LIMIT 1`,
+      [handoffId]
+    );
+    const handoffToken = String(handoffRows?.[0]?.token || "").trim();
+    if (handoffToken) {
+      const [commitRows]: any = await conn.query(
+        `SELECT id, amount, currency, created_at
+         FROM linescout_tokens
+         WHERE token = ?
+           AND status = 'valid'
+           AND type IN ('sourcing','business_plan')
+         ORDER BY id ASC
+         LIMIT 1`,
+        [handoffToken]
+      );
+      const cp = commitRows?.[0];
+      if (cp?.id) {
+        commitmentPayment = {
+          id: Number(cp.id),
+          purpose: "commitment_fee",
+          amount: Number(cp.amount || 0),
+          currency: String(cp.currency || "NGN"),
+          created_at: cp.created_at || null,
+        };
+      }
+    }
+
     const [quoteRows]: any = await conn.query(
       `SELECT
          q.id,
@@ -226,6 +258,7 @@ export async function GET(req: Request) {
         balance: totalDue - totalPaid,
       },
       quote_summary: quoteSummary,
+      commitment_payment: commitmentPayment,
       payments: payRows || [],
     });
   } catch (e) {

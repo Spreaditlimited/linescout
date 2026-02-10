@@ -96,16 +96,24 @@ export async function GET() {
       auth.role === "agent" ? await getAgentEarningsSnapshot(conn, auth.userId) : null;
     const points =
       auth.role === "agent" ? await getAgentPointsSummary(conn, auth.userId) : null;
+    const pointsValue = Number(settings?.points_value_ngn || 0);
+    const pointsReward =
+      points ? Math.max(0, Number((points.total_points * pointsValue).toFixed(2))) : 0;
 
     return NextResponse.json({
       ok: true,
       commission: {
         agent_percent: Number(settings?.agent_percent || 0),
         agent_commitment_percent: Number(settings?.agent_commitment_percent || 0),
-        points_value_ngn: Number(settings?.points_value_ngn || 0),
+        points_value_ngn: pointsValue,
       },
       earnings,
-      points,
+      points: points
+        ? {
+            ...points,
+            total_reward_ngn: pointsReward,
+          }
+        : null,
     });
   } finally {
     conn.release();

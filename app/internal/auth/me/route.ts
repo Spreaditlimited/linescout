@@ -11,7 +11,7 @@ const pool = mysql.createPool({
 });
 
 export async function GET() {
-  const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "").trim();
+  const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
   if (!cookieName) {
     return NextResponse.json(
       { ok: false, error: "Missing INTERNAL_AUTH_COOKIE_NAME" },
@@ -52,6 +52,9 @@ export async function GET() {
     }
 
     const r = rows[0];
+    if (String(r.role || "").toLowerCase() !== "admin") {
+      return NextResponse.json({ ok: false, error: "Admin access only" }, { status: 403 });
+    }
 
     return NextResponse.json({
       ok: true,

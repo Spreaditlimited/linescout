@@ -9,8 +9,16 @@ const pool = mysql.createPool({
 });
 
 export async function POST(req: Request) {
-  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME!;
-  const token = (req.headers.get("cookie") || "")
+  const adminCookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
+  const agentCookieName = (process.env.AGENT_AUTH_COOKIE_NAME || "linescout_agent_session").trim();
+
+  const headerApp = String(req.headers.get("x-linescout-app") || "").toLowerCase();
+  const referer = String(req.headers.get("referer") || "");
+  const isAgent = headerApp === "agent" || referer.includes("/agent-app");
+  const cookieName = isAgent ? agentCookieName : adminCookieName;
+
+  const cookieHeader = req.headers.get("cookie") || "";
+  const token = cookieHeader
     .split(";")
     .map((p) => p.trim())
     .find((p) => p.startsWith(cookieName + "="))

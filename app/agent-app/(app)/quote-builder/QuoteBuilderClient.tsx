@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AgentAppShell from "../_components/AgentAppShell";
 import PremiumSelect from "../_components/PremiumSelect";
@@ -18,14 +18,15 @@ type QuoteItem = {
   product_name: string;
   product_description: string;
   quantity: number;
-  unit_price_rmb: number;
-  unit_weight_kg: number;
-  unit_cbm: number;
-  local_transport_rmb: number;
+  unit_price_rmb: number | string;
+  unit_weight_kg: number | string;
+  unit_cbm: number | string;
+  local_transport_rmb: number | string;
 };
 
 type QuoteRecord = {
   id: number;
+  handoff_id?: number | null;
   token: string;
   items_json?: any;
   exchange_rate_rmb?: number;
@@ -42,6 +43,16 @@ type QuoteRecord = {
   payment_purpose?: string;
   currency?: string;
   agent_note?: string | null;
+  created_at?: string | null;
+};
+
+type ProjectItem = {
+  conversation_id: number;
+  handoff_id: number | null;
+  customer_name?: string | null;
+  route_type?: string | null;
+  handoff_status?: string | null;
+  assigned_agent_id?: number | null;
 };
 
 function num(v: any, fallback = 0) {
@@ -99,16 +110,58 @@ function computeTotals(items: QuoteItem[], exchangeRmb: number, exchangeUsd: num
 function QuoteBuilderInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const handoffId = Number(searchParams.get("handoff_id") || 0);
+  const queryHandoffId = Number(searchParams.get("handoff_id") || 0);
+  const queryConversationId = Number(searchParams.get("conversation_id") || 0);
   const queryReadOnly = searchParams.get("readonly") === "1";
+
+  const [activeHandoffId, setActiveHandoffId] = useState<number | null>(
+    queryHandoffId > 0 ? queryHandoffId : null
+  );
+  const [activeConversationId, setActiveConversationId] = useState<number | null>(
+    queryConversationId > 0 ? queryConversationId : null
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [locked, setLocked] = useState(queryReadOnly);
   const [lockReason, setLockReason] = useState<string | null>(queryReadOnly ? "Delivered projects are read-only." : null);
+  const [approvedToClaim, setApprovedToClaim] = useState(true);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [showAllQuotes, setShowAllQuotes] = useState(false);
+  const [quotes, setQuotes] = useState<QuoteRecord[]>([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesError, setQuotesError] = useState<string | null>(null);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const suppressAutoSelectRef = useRef(false);
+  const viewingSavedQuoteRef = useRef(false);
+  const draftRef = useRef<{
+    activeHandoffId: number | null;
+    activeConversationId: number | null;
+    items: QuoteItem[];
+    exchangeRmb: number;
+    exchangeUsd: number;
+    shippingRateUsd: number;
+    shippingRateUnit: "per_kg" | "per_cbm";
+    shippingTypeId: number | null;
+    shippingRateId: number | null;
+    markupPercent: number;
+    agentPercent: number;
+    agentCommitmentPercent: number;
+    commitmentDueNgn: number;
+    depositEnabled: boolean;
+    depositPercent: number;
+    agentNote: string;
+    paymentPurpose: string;
+    latestQuoteToken: string | null;
+    latestQuoteId: number | null;
+  } | null>(null);
+  const restoreDraftRef = useRef(false);
 
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
 
@@ -117,10 +170,10 @@ function QuoteBuilderInner() {
       product_name: "",
       product_description: "",
       quantity: 1,
-      unit_price_rmb: 0,
-      unit_weight_kg: 0,
-      unit_cbm: 0,
-      local_transport_rmb: 0,
+      unit_price_rmb: "",
+      unit_weight_kg: "",
+      unit_cbm: "",
+      local_transport_rmb: "",
     },
   ]);
 
@@ -140,6 +193,14 @@ function QuoteBuilderInner() {
   const [paymentPurpose, setPaymentPurpose] = useState("full_product_payment");
   const [latestQuoteToken, setLatestQuoteToken] = useState<string | null>(null);
   const [latestQuoteId, setLatestQuoteId] = useState<number | null>(null);
+  const [defaultSettings, setDefaultSettings] = useState({
+    exchangeRmb: 0,
+    exchangeUsd: 0,
+    markupPercent: 0,
+    agentPercent: 0,
+    agentCommitmentPercent: 0,
+    commitmentDueNgn: 0,
+  });
 
   const totals = useMemo(() => {
     return computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
@@ -164,12 +225,16 @@ function QuoteBuilderInner() {
 
   const canSubmit = useMemo(() => {
     if (isReadOnly) return false;
-    if (!handoffId) return false;
+    if (!activeHandoffId) return false;
+    if (!["manufacturer_found", "paid", "shipped", "delivered"].includes(String(handoffStatus || "").toLowerCase())) {
+      return false;
+    }
+    if (!approvedToClaim) return false;
     if (!items.length) return false;
     if (items.some((i) => !i.product_name || i.quantity <= 0)) return false;
     if (exchangeRmb <= 0 || exchangeUsd <= 0 || shippingRateUsd <= 0) return false;
     return true;
-  }, [handoffId, items, exchangeRmb, exchangeUsd, shippingRateUsd, isReadOnly]);
+  }, [activeHandoffId, approvedToClaim, items, exchangeRmb, exchangeUsd, shippingRateUsd, isReadOnly, handoffStatus]);
 
   const loadConfig = useCallback(async () => {
     const res = await fetch("/api/internal/quotes/config", { cache: "no-store", credentials: "include" });
@@ -185,59 +250,224 @@ function QuoteBuilderInner() {
       setCommitmentDueNgn(num(json.settings.commitment_due_ngn, 0));
       setExchangeRmb(num(json.settings.exchange_rate_rmb, 0));
       setExchangeUsd(num(json.settings.exchange_rate_usd, 0));
+      setDefaultSettings({
+        exchangeRmb: num(json.settings.exchange_rate_rmb, 0),
+        exchangeUsd: num(json.settings.exchange_rate_usd, 0),
+        markupPercent: num(json.settings.markup_percent, 0),
+        agentPercent: num(json.settings.agent_percent, 0),
+        agentCommitmentPercent: num(json.settings.agent_commitment_percent, 0),
+        commitmentDueNgn: num(json.settings.commitment_due_ngn, 0),
+      });
+    }
+  }, [error]);
+
+  const loadApproval = useCallback(async () => {
+    try {
+      const res = await fetch("/api/internal/agents/profile/me", { cache: "no-store", credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) return;
+      const approved = !!json?.checklist?.approved_to_claim;
+      setApprovedToClaim(approved);
+      if (!approved) {
+        setError("You need to be approved to use this feature.");
+      } else if (error === "You need to be approved to use this feature.") {
+        setError(null);
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
-  const loadLatestQuote = useCallback(async () => {
-    if (!handoffId) return;
-    const res = await fetch(`/api/internal/quotes?handoff_id=${handoffId}`, { cache: "no-store", credentials: "include" });
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json?.ok) return;
-    const itemsList = Array.isArray(json.items) ? json.items : [];
-    const latest = itemsList.length ? (itemsList[0] as QuoteRecord) : null;
-    if (!latest) return;
+  const selectQuote = useCallback((quote: QuoteRecord) => {
+    if (!quote) return;
+    if (quote.handoff_id && quote.handoff_id !== activeHandoffId) {
+      setActiveHandoffId(Number(quote.handoff_id));
+    }
+    setItems(ensureItems(quote.items_json));
+    setExchangeRmb((prev) => num(quote.exchange_rate_rmb, prev));
+    setExchangeUsd((prev) => num(quote.exchange_rate_usd, prev));
+    setShippingRateUsd((prev) => num(quote.shipping_rate_usd, prev));
+    if (quote.shipping_rate_unit === "per_cbm") setShippingRateUnit("per_cbm");
+    setShippingTypeId(quote.shipping_type_id ?? null);
+    setMarkupPercent((prev) => num(quote.markup_percent, prev));
+    setAgentPercent((prev) => num(quote.agent_percent, prev));
+    setAgentCommitmentPercent((prev) => num(quote.agent_commitment_percent, prev));
+    setCommitmentDueNgn((prev) => num(quote.commitment_due_ngn, prev));
+    setDepositEnabled(!!quote.deposit_enabled);
+    setDepositPercent((prev) => num(quote.deposit_percent, prev));
+    if (quote.payment_purpose) setPaymentPurpose(String(quote.payment_purpose));
+    setAgentNote(String(quote.agent_note || ""));
+    setLatestQuoteToken(quote.token || null);
+    setLatestQuoteId(quote.id || null);
+    viewingSavedQuoteRef.current = true;
+  }, [activeHandoffId, queryReadOnly]);
 
-    setItems(ensureItems(latest.items_json));
-    setExchangeRmb((prev) => num(latest.exchange_rate_rmb, prev));
-    setExchangeUsd((prev) => num(latest.exchange_rate_usd, prev));
-    setShippingRateUsd((prev) => num(latest.shipping_rate_usd, prev));
-    if (latest.shipping_rate_unit === "per_cbm") setShippingRateUnit("per_cbm");
-    setShippingTypeId(latest.shipping_type_id ?? null);
-    setMarkupPercent((prev) => num(latest.markup_percent, prev));
-    setAgentPercent((prev) => num(latest.agent_percent, prev));
-    setAgentCommitmentPercent((prev) => num(latest.agent_commitment_percent, prev));
-    setCommitmentDueNgn((prev) => num(latest.commitment_due_ngn, prev));
-    setDepositEnabled(!!latest.deposit_enabled);
-    setDepositPercent((prev) => num(latest.deposit_percent, prev));
-    if (latest.payment_purpose) setPaymentPurpose(String(latest.payment_purpose));
-    setAgentNote(String(latest.agent_note || ""));
-    setLatestQuoteToken(latest.token || null);
-    setLatestQuoteId(latest.id || null);
-  }, [handoffId]);
+  const loadQuotes = useCallback(async (hid?: number, scope?: "mine") => {
+    setQuotesLoading(true);
+    setQuotesError(null);
+    try {
+      const url =
+        scope === "mine"
+          ? "/api/internal/quotes?scope=mine"
+          : `/api/internal/quotes?handoff_id=${hid}`;
+      const res = await fetch(url, { cache: "no-store", credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setQuotesError(String(json?.error || `Failed (${res.status})`));
+        return;
+      }
+      const list = Array.isArray(json.items) ? (json.items as QuoteRecord[]) : [];
+      setQuotes(list);
+      if (!suppressAutoSelectRef.current && !restoreDraftRef.current && latestQuoteId) {
+        const current = list.find((q) => q.id === latestQuoteId);
+        if (current) {
+          selectQuote(current);
+        }
+      }
+    } catch (e: any) {
+      setQuotesError(e?.message || "Failed to load quotes");
+    } finally {
+      if (suppressAutoSelectRef.current) {
+        suppressAutoSelectRef.current = false;
+      }
+      setQuotesLoading(false);
+    }
+  }, [latestQuoteId, selectQuote]);
+
+  const loadProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await fetch(
+        "/api/internal/paid-chat/inbox?limit=80&cursor=0&kind=paid&scope=mine",
+        { cache: "no-store", credentials: "include" }
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) return;
+      const list = Array.isArray(json.items) ? json.items : [];
+      const allowed = list.filter((item: ProjectItem) =>
+        ["manufacturer_found", "paid", "shipped", "delivered"].includes(
+          String(item.handoff_status || "").toLowerCase()
+        )
+      );
+      setProjects(allowed);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
 
   const loadHandoffStatus = useCallback(async () => {
-    if (!handoffId) return;
-    const res = await fetch(`/api/internal/handoffs/${handoffId}`, { cache: "no-store", credentials: "include" });
+    if (!activeHandoffId) return;
+    const res = await fetch(`/api/internal/handoffs/${activeHandoffId}`, { cache: "no-store", credentials: "include" });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.ok) return;
     const status = String(json?.item?.status || "").toLowerCase();
+    setHandoffStatus(status || null);
     if (status === "delivered") {
       setLocked(true);
       setLockReason("Delivered projects are read-only.");
+    } else if (!queryReadOnly) {
+      setLocked(false);
+      setLockReason(null);
     }
-  }, [handoffId]);
+  }, [activeHandoffId]);
+
+  useEffect(() => {
+    if (queryHandoffId && queryHandoffId !== activeHandoffId) {
+      setActiveHandoffId(queryHandoffId);
+    }
+    if (queryConversationId && queryConversationId !== activeConversationId) {
+      setActiveConversationId(queryConversationId);
+    }
+    if (!queryHandoffId) {
+      setShowAllQuotes(true);
+    }
+  }, [queryHandoffId, queryConversationId]);
 
   useEffect(() => {
     async function boot() {
       setLoading(true);
       setError(null);
+      await loadApproval();
       await loadConfig();
-      await loadHandoffStatus();
-      await loadLatestQuote();
       setLoading(false);
     }
     boot();
-  }, [loadConfig, loadLatestQuote, loadHandoffStatus]);
+  }, [loadApproval, loadConfig]);
+
+  useEffect(() => {
+    if (activeHandoffId) {
+      loadHandoffStatus();
+    }
+  }, [activeHandoffId, loadHandoffStatus]);
+
+  useEffect(() => {
+    if (showAllQuotes) {
+      loadQuotes(undefined, "mine");
+    } else if (activeHandoffId) {
+      loadQuotes(activeHandoffId);
+    }
+  }, [activeHandoffId, loadQuotes, showAllQuotes]);
+
+  useEffect(() => {
+    if (!restoreDraftRef.current || showAllQuotes) return;
+    const draft = draftRef.current;
+    if (!draft) return;
+    if (draft.activeHandoffId && draft.activeHandoffId !== activeHandoffId) {
+      setActiveHandoffId(draft.activeHandoffId);
+      setActiveConversationId(draft.activeConversationId ?? null);
+      return;
+    }
+    restoreDraftRef.current = false;
+
+    setItems(draft.items);
+    setExchangeRmb(draft.exchangeRmb);
+    setExchangeUsd(draft.exchangeUsd);
+    setShippingRateUsd(draft.shippingRateUsd);
+    setShippingRateUnit(draft.shippingRateUnit);
+    setShippingTypeId(draft.shippingTypeId);
+    setShippingRateId(draft.shippingRateId);
+    setMarkupPercent(draft.markupPercent);
+    setAgentPercent(draft.agentPercent);
+    setAgentCommitmentPercent(draft.agentCommitmentPercent);
+    setCommitmentDueNgn(draft.commitmentDueNgn);
+    setDepositEnabled(draft.depositEnabled);
+    setDepositPercent(draft.depositPercent);
+    setAgentNote(draft.agentNote);
+    setPaymentPurpose(draft.paymentPurpose);
+    setLatestQuoteToken(draft.latestQuoteToken);
+    setLatestQuoteId(draft.latestQuoteId);
+    viewingSavedQuoteRef.current = false;
+  }, [activeHandoffId, showAllQuotes]);
+
+  const resetToDefaults = useCallback(() => {
+    setItems([
+      {
+        product_name: "",
+        product_description: "",
+        quantity: 1,
+        unit_price_rmb: "",
+        unit_weight_kg: "",
+        unit_cbm: "",
+        local_transport_rmb: "",
+      },
+    ]);
+    setExchangeRmb(defaultSettings.exchangeRmb);
+    setExchangeUsd(defaultSettings.exchangeUsd);
+    setMarkupPercent(defaultSettings.markupPercent);
+    setAgentPercent(defaultSettings.agentPercent);
+    setAgentCommitmentPercent(defaultSettings.agentCommitmentPercent);
+    setCommitmentDueNgn(defaultSettings.commitmentDueNgn);
+    setDepositEnabled(false);
+    setDepositPercent(0);
+    setPaymentPurpose("full_product_payment");
+    setAgentNote("");
+    setLatestQuoteId(null);
+    setLatestQuoteToken(null);
+    setSaveMsg("New quote ready.");
+    draftRef.current = null;
+    restoreDraftRef.current = false;
+    viewingSavedQuoteRef.current = false;
+  }, [defaultSettings]);
 
   useEffect(() => {
     if (!shippingRates.length) return;
@@ -258,6 +488,12 @@ function QuoteBuilderInner() {
     return () => clearTimeout(t);
   }, [linkMsg]);
 
+  useEffect(() => {
+    if (!saveMsg) return;
+    const t = setTimeout(() => setSaveMsg(null), 2400);
+    return () => clearTimeout(t);
+  }, [saveMsg]);
+
   const addItem = () => {
     setItems((prev) => [
       ...prev,
@@ -265,10 +501,10 @@ function QuoteBuilderInner() {
         product_name: "",
         product_description: "",
         quantity: 1,
-        unit_price_rmb: 0,
-        unit_weight_kg: 0,
-        unit_cbm: 0,
-        local_transport_rmb: 0,
+        unit_price_rmb: "",
+        unit_weight_kg: "",
+        unit_cbm: "",
+        local_transport_rmb: "",
       },
     ]);
   };
@@ -283,8 +519,12 @@ function QuoteBuilderInner() {
 
   const handleSubmit = async () => {
     if (isReadOnly) return;
-    if (!handoffId) {
+    if (!activeHandoffId) {
       setError("handoff_id is required to create a quote.");
+      return;
+    }
+    if (!approvedToClaim) {
+      setError("You need to be approved to use this feature.");
       return;
     }
     setSaving(true);
@@ -292,7 +532,7 @@ function QuoteBuilderInner() {
     setSuccess(null);
     try {
       const payload = {
-        handoff_id: handoffId,
+        handoff_id: activeHandoffId,
         items,
         exchange_rate_rmb: exchangeRmb,
         exchange_rate_usd: exchangeUsd,
@@ -325,8 +565,10 @@ function QuoteBuilderInner() {
       }
       if (latestQuoteId) {
         setSuccess(`Quote #${latestQuoteId} saved.`);
+        setSaveMsg("Quote saved.");
       } else {
         setSuccess(`Quote #${json.id} created.`);
+        setSaveMsg("Quote created.");
       }
       if (json?.token) {
         setLatestQuoteToken(json.token);
@@ -339,31 +581,205 @@ function QuoteBuilderInner() {
     }
   };
 
-  if (!handoffId) {
-    return (
-      <AgentAppShell title="Quote builder" subtitle="Create a quote for a specific handoff.">
-        <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
-          <p className="text-sm text-neutral-600">Enter a handoff id to begin.</p>
-          <button
-            type="button"
-            onClick={() => router.push("/agent-app/projects")}
-            className="mt-4 rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
-          >
-            Browse projects
-          </button>
-        </div>
-      </AgentAppShell>
-    );
-  }
+  const shellTitle = "Quote builder";
+  const shellSubtitle = activeHandoffId
+    ? `Drafting quote for handoff #${activeHandoffId}.`
+    : "Create a quote for a specific handoff.";
 
   return (
-    <AgentAppShell title="Quote builder" subtitle={`Drafting quote for handoff #${handoffId}.`}>
-      {loading ? (
+    <AgentAppShell title={shellTitle} subtitle={shellSubtitle}>
+      {!activeHandoffId ? (
+        <div className="grid gap-4">
+          <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <p className="text-sm text-neutral-600">Pick a project to start building a quote.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!approvedToClaim) {
+                    setError("You need to be approved to use this feature.");
+                    return;
+                  }
+                  setProjectPickerOpen(true);
+                  loadProjects();
+                }}
+                className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                disabled={!approvedToClaim}
+              >
+                Pick project
+              </button>
+            </div>
+          </div>
+          {error ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {error}
+            </div>
+          ) : null}
+        </div>
+      ) : loading ? (
         <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 text-sm text-neutral-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
           Loading quote builder…
         </div>
       ) : (
         <div className="grid gap-6">
+          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Project</p>
+                <p className="mt-1 text-sm text-neutral-600">
+                  Handoff #{activeHandoffId}
+                  {activeConversationId ? ` · Conversation #${activeConversationId}` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!approvedToClaim) {
+                      setError("You need to be approved to use this feature.");
+                      return;
+                    }
+                    setProjectPickerOpen(true);
+                    loadProjects();
+                  }}
+                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)] disabled:opacity-60"
+                  disabled={!approvedToClaim}
+                >
+                  Pick project
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Saved quotes</p>
+                <p className="mt-1 text-xs text-neutral-500">Select a previous quote or start fresh.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showAllQuotes) {
+                      if (!viewingSavedQuoteRef.current) {
+                        draftRef.current = {
+                          activeHandoffId,
+                          activeConversationId,
+                          items,
+                          exchangeRmb,
+                          exchangeUsd,
+                          shippingRateUsd,
+                          shippingRateUnit,
+                          shippingTypeId,
+                          shippingRateId,
+                          markupPercent,
+                          agentPercent,
+                          agentCommitmentPercent,
+                          commitmentDueNgn,
+                          depositEnabled,
+                          depositPercent,
+                          agentNote,
+                          paymentPurpose,
+                          latestQuoteToken,
+                          latestQuoteId,
+                        };
+                      }
+                      setShowAllQuotes(true);
+                      return;
+                    }
+                    suppressAutoSelectRef.current = true;
+                    restoreDraftRef.current = true;
+                    setShowAllQuotes(false);
+                  }}
+                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-xs font-semibold text-[#2D3461]"
+                >
+                  {showAllQuotes ? "All quotes" : "This project"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    showAllQuotes ? loadQuotes(undefined, "mine") : activeHandoffId ? loadQuotes(activeHandoffId) : null
+                  }
+                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-xs font-semibold text-[#2D3461]"
+                >
+                  Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={resetToDefaults}
+                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-xs font-semibold text-[#2D3461]"
+                >
+                  New quote
+                </button>
+              </div>
+            </div>
+            <div className="mt-3">
+              {quotesLoading ? (
+                <p className="text-xs text-neutral-500">Loading quotes…</p>
+              ) : quotesError ? (
+                <p className="text-xs text-amber-600">{quotesError}</p>
+              ) : quotes.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {quotes.map((q) => {
+                    const selected = q.id === latestQuoteId;
+                    return (
+                      <button
+                        key={q.id}
+                        type="button"
+                        onClick={() => {
+                          if (!viewingSavedQuoteRef.current) {
+                            draftRef.current = {
+                              activeHandoffId,
+                              activeConversationId,
+                              items,
+                              exchangeRmb,
+                              exchangeUsd,
+                              shippingRateUsd,
+                              shippingRateUnit,
+                              shippingTypeId,
+                              shippingRateId,
+                              markupPercent,
+                              agentPercent,
+                              agentCommitmentPercent,
+                              commitmentDueNgn,
+                              depositEnabled,
+                              depositPercent,
+                              agentNote,
+                              paymentPurpose,
+                              latestQuoteToken,
+                              latestQuoteId,
+                            };
+                          }
+                          selectQuote(q);
+                        }}
+                        className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold ${
+                          selected
+                            ? "border-[#2D3461] bg-[#2D3461] text-white"
+                            : "border-[rgba(45,52,97,0.2)] bg-white text-[#2D3461]"
+                        }`}
+                      >
+                        <div>
+                          Quote #{q.id}
+                          {showAllQuotes && q.handoff_id ? ` · Handoff #${q.handoff_id}` : ""}
+                        </div>
+                        <div className={`mt-1 text-[10px] ${selected ? "text-white/80" : "text-neutral-500"}`}>
+                          {q.payment_purpose || "payment"}
+                          {q.created_at ? ` · ${String(q.created_at).slice(0, 10)}` : ""}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500">
+                  {showAllQuotes ? "No quotes found yet." : `No quotes yet for handoff #${activeHandoffId}.`}
+                </p>
+              )}
+              {saveMsg ? <p className="mt-2 text-[11px] text-neutral-500">{saveMsg}</p> : null}
+            </div>
+          </section>
+
           {latestQuoteToken ? (
             <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -377,6 +793,19 @@ function QuoteBuilderInner() {
                   Quote ready
                 </span>
               </div>
+            </section>
+          ) : null}
+          {!approvedToClaim ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+              You need to be approved to use the quote builder.
+            </section>
+          ) : null}
+          {activeHandoffId &&
+          !["manufacturer_found", "paid", "shipped", "delivered"].includes(
+            String(handoffStatus || "").toLowerCase()
+          ) ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+              Quotes can only be created after the manufacturer is found.
             </section>
           ) : null}
           {isReadOnly ? (
@@ -444,7 +873,11 @@ function QuoteBuilderInner() {
                       <input
                         type="text"
                         value={item.unit_price_rmb}
-                        onChange={(e) => updateItem(idx, { unit_price_rmb: num(e.target.value, 0) })}
+                        onChange={(e) =>
+                          updateItem(idx, {
+                            unit_price_rmb: e.target.value,
+                          })
+                        }
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
                         inputMode="decimal"
@@ -456,7 +889,11 @@ function QuoteBuilderInner() {
                       <input
                         type="text"
                         value={item.unit_weight_kg}
-                        onChange={(e) => updateItem(idx, { unit_weight_kg: num(e.target.value, 0) })}
+                        onChange={(e) =>
+                          updateItem(idx, {
+                            unit_weight_kg: e.target.value,
+                          })
+                        }
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
                         inputMode="decimal"
@@ -468,7 +905,11 @@ function QuoteBuilderInner() {
                       <input
                         type="text"
                         value={item.unit_cbm}
-                        onChange={(e) => updateItem(idx, { unit_cbm: num(e.target.value, 0) })}
+                        onChange={(e) =>
+                          updateItem(idx, {
+                            unit_cbm: e.target.value,
+                          })
+                        }
                         readOnly={isReadOnly}
                         disabled={isReadOnly}
                         inputMode="decimal"
@@ -579,54 +1020,6 @@ function QuoteBuilderInner() {
                     <div className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-center text-xs font-semibold text-neutral-500">
                       Quote is locked
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleSubmit}
-                      disabled={!canSubmit || saving}
-                      className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)] disabled:opacity-60"
-                    >
-                      {saving ? "Saving…" : latestQuoteId ? "Save quote" : "Create quote"}
-                    </button>
-                  )}
-                  {publicLink ? (
-                    <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Public link</p>
-                      <p className="mt-2 break-all text-xs text-neutral-600">{publicLink}</p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(publicLink);
-                              setLinkMsg("Link copied.");
-                            } catch {
-                              setLinkMsg("Unable to copy link.");
-                            }
-                          }}
-                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-white"
-                        >
-                          Copy link
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              if (navigator.share) {
-                                await navigator.share({ title: "LineScout quote", url: publicLink });
-                              } else {
-                                await navigator.clipboard.writeText(publicLink);
-                                setLinkMsg("Link copied.");
-                              }
-                            } catch {}
-                          }}
-                          className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.2)]"
-                        >
-                          Share
-                        </button>
-                      </div>
-                      {linkMsg ? <p className="mt-2 text-[11px] text-neutral-500">{linkMsg}</p> : null}
-                    </div>
                   ) : null}
                 </div>
               </div>
@@ -699,8 +1092,134 @@ function QuoteBuilderInner() {
               />
             </div>
           </section>
+
+          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Quote actions</p>
+                <p className="mt-1 text-sm text-neutral-500">Create a new quote or share the latest link.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {isReadOnly ? (
+                <div className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-center text-xs font-semibold text-neutral-500">
+                  Quote is locked
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || saving}
+                  className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)] disabled:opacity-60"
+                >
+                  {saving ? "Saving…" : latestQuoteId ? "Save quote" : "Create quote"}
+                </button>
+              )}
+              {publicLink ? (
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Public link</p>
+                  <p className="mt-2 break-all text-xs text-neutral-600">{publicLink}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(publicLink);
+                          setLinkMsg("Link copied.");
+                        } catch {
+                          setLinkMsg("Unable to copy link.");
+                        }
+                      }}
+                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-white"
+                    >
+                      Copy link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          if (navigator.share) {
+                            await navigator.share({ title: "LineScout quote", url: publicLink });
+                          } else {
+                            await navigator.clipboard.writeText(publicLink);
+                            setLinkMsg("Link copied.");
+                          }
+                        } catch {}
+                      }}
+                      className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.2)]"
+                    >
+                      Share
+                    </button>
+                  </div>
+                  {linkMsg ? <p className="mt-2 text-[11px] text-neutral-500">{linkMsg}</p> : null}
+                </div>
+              ) : null}
+            </div>
+          </section>
         </div>
       )}
+
+      {projectPickerOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close project picker"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => setProjectPickerOpen(false)}
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                Select project
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Pick a handoff</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Choose the project you want to build a quote for.
+              </p>
+              <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto">
+                {projectsLoading ? (
+                  <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
+                    Loading projects…
+                  </div>
+                ) : projects.length ? (
+                  projects.map((proj) => (
+                    <button
+                      key={proj.conversation_id}
+                      type="button"
+                      onClick={() => {
+                        if (proj.handoff_id) {
+                          setActiveHandoffId(proj.handoff_id);
+                          setActiveConversationId(proj.conversation_id || null);
+                          setShowAllQuotes(false);
+                          setProjectPickerOpen(false);
+                        }
+                      }}
+                      className="w-full rounded-2xl border border-[rgba(45,52,97,0.12)] bg-white px-4 py-3 text-left text-sm text-neutral-700 hover:bg-[rgba(45,52,97,0.04)]"
+                    >
+                      <p className="font-semibold text-neutral-900">
+                        {proj.customer_name || "Customer"} · Handoff #{proj.handoff_id}
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-500">{proj.route_type || ""}</p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
+                    No projects found.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[rgba(45,52,97,0.12)] bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setProjectPickerOpen(false)}
+                className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AgentAppShell>
   );
 }

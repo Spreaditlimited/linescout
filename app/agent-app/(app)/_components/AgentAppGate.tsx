@@ -18,8 +18,25 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let live = true;
+    let restoreFetch: (() => void) | null = null;
 
     async function boot() {
+      if (typeof window !== "undefined") {
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+          if (url.startsWith("/api/internal")) {
+            const headers = new Headers(init?.headers || {});
+            headers.set("x-linescout-app", "agent");
+            return originalFetch(input, { ...init, headers });
+          }
+          return originalFetch(input, init);
+        };
+        restoreFetch = () => {
+          window.fetch = originalFetch;
+        };
+      }
+
       try {
         const res = await fetch("/api/internal/auth/me", { cache: "no-store", credentials: "include" });
         const data = await res.json().catch(() => null);
@@ -38,6 +55,7 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
         const email = String(data?.user?.email || "");
 
         if (role === "admin") {
+          router.replace(`/agent-app/sign-in?next=${nextParam}`);
           return;
         }
 
@@ -63,6 +81,7 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
     boot();
     return () => {
       live = false;
+      if (restoreFetch) restoreFetch();
     };
   }, [router, nextParam]);
 

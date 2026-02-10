@@ -34,7 +34,7 @@ export default function AgentAppSignInClient() {
       const res = await fetch("/api/internal/auth/sign-in", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ login: clean(login), password: clean(password) }),
+        body: JSON.stringify({ login: clean(login), password: clean(password), app: "agent" }),
       });
       const data = await res.json().catch(() => null);
 
@@ -60,7 +60,7 @@ export default function AgentAppSignInClient() {
       const email = String(me?.user?.email || "");
 
       if (role === "admin") {
-        router.replace(nextParam || "/agent-app/inbox");
+        setError("Admin accounts cannot sign into the agent app.");
         return;
       }
 

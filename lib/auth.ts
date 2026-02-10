@@ -55,7 +55,11 @@ export async function requireUser(req: Request) {
  */
 export async function requireAgent(req: Request) {
   const auth = req.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const headerToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  const cookieName = String(process.env.INTERNAL_AUTH_COOKIE_NAME || "").trim();
+  const cookieHeader = req.headers.get("cookie");
+  const cookieToken = cookieName ? readCookie(cookieHeader, cookieName) : "";
+  const token = headerToken || cookieToken;
   if (!token) throw new Error("Unauthorized");
 
   const staff = await queryOne<StaffRow>(

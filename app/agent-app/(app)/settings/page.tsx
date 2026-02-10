@@ -51,6 +51,13 @@ export default function SettingsPage() {
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
 
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportItems, setSupportItems] = useState<any[]>([]);
+  const [supportError, setSupportError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
@@ -121,10 +128,28 @@ export default function SettingsPage() {
       setCitiesLoading(false);
     }
   }, []);
+
+  const loadSupport = useCallback(async () => {
+    setSupportError(null);
+    try {
+      const res = await fetch("/api/internal/agents/support", { cache: "no-store", credentials: "include" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setSupportItems([]);
+        setSupportError(String(json?.error || `Failed (${res.status})`));
+        return;
+      }
+      setSupportItems(Array.isArray(json.items) ? json.items : []);
+    } catch (e: any) {
+      setSupportError(e?.message || "Failed to load support requests.");
+      setSupportItems([]);
+    }
+  }, []);
   useEffect(() => {
     load();
     loadCities();
-  }, [load, loadCities]);
+    loadSupport();
+  }, [load, loadCities, loadSupport]);
 
   useEffect(() => {
     if (!toast) return;
@@ -314,6 +339,40 @@ export default function SettingsPage() {
       setErr(e?.message || "Failed to update notifications.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendSupportMessage = async () => {
+    const message = supportMessage.trim();
+    if (message.length < 8) {
+      setSupportError("Please enter a clear message (at least 8 characters).");
+      return;
+    }
+    setSupportSending(true);
+    setSupportError(null);
+    try {
+      const res = await fetch("/api/internal/agents/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          subject: supportSubject.trim(),
+          message,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setSupportError(String(json?.error || `Failed (${res.status})`));
+        return;
+      }
+      setSupportSubject("");
+      setSupportMessage("");
+      setSupportOpen(false);
+      await loadSupport();
+    } catch (e: any) {
+      setSupportError(e?.message || "Failed to send support request.");
+    } finally {
+      setSupportSending(false);
     }
   };
 
@@ -795,6 +854,51 @@ export default function SettingsPage() {
             </div>
           </section>
 
+          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Support</p>
+            <div className="mt-4">
+              <p className="text-sm font-semibold text-neutral-900">Need help from admin?</p>
+              <p className="mt-1 text-xs text-neutral-500">
+                Send a quick note. Admin will choose how to respond: email, WhatsApp, or phone call.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSupportOpen(true)}
+                className="mt-4 rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+              >
+                Message admin
+              </button>
+              {supportError ? (
+                <p className="mt-3 text-xs text-amber-600">{supportError}</p>
+              ) : null}
+              {supportItems.length ? (
+                <div className="mt-4 grid gap-3">
+                  {supportItems.slice(0, 3).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600"
+                    >
+                      <p className="text-xs font-semibold text-neutral-900">
+                        {item.subject?.trim() || "Support request"} · {String(item.status || "pending")}
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-500 line-clamp-2">
+                        {item.message}
+                      </p>
+                      {item.admin_response_channel ? (
+                        <p className="mt-1 text-[11px] text-neutral-500">
+                          Admin response via: {item.admin_response_channel}
+                        </p>
+                      ) : null}
+                      {item.admin_note ? (
+                        <p className="mt-1 text-[11px] text-neutral-500">Admin note: {item.admin_note}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </section>
+
           {success ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
               {success}
@@ -802,6 +906,68 @@ export default function SettingsPage() {
           ) : null}
         </div>
       )}
+
+      {supportOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close support modal"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => setSupportOpen(false)}
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                Message admin
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Need help?</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Describe the issue clearly. Admin will decide how to reach back.
+              </p>
+              <div className="mt-4 grid gap-3">
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Subject (optional)</label>
+                  <input
+                    value={supportSubject}
+                    onChange={(e) => setSupportSubject(e.target.value)}
+                    placeholder="Short title"
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Message</label>
+                  <textarea
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    placeholder="Type your message..."
+                    rows={5}
+                    className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
+                  />
+                </div>
+                {supportError ? (
+                  <p className="text-xs text-amber-600">{supportError}</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[rgba(45,52,97,0.12)] bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setSupportOpen(false)}
+                className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendSupportMessage}
+                disabled={supportSending || supportMessage.trim().length < 8}
+                className="btn btn-primary px-4 py-2 text-xs"
+              >
+                {supportSending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AgentAppShell>
   );
 }

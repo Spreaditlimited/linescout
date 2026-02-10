@@ -215,7 +215,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
-      `SELECT q.*, h.email, h.customer_name
+      `SELECT q.*, h.email, h.customer_name, h.status AS handoff_status
        FROM linescout_quotes q
        LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
        WHERE q.token = ?
@@ -228,6 +228,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const items = pickItems(quote.items_json);
     const handoffId = Number(quote.handoff_id || 0);
     const commitmentDue = Math.max(0, num(quote.commitment_due_ngn, 0));
+    const handoffStatus = String(quote.handoff_status || "").toLowerCase();
     const depositEnabled = !!quote.deposit_enabled;
     const depositPercent = num(quote.deposit_percent, 0);
 
@@ -281,6 +282,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       }
       required = Math.max(0, depositAmount - productPaid);
     } else if (purpose === "shipping_payment") {
+      if (handoffStatus !== "shipped") {
+        return NextResponse.json(
+          { ok: false, error: "Shipping payment is available only after the project is shipped." },
+          { status: 400 }
+        );
+      }
       if (productPaid < productTarget) {
         return NextResponse.json({ ok: false, error: "Product must be fully paid before shipping payment" }, { status: 400 });
       }
@@ -463,16 +470,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       [quote.id, handoffId || null, user?.id || null, purpose, remaining, reference, shipType || null]
     );
 
+    const origin = new URL(req.url).origin;
+    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || origin).replace(/\/$/, "");
+    const callbackUrl = `${baseUrl}/quote/paystack/verify?reference=${encodeURIComponent(reference)}&token=${encodeURIComponent(String(quote.token || ""))}`;
+
     const initPayload = {
       email: payer,
       amount: Math.round(remaining * 100),
       reference,
+      callback_url: callbackUrl,
       metadata: {
         payment_kind: "quote",
         quote_id: quote.id,
         handoff_id: handoffId,
         purpose,
         shipping_type_id: shipType,
+        quote_token: quote.token,
       },
     };
 

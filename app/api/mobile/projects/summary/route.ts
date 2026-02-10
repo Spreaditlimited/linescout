@@ -63,7 +63,8 @@ export async function GET(req: Request) {
           c.payment_status,
           c.handoff_id,
           h.status AS handoff_status,
-          h.token AS handoff_token
+          h.token AS handoff_token,
+          h.context AS handoff_context
         FROM linescout_conversations c
         LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
         WHERE c.id = ?
@@ -258,6 +259,7 @@ export async function GET(req: Request) {
         route_type: routeType,
         stage,
         summary: summaryText,
+        handoff_context: c.handoff_context || null,
         quote_summary: quoteSummary,
         payments: allPayments,
       });

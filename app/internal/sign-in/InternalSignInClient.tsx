@@ -31,6 +31,7 @@ export default function InternalSignInPage() {
         body: JSON.stringify({
           email: username.trim(), // API still expects `email`
           password,
+          app: "admin",
         }),
       });
 

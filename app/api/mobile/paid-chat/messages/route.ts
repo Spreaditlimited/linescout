@@ -53,6 +53,7 @@ export async function GET(req: Request) {
           h.cancelled_at,
           h.cancel_reason,
           h.customer_name,
+          h.context AS handoff_context,
 
           iu.username AS assigned_agent_username,
           ap.first_name AS assigned_agent_first_name,
@@ -307,6 +308,7 @@ export async function GET(req: Request) {
           handoff_status: handoffStatus || null,
           customer_name: customerName,
           agent_name: assignedAgentName,
+          handoff_context: c.handoff_context || null,
           agent_last_seen_message_id: agentLastSeenId,
           customer_last_seen_message_id: customerLastSeenId,
 

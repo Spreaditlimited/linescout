@@ -31,9 +31,6 @@ export default function AccountDeletionPage() {
               </div>
             </div>
             <nav className="hidden items-center gap-6 text-sm font-semibold text-neutral-700 lg:flex">
-              <Link href="/#features" className="hover:text-emerald-700">
-                Features
-              </Link>
               <Link href="/#how" className="hover:text-emerald-700">
                 How it works
               </Link>
@@ -61,9 +58,6 @@ export default function AccountDeletionPage() {
           {menuOpen ? (
             <div className="border-t border-emerald-100 bg-white/90 px-4 py-3 text-sm font-semibold text-neutral-700 lg:hidden">
               <div className="flex flex-col gap-3">
-                <Link href="/#features" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
-                  Features
-                </Link>
                 <Link href="/#how" className="hover:text-emerald-700" onClick={() => setMenuOpen(false)}>
                   How it works
                 </Link>

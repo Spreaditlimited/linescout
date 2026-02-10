@@ -188,6 +188,7 @@ export default function QuoteClient({
     shipping_paid: 0,
   });
   const [payments, setPayments] = useState<QuotePayment[]>([]);
+  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
 
   useEffect(() => {
     const pay = String(searchParams?.get("pay") || "").toLowerCase();
@@ -210,6 +211,11 @@ export default function QuoteClient({
           shipping_paid: Number(json.totals?.shipping_paid || 0),
         });
         setPayments((json.payments || []) as QuotePayment[]);
+        setHandoffStatus(
+          typeof json.handoff_status === "string" && json.handoff_status.trim()
+            ? json.handoff_status.trim().toLowerCase()
+            : null
+        );
       }
     } catch {}
   };
@@ -312,7 +318,7 @@ export default function QuoteClient({
     return productRemaining;
   }, [paymentOption, depositRemaining, shippingRemaining, productRemaining]);
 
-  const canPayShipping = productPaidTotal >= productTarget;
+  const canPayShipping = productPaidTotal >= productTarget && handoffStatus === "shipped";
   const canPayDeposit = depositEnabled && depositRemaining > 0;
   const canPayProduct = productRemaining > 0;
 
@@ -429,31 +435,31 @@ export default function QuoteClient({
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+    <div className="min-h-screen bg-[#F5F6FA] text-neutral-900" style={{ ["--agent-blue" as any]: "#2D3461" }}>
       <div className="mx-auto w-full max-w-3xl px-4 py-10">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-6">
+        <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-2xl font-semibold">Quote</h1>
-              <p className="mt-1 text-sm text-neutral-400">
-                Customer: <span className="text-neutral-200">{customerName || "Customer"}</span>
+              <p className="mt-1 text-sm text-neutral-600">
+                Customer: <span className="text-neutral-800">{customerName || "Customer"}</span>
               </p>
               <p className="text-xs text-neutral-500">Token: {token}</p>
               {String(agentNote || "").trim() ? (
-                <p className="mt-2 whitespace-pre-line text-xs text-neutral-400">
-                  Note: <span className="text-neutral-200">{String(agentNote || "").trim()}</span>
+                <p className="mt-2 whitespace-pre-line text-xs text-neutral-600">
+                  Note: <span className="text-neutral-800">{String(agentNote || "").trim()}</span>
                 </p>
               ) : null}
             </div>
             <div className="text-right">
-              <div className="text-xs text-neutral-400">Total due</div>
-              <div className="text-2xl font-semibold text-emerald-200">{fmtNaira(totalDueNgn)}</div>
+              <div className="text-xs text-neutral-600">Total due</div>
+              <div className="text-2xl font-semibold text-[var(--agent-blue)]">{fmtNaira(totalDueNgn)}</div>
             </div>
           </div>
 
-          <div className="mt-6 overflow-x-auto rounded-2xl border border-neutral-800">
+          <div className="mt-6 overflow-x-auto rounded-2xl border border-[rgba(45,52,97,0.14)]">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-900/70 text-neutral-300">
+              <thead className="bg-[rgba(45,52,97,0.08)] text-neutral-700">
                 <tr>
                   <th className="px-4 py-3 text-left">Item</th>
                   <th className="px-4 py-3 text-left">Qty</th>
@@ -463,11 +469,11 @@ export default function QuoteClient({
               </thead>
               <tbody>
                 {items.map((item: any, idx: number) => (
-                  <tr key={`${idx}`} className="border-t border-neutral-800">
-                    <td className="px-4 py-3 text-neutral-200">{item.product_name}</td>
-                    <td className="px-4 py-3 text-neutral-400">{item.quantity}</td>
-                    <td className="px-4 py-3 text-neutral-400">{item.unit_price_rmb}</td>
-                    <td className="px-4 py-3 text-neutral-200">
+                  <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
+                    <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
+                    <td className="px-4 py-3 text-neutral-600">{item.quantity}</td>
+                    <td className="px-4 py-3 text-neutral-600">{item.unit_price_rmb}</td>
+                    <td className="px-4 py-3 text-neutral-800">
                       {Number(item.quantity || 0) * Number(item.unit_price_rmb || 0)}
                     </td>
                   </tr>
@@ -476,7 +482,7 @@ export default function QuoteClient({
             </table>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Shipping type</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {shippingRates.map((rate) => {
@@ -489,8 +495,8 @@ export default function QuoteClient({
                     onClick={() => setSelectedRateId(rate.id)}
                     className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
                       selected
-                        ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
-                        : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                        ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                        : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                     }`}
                   >
                     {rate.shipping_type_name} · {fmtUsd(Number(rate.rate_value || 0))} / {rateUnit}
@@ -505,7 +511,7 @@ export default function QuoteClient({
             ) : null}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment option</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {depositEnabled ? (
@@ -515,8 +521,8 @@ export default function QuoteClient({
                   disabled={!canPayDeposit}
                   className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
                     paymentOption === "deposit"
-                      ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
-                      : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                      ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                      : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                   } ${!canPayDeposit ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   Pay deposit ({depositPercent || 0}% · {fmtNaira(depositRemaining || 0)})
@@ -528,8 +534,8 @@ export default function QuoteClient({
                 disabled={!canPayProduct}
                 className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
                   paymentOption === "product"
-                    ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
-                    : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                    ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                    : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                 } ${!canPayProduct ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Pay product ({fmtNaira(productRemaining || 0)})
@@ -540,8 +546,8 @@ export default function QuoteClient({
                 disabled={!canPayShipping || shippingRemaining <= 0}
                 className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
                   paymentOption === "shipping"
-                    ? "border-emerald-300 bg-emerald-300/10 text-emerald-200"
-                    : "border-neutral-700 text-neutral-300 hover:border-neutral-500"
+                    ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                    : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                 } ${!canPayShipping || shippingRemaining <= 0 ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Pay shipping ({fmtNaira(shippingRemaining || 0)})
@@ -552,36 +558,36 @@ export default function QuoteClient({
             </p>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment timeline</div>
             <div className="mt-4 space-y-3 text-sm">
               {depositEnabled ? (
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-neutral-200">Deposit</div>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-neutral-800">Deposit</div>
+                    <div className="text-xs text-neutral-600">
                       {fmtNaira(paidTotals.deposit_paid)} / {fmtNaira(depositAmount)}
                     </div>
                   </div>
-                  <div className="mt-2 h-2 w-full rounded-full bg-neutral-800">
+                  <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
                     <div
-                      className="h-2 rounded-full bg-emerald-400"
+                      className="h-2 rounded-full bg-[var(--agent-blue)]"
                       style={{ width: `${Math.round((progress.deposit || 0) * 100)}%` }}
                     />
                   </div>
                 </div>
               ) : null}
 
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+              <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-neutral-200">Product payment</div>
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-neutral-800">Product payment</div>
+                  <div className="text-xs text-neutral-600">
                     {fmtNaira(productPaidTotal)} / {fmtNaira(productTarget)}
                   </div>
                 </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-neutral-800">
+                <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
                   <div
-                    className="h-2 rounded-full bg-emerald-400"
+                    className="h-2 rounded-full bg-[var(--agent-blue)]"
                     style={{ width: `${Math.round(progress.product * 100)}%` }}
                   />
                 </div>
@@ -592,22 +598,22 @@ export default function QuoteClient({
                 ) : null}
               </div>
 
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+              <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-neutral-200">Shipping payment</div>
-                  <div className="text-xs text-neutral-400">
+                  <div className="text-neutral-800">Shipping payment</div>
+                  <div className="text-xs text-neutral-600">
                     {fmtNaira(paidTotals.shipping_paid)} / {fmtNaira(totals.totalShippingNgn)}
                   </div>
                 </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-neutral-800">
+                <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
                   <div
-                    className="h-2 rounded-full bg-emerald-400"
+                    className="h-2 rounded-full bg-[var(--agent-blue)]"
                     style={{ width: `${Math.round(progress.shipping * 100)}%` }}
                   />
                 </div>
                 {!canPayShipping ? (
                   <div className="mt-2 text-[11px] text-neutral-500">
-                    Available after product is fully paid.
+                    Available after product is fully paid and the project is marked shipped.
                   </div>
                 ) : null}
               </div>
@@ -615,30 +621,30 @@ export default function QuoteClient({
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
               <div className="text-xs text-neutral-500">Product total (NGN)</div>
               <div className="text-lg font-semibold">{fmtNaira(productTotalDisplay)}</div>
             </div>
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
               <div className="text-xs text-neutral-500">Shipping (USD)</div>
               <div className="text-lg font-semibold">{fmtUsd(totals.totalShippingUsd)}</div>
             </div>
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
               <div className="text-xs text-neutral-500">Shipping (NGN)</div>
               <div className="text-lg font-semibold">{fmtNaira(totals.totalShippingNgn)}</div>
             </div>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Amount due (NGN)</div>
-            <div className="text-xl font-semibold text-emerald-200">{fmtNaira(totalDueNgn)}</div>
+            <div className="text-xl font-semibold text-[var(--agent-blue)]">{fmtNaira(totalDueNgn)}</div>
             {commitmentDueNgn > 0 ? (
               <p className="mt-2 text-xs text-neutral-500">
                 Commitment fee is applied as an instant discount once product is fully paid.
               </p>
             ) : null}
             {paymentOption === "product" && commitmentDueNgn > 0 ? (
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-xs text-neutral-400">
+              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
                 <div className="flex items-center justify-between">
                   <span>Product total</span>
                   <span>{fmtNaira(productTotalDisplay)}</span>
@@ -647,7 +653,7 @@ export default function QuoteClient({
                   <span>Commitment fee discount</span>
                   <span>- {fmtNaira(commitmentDueNgn)}</span>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-neutral-200">
+                <div className="mt-2 flex items-center justify-between text-neutral-800">
                   <span>Amount due now</span>
                   <span>{fmtNaira(productRemaining)}</span>
                 </div>
@@ -656,13 +662,13 @@ export default function QuoteClient({
             <button
               type="button"
               onClick={handlePayRemaining}
-              className="mt-4 w-full rounded-xl border border-neutral-700 px-4 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-500"
+              className="mt-4 w-full rounded-xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-neutral-800 hover:border-neutral-500"
             >
               Pay exact remaining balance
             </button>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment method</div>
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
@@ -670,17 +676,17 @@ export default function QuoteClient({
                 onClick={() => setUseWallet(false)}
                 className={`rounded-2xl border px-4 py-3 text-left transition ${
                   !useWallet
-                    ? "border-emerald-300/60 bg-emerald-300/10 text-emerald-200"
-                    : "border-neutral-800 bg-neutral-900/60 text-neutral-200"
+                    ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                    : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
                 }`}
               >
                 <div className="text-sm font-semibold">Card/bank</div>
-                <div className="mt-1 text-xs text-neutral-400">Pay with debit card or bank transfer.</div>
+                <div className="mt-1 text-xs text-neutral-600">Pay with debit card or bank transfer.</div>
                 <div className="mt-3 flex items-center gap-2">
                   {["VISA", "Mastercard", "Verve"].map((brand) => (
                     <span
                       key={brand}
-                      className="rounded-full border border-neutral-700 px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-300"
+                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-700"
                     >
                       {brand}
                     </span>
@@ -694,18 +700,18 @@ export default function QuoteClient({
                 disabled={!canUseWallet}
                 className={`rounded-2xl border px-4 py-3 text-left transition ${
                   useWallet
-                    ? "border-emerald-300/60 bg-emerald-300/10 text-emerald-200"
-                    : "border-neutral-800 bg-neutral-900/60 text-neutral-200"
+                    ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                    : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
                 } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
               >
                 <div className="text-sm font-semibold">Wallet + card/bank</div>
-                <div className="mt-1 text-xs text-neutral-400">
+                <div className="mt-1 text-xs text-neutral-600">
                   Use wallet balance first, then complete the rest.
                 </div>
                 {walletLoading ? (
                   <div className="mt-3 text-xs text-neutral-500">Loading wallet…</div>
                 ) : walletBalance != null ? (
-                  <div className="mt-3 text-xs text-neutral-300">
+                  <div className="mt-3 text-xs text-neutral-700">
                     Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
                   </div>
                 ) : null}
@@ -713,14 +719,14 @@ export default function QuoteClient({
             </div>
 
             {walletAuthMissing ? (
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2 text-xs text-neutral-400">
+              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] px-3 py-2 text-xs text-neutral-600">
                 To use wallet, sign in to your LineScout account in the LineScout mobile app, then reopen this quote link.
               </div>
             ) : null}
             {walletAccount ? (
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 text-xs text-neutral-300">
+              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-700">
                 <div className="text-[11px] uppercase text-neutral-500">Wallet funding account</div>
-                <div className="mt-1 font-semibold text-neutral-200">
+                <div className="mt-1 font-semibold text-neutral-800">
                   {walletAccount.bank_name || "Bank transfer"}
                 </div>
                 <div className="mt-1">Account name: {walletAccount.account_name}</div>
@@ -729,7 +735,7 @@ export default function QuoteClient({
                   <button
                     type="button"
                     onClick={() => copyText(walletAccount.account_number)}
-                    className="rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                   >
                     Copy
                   </button>
@@ -741,7 +747,7 @@ export default function QuoteClient({
                       key={amt}
                       type="button"
                       onClick={() => copyText(String(amt))}
-                      className="rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                     >
                       NGN {amt.toLocaleString()}
                     </button>
@@ -750,36 +756,36 @@ export default function QuoteClient({
               </div>
             ) : null}
 
-            {payErr ? <div className="mt-3 text-xs text-rose-300">{payErr}</div> : null}
-            {payMsg ? <div className="mt-3 text-xs text-emerald-300">{payMsg}</div> : null}
+            {payErr ? <div className="mt-3 text-xs text-red-600">{payErr}</div> : null}
+            {payMsg ? <div className="mt-3 text-xs text-[var(--agent-blue)]">{payMsg}</div> : null}
 
             {providusDetails ? (
-              <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/70 p-4 text-sm">
+              <div className="mt-4 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] p-4 text-sm">
                 <div className="text-xs text-neutral-500">Providus transfer details</div>
                 <div className="mt-2 text-base font-semibold text-white">
                   {providusDetails.bank_name}
                 </div>
-                <div className="mt-2 text-sm text-neutral-300">
+                <div className="mt-2 text-sm text-neutral-700">
                   Account name: {providusDetails.account_name}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-300">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-700">
                   <span>Account number: {providusDetails.account_number}</span>
                   <button
                     type="button"
                     onClick={() => copyText(providusDetails.account_number)}
-                    className="rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                   >
                     Copy
                   </button>
                 </div>
-                <div className="mt-2 text-sm text-emerald-200">
+                <div className="mt-2 text-sm text-[var(--agent-blue)]">
                   Amount: {fmtNaira(providusDetails.amount)}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={copyProvidusAll}
-                    className="rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                   >
                     Copy all details
                   </button>
@@ -790,7 +796,7 @@ export default function QuoteClient({
                       await refreshPayments();
                       setPayMsg("If your transfer is confirmed, it will reflect here shortly.");
                     }}
-                    className="rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                   >
                     I&apos;ve paid
                   </button>
@@ -812,29 +818,58 @@ export default function QuoteClient({
             </button>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment history</div>
             {payments.length ? (
               <div className="mt-3 space-y-3 text-sm">
                 {payments.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-neutral-800 bg-neutral-900/60 p-3">
+                  <div key={p.id} className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-neutral-200">{formatPurpose(p.purpose)}</div>
-                      <div className="text-xs text-neutral-400">
+                      <div className="text-neutral-800">{formatPurpose(p.purpose)}</div>
+                      <div className="text-xs text-neutral-600">
                         {p.status === "paid" ? "Paid" : "Pending"}
                       </div>
                     </div>
-                    <div className="mt-2 text-xs text-neutral-400">
+                    <div className="mt-2 text-xs text-neutral-600">
                       {p.currency} {Number(p.amount || 0).toLocaleString()} · {p.method}
                     </div>
                     <div className="mt-1 text-[11px] text-neutral-500">
                       {p.paid_at ? `Paid ${fmtDate(p.paid_at)}` : `Created ${fmtDate(p.created_at)}`}
                     </div>
+                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
+                        <span>Reference: {p.provider_ref}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch("/api/quote/paystack/verify", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ reference: p.provider_ref }),
+                              });
+                              const json = await res.json().catch(() => null);
+                              if (!res.ok || !json?.ok) {
+                                setPayErr(json?.error || "Verification failed.");
+                                return;
+                              }
+                              setPayMsg("Payment verified.");
+                              await refreshPayments();
+                            } catch (e: any) {
+                              setPayErr(e?.message || "Verification failed.");
+                            }
+                          }}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                        >
+                          Verify payment
+                        </button>
+                      </div>
+                    ) : null}
                     {p.status === "paid" ? (
                       <button
                         type="button"
                         onClick={() => downloadReceipt(p)}
-                        className="mt-2 rounded-full border border-neutral-700 px-3 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-500"
+                        className="mt-2 rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
                       >
                         Download receipt
                       </button>
@@ -848,11 +883,11 @@ export default function QuoteClient({
           </div>
 
           {walletTransactions.length ? (
-            <div className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
               <div className="text-xs text-neutral-500">Wallet activity</div>
               <div className="mt-3 space-y-2 text-sm">
                 {walletTransactions.slice(0, 8).map((tx: any) => (
-                  <div key={tx.id} className="flex items-center justify-between text-xs text-neutral-300">
+                  <div key={tx.id} className="flex items-center justify-between text-xs text-neutral-700">
                     <span>
                       {tx.type === "debit" ? "Debit" : "Credit"} · {tx.reason || "Wallet"}
                     </span>
