@@ -76,7 +76,7 @@ export default function WhiteLabelStep3Page() {
     <div className="px-6 py-10">
       <div className="relative">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Quantity and branding depth</h1>
           <p className="text-sm text-neutral-600">
             These choices affect MOQ, tooling cost, and how much risk you carry at the start.
@@ -98,8 +98,8 @@ export default function WhiteLabelStep3Page() {
                     onClick={() => setQuantityTier("test")}
                     className={`rounded-2xl border px-4 py-4 text-left ${
                       quantityTier === "test"
-                        ? "border-emerald-500 bg-emerald-600 text-white"
-                        : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                        ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                     }`}
                   >
                     <p className="text-sm font-semibold">Test run (50–200 units)</p>
@@ -112,8 +112,8 @@ export default function WhiteLabelStep3Page() {
                     onClick={() => setQuantityTier("scale")}
                     className={`rounded-2xl border px-4 py-4 text-left ${
                       quantityTier === "scale"
-                        ? "border-emerald-500 bg-emerald-600 text-white"
-                        : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                        ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                     }`}
                   >
                     <p className="text-sm font-semibold">Scale run (1,000+ units)</p>
@@ -132,8 +132,8 @@ export default function WhiteLabelStep3Page() {
                     onClick={() => setBrandingLevel("logo")}
                     className={`rounded-2xl border px-4 py-4 text-left ${
                       brandingLevel === "logo"
-                        ? "border-emerald-500 bg-emerald-600 text-white"
-                        : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                        ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                     }`}
                   >
                     <p className="text-sm font-semibold">Logo only</p>
@@ -146,8 +146,8 @@ export default function WhiteLabelStep3Page() {
                     onClick={() => setBrandingLevel("packaging")}
                     className={`rounded-2xl border px-4 py-4 text-left ${
                       brandingLevel === "packaging"
-                        ? "border-emerald-500 bg-emerald-600 text-white"
-                        : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                        ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                     }`}
                   >
                     <p className="text-sm font-semibold">Custom packaging</p>
@@ -160,8 +160,8 @@ export default function WhiteLabelStep3Page() {
                     onClick={() => setBrandingLevel("mould")}
                     className={`rounded-2xl border px-4 py-4 text-left ${
                       brandingLevel === "mould"
-                        ? "border-emerald-500 bg-emerald-600 text-white"
-                        : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                        ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                        : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                     }`}
                   >
                     <p className="text-sm font-semibold">Full custom mould</p>

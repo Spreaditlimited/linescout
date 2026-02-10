@@ -18,7 +18,7 @@ export default function AccountDeletionPage() {
           <div className="absolute -bottom-40 left-[-140px] h-[380px] w-[380px] rounded-full bg-emerald-100/60 blur-3xl" />
         </div>
 
-        <header className="z-40 border-b border-emerald-100 bg-[#F7F6F2]/95 backdrop-blur md:sticky md:top-0">
+        <header className="z-40 border-b border-emerald-100 bg-[#F7F6F2]/95 backdrop-blur">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <Image src="/linescout-logo.png" alt="LineScout" width={130} height={36} priority />

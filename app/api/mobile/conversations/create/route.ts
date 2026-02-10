@@ -5,15 +5,15 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 function isValidRouteType(v: any): v is RouteType {
-  return v === "machine_sourcing" || v === "white_label";
+  return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
 }
 
 /**
  * POST /api/mobile/conversations/create
- * body: { route_type: "machine_sourcing" | "white_label" }
+ * body: { route_type: "machine_sourcing" | "white_label" | "simple_sourcing" }
  *
  * Creates a NEW AI conversation thread (ChatGPT-style).
  * This endpoint MUST NOT be used for paid chats.

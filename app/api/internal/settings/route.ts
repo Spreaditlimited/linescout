@@ -65,13 +65,44 @@ async function ensureRow(conn: mysql.PoolConnection) {
     );
   }
 
+  const [pointsCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'points_value_ngn'
+    LIMIT 1
+    `
+  );
+  if (!pointsCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN points_value_ngn BIGINT NOT NULL DEFAULT 0`
+    );
+  }
+  const [configCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'points_config_json'
+    LIMIT 1
+    `
+  );
+  if (!configCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN points_config_json JSON NULL`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone')`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL)`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -108,6 +139,8 @@ export async function POST(req: Request) {
   const markup_percent = num(body.markup_percent);
   const exchange_rate_usd = num(body.exchange_rate_usd);
   const exchange_rate_rmb = num(body.exchange_rate_rmb);
+  const points_value_ngn = num(body.points_value_ngn);
+  const points_config_json = body?.points_config_json ?? null;
   const payout_summary_email =
     typeof body.payout_summary_email === "string" ? body.payout_summary_email.trim() : "";
   const agent_otp_mode =
@@ -122,6 +155,7 @@ export async function POST(req: Request) {
     markup_percent,
     exchange_rate_usd,
     exchange_rate_rmb,
+    points_value_ngn,
   };
 
   const invalid = Object.entries(values).find(([, v]) => v == null || Number.isNaN(v));
@@ -140,6 +174,8 @@ export async function POST(req: Request) {
            markup_percent = ?,
            exchange_rate_usd = ?,
            exchange_rate_rmb = ?,
+           points_value_ngn = ?,
+           points_config_json = ?,
            payout_summary_email = ?,
            agent_otp_mode = ?,
            updated_at = NOW()
@@ -151,6 +187,8 @@ export async function POST(req: Request) {
         markup_percent,
         exchange_rate_usd,
         exchange_rate_rmb,
+        points_value_ngn,
+        points_config_json ? JSON.stringify(points_config_json) : null,
         payout_summary_email || null,
         agent_otp_mode,
         row.id,

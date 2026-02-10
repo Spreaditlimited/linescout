@@ -1,6 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Bolt, Briefcase, ShieldCheck, Smartphone } from "lucide-react";
 import Footer from "@/components/Footer";
+import ComingSoonModal from "@/components/ComingSoonModal";
 import MarketingTopNav from "@/components/MarketingTopNav";
 
 const highlights = [
@@ -13,6 +17,11 @@ const highlights = [
     title: "Project control",
     desc: "Update milestones, attach files, and keep clients aligned with factory timelines.",
     icon: <Bolt className="h-5 w-5" />,
+  },
+  {
+    title: "Points-based rewards",
+    desc: "Earn points for fast execution and response times, converted to NGN rewards.",
+    icon: <BadgeCheck className="h-5 w-5" />,
   },
   {
     title: "Secure earnings",
@@ -34,13 +43,14 @@ const steps = [
   },
   {
     step: "03",
-    title: "Ship and withdraw",
-    desc: "Track delivery milestones and withdraw commissions instantly.",
+    title: "Deliver and earn",
+    desc: "Complete milestones fast, earn reward points, and withdraw commissions.",
   },
 ];
 
 export default function AgentAppLandingPage() {
   const brandBlue = "#2D3461";
+  const [showAppModal, setShowAppModal] = useState(false);
   return (
     <main
       className="relative min-h-screen overflow-hidden bg-white text-neutral-900 font-sans"
@@ -93,12 +103,13 @@ export default function AgentAppLandingPage() {
               >
                 Open agent web app <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link
-                href="#app-download"
+              <button
+                type="button"
+                onClick={() => setShowAppModal(true)}
                 className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-6 py-3 text-sm font-semibold text-[var(--agent-blue)]"
               >
                 Download mobile app <Smartphone className="h-4 w-4" />
-              </Link>
+              </button>
             </div>
             <div className="mt-10 grid gap-4 sm:grid-cols-3">
               {highlights.map((h) => (
@@ -126,12 +137,14 @@ export default function AgentAppLandingPage() {
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
+                  onClick={() => setShowAppModal(true)}
                   className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs font-semibold text-white"
                 >
                   Download on iOS
                 </button>
                 <button
                   type="button"
+                  onClick={() => setShowAppModal(true)}
                   className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs font-semibold text-white"
                 >
                   Get it on Android
@@ -228,18 +241,25 @@ export default function AgentAppLandingPage() {
                 >
                   Sign in to web <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link
-                  href="#app-download"
+                <button
+                  type="button"
+                  onClick={() => setShowAppModal(true)}
                   className="inline-flex items-center gap-2 rounded-2xl border border-white/30 px-6 py-3 text-sm font-semibold text-white"
                 >
                   Download mobile app
-                </Link>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
         <Footer variant="agent" />
+        <ComingSoonModal
+          open={showAppModal}
+          title="LineScout Agent Mobile App"
+          message="The agent mobile app is almost ready. Keep using the web app and we will notify you the moment downloads go live."
+          onClose={() => setShowAppModal(false)}
+        />
       </div>
     </main>
   );

@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { sendNoticeEmail } from "@/lib/notice-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -357,6 +358,47 @@ export async function POST(req: Request) {
             route_type: routeType,
           },
         });
+
+        try {
+          const routeLabel =
+            routeType === "white_label"
+              ? "White Label"
+              : routeType === "simple_sourcing"
+                ? "Simple Sourcing"
+                : "Machine Sourcing";
+          const userEmail = String((u as any)?.email || "").trim();
+          const [emailRows]: any = await conn.query(
+            `
+            SELECT ap.email
+            FROM linescout_agent_profiles ap
+            JOIN internal_users iu ON iu.id = ap.internal_user_id
+            WHERE iu.is_active = 1
+              AND ap.approval_status = 'approved'
+              AND COALESCE(ap.email_notifications_enabled, 1) = 1
+              AND ap.email IS NOT NULL
+              AND ap.email <> ''
+            `
+          );
+          const emails = (emailRows || [])
+            .map((r: any) => String(r.email || "").trim())
+            .filter(Boolean);
+
+          for (const email of emails) {
+            await sendNoticeEmail({
+              to: email,
+              subject: "New quick chat message",
+              title: "New quick chat message",
+              lines: [
+                `${userEmail || "A customer"} sent a new quick chat message.`,
+                `Route: ${routeLabel}`,
+                `Conversation ID: ${conversationId}`,
+                `Preview: ${messageText.trim().slice(0, 120)}`,
+              ],
+              footerNote:
+                "This email was sent because a quick chat received a new message on LineScout.",
+            });
+          }
+        } catch {}
 
         return NextResponse.json({
           ok: true,

@@ -139,11 +139,11 @@ export default function QuotesPage() {
           <Link
             key={row.conversation_id}
             href={`/projects/${row.conversation_id}`}
-            className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200"
+            className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[rgba(45,52,97,0.2)]"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Quote</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Quote</p>
                 <h2 className="mt-2 text-lg font-semibold text-neutral-900">
                   {row.quote_summary?.product_name || "Quoted items"}
                 </h2>

@@ -6,7 +6,8 @@ import Navbar from "@/components/Navbar";
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isInternal = pathname.startsWith("/internal");
-  const isLanding = pathname === "/" || pathname.startsWith("/account-deletion");
+  const isAgents = pathname.startsWith("/agents");
+  const isLanding = pathname === "/" || pathname.startsWith("/account-deletion") || isAgents;
   const isPublicQuote = pathname.startsWith("/quote/");
   const isAgentApp = pathname.startsWith("/agent-app");
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
@@ -15,7 +16,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={isLanding ? "flex min-h-screen flex-col" : "min-h-screen flex flex-col"}>
-      {!isInternal && !isLanding && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote ? <Navbar /> : null}
+      {!isInternal && !isLanding && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote ? <Navbar /> : null}
       {isLanding ? children : <main className="flex-1 min-h-0">{children}</main>}
     </div>
   );

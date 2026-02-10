@@ -28,6 +28,13 @@ type Earnings = {
 type Commission = {
   agent_percent: number;
   agent_commitment_percent: number;
+  points_value_ngn?: number;
+};
+
+type PointsSummary = {
+  total_points: number;
+  total_reward_ngn: number;
+  projects_scored: number;
 };
 
 function clean(v: any) {
@@ -59,6 +66,7 @@ export default function PayoutsPage() {
   const [error, setError] = useState<string | null>(null);
   const [commission, setCommission] = useState<Commission | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
+  const [points, setPoints] = useState<PointsSummary | null>(null);
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutNote, setPayoutNote] = useState("");
@@ -79,6 +87,7 @@ export default function PayoutsPage() {
       }
       setCommission(json?.commission || null);
       setEarnings(json?.earnings || null);
+      setPoints(json?.points || null);
     } catch (e: any) {
       setError(e?.message || "Failed to load payout data.");
     } finally {
@@ -189,6 +198,18 @@ export default function PayoutsPage() {
               <div className="flex items-center justify-between">
                 <span>Paid out</span>
                 <span className="font-semibold text-neutral-900">{formatNaira(Number(earnings?.paid_out_ngn || 0))}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Points earned</span>
+                <span className="font-semibold text-neutral-900">{Number(points?.total_points || 0)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Points reward value</span>
+                <span className="font-semibold text-neutral-900">{formatNaira(Number(points?.total_reward_ngn || 0))}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Projects scored</span>
+                <span className="font-semibold text-neutral-900">{Number(points?.projects_scored || 0)}</span>
               </div>
             </div>
           )}

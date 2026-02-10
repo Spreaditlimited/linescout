@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 type QuickConvRow = {
   id: number;
   user_id: number;
-  route_type: "machine_sourcing" | "white_label";
+  route_type: "machine_sourcing" | "white_label" | "simple_sourcing";
   conversation_kind: "ai" | "quick_human" | "paid";
   chat_mode: "ai_only" | "limited_human" | "paid_human";
   project_status: "active" | "cancelled";

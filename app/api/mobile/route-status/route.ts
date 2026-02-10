@@ -5,10 +5,10 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 function isRouteType(x: string | null): x is RouteType {
-  return x === "machine_sourcing" || x === "white_label";
+  return x === "machine_sourcing" || x === "white_label" || x === "simple_sourcing";
 }
 
 export async function GET(req: NextRequest) {

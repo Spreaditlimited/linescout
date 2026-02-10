@@ -5,10 +5,10 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 function isValidRouteType(v: any): v is RouteType {
-  return v === "machine_sourcing" || v === "white_label";
+  return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
 }
 
 function nonEmpty(s: any) {
@@ -37,7 +37,7 @@ function safeCallbackUrl(req: Request, raw: any) {
 // Prices in kobo (sourcing uses admin settings)
 async function amountForPurpose(purpose: string) {
   if (purpose === "business_plan") return 2000000; // ₦20,000 (example)
-  if (purpose !== "sourcing") return 10000000;
+  if (purpose !== "sourcing" && purpose !== "reorder") return 10000000;
 
   const conn = await db.getConnection();
   try {
@@ -67,12 +67,14 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
 
     const purpose = String(body?.purpose || "sourcing").trim();
-    const routeType = body?.route_type;
+    let routeType = body?.route_type;
     const callbackUrl = safeCallbackUrl(req, body?.callback_url);
-
-    if (!isValidRouteType(routeType)) {
-      return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
-    }
+    const productId = String(body?.product_id || "").trim();
+    const productName = String(body?.product_name || "").trim();
+    const productCategory = String(body?.product_category || "").trim();
+    const productLandedPerUnit = String(body?.product_landed_ngn_per_unit || "").trim();
+    const reorderOfConversationIdRaw = Number(body?.reorder_of_conversation_id || 0);
+    const reorderUserNote = String(body?.reorder_user_note || "").trim();
 
     const sourceConversationIdRaw = Number(body?.source_conversation_id || 0);
     const sourceConversationId =
@@ -96,6 +98,61 @@ export async function POST(req: Request) {
     const userId = Number((u as any).id || 0);
     const reference = `LS_${userId}_${Date.now()}_${rand(6)}`;
 
+    let reorderOfConversationId: number | null = null;
+    let reorderOfHandoffId: number | null = null;
+    let reorderOriginalAgentId: number | null = null;
+    let resolvedRouteType: RouteType | null = null;
+
+    if (purpose === "reorder") {
+      const n = Number.isFinite(reorderOfConversationIdRaw) && reorderOfConversationIdRaw > 0 ? reorderOfConversationIdRaw : 0;
+      if (!n) {
+        return NextResponse.json(
+          { ok: false, error: "reorder_of_conversation_id is required" },
+          { status: 400 }
+        );
+      }
+
+      const conn = await db.getConnection();
+      try {
+        const [rows]: any = await conn.query(
+          `
+          SELECT c.id, c.user_id, c.route_type, c.assigned_agent_id, c.handoff_id, h.status AS handoff_status, h.delivered_at
+          FROM linescout_conversations c
+          LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+          WHERE c.id = ? AND c.user_id = ?
+          LIMIT 1
+          `,
+          [n, userId]
+        );
+        const r = rows?.[0];
+        if (!r?.id || !r?.handoff_id) {
+          return NextResponse.json({ ok: false, error: "Original project not found." }, { status: 404 });
+        }
+        const status = String(r.handoff_status || "").trim().toLowerCase();
+        const isDelivered = status === "delivered" || !!r.delivered_at;
+        if (!isDelivered) {
+          return NextResponse.json(
+            { ok: false, error: "Re-order is only available for delivered projects." },
+            { status: 400 }
+          );
+        }
+        reorderOfConversationId = Number(r.id);
+        reorderOfHandoffId = Number(r.handoff_id);
+        reorderOriginalAgentId = Number(r.assigned_agent_id || 0) || null;
+        resolvedRouteType = isValidRouteType(r.route_type) ? (r.route_type as RouteType) : "machine_sourcing";
+      } finally {
+        conn.release();
+      }
+    }
+
+    if (purpose !== "reorder") {
+      if (!isValidRouteType(routeType)) {
+        return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
+      }
+    } else {
+      routeType = resolvedRouteType || "machine_sourcing";
+    }
+
     const initPayload = {
       email,
       amount,
@@ -108,6 +165,18 @@ export async function POST(req: Request) {
         route_type: routeType,
         user_id: userId,
         source_conversation_id: sourceConversationId,
+        reorder_of_conversation_id: reorderOfConversationId,
+        reorder_of_handoff_id: reorderOfHandoffId,
+        reorder_original_agent_id: reorderOriginalAgentId,
+        reorder_user_note: reorderUserNote || null,
+        product: productId || productName || productCategory
+          ? {
+              id: productId || null,
+              name: productName || null,
+              category: productCategory || null,
+              landed_ngn_per_unit: productLandedPerUnit || null,
+            }
+          : null,
       },
     };
 

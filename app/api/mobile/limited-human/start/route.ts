@@ -1,12 +1,13 @@
 // app/api/mobile/limited-human/start/route.ts
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { queryOne, exec } from "@/lib/db";
+import { queryOne, exec, queryRows } from "@/lib/db";
+import { sendNoticeEmail } from "@/lib/notice-email";
 import type { RowDataPacket } from "mysql2/promise";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 function isRouteType(x: any): x is RouteType {
-  return x === "machine_sourcing" || x === "white_label";
+  return x === "machine_sourcing" || x === "white_label" || x === "simple_sourcing";
 }
 
 const HUMAN_LIMIT = 6; // you can adjust
@@ -129,6 +130,62 @@ export async function POST(req: Request) {
     if (!newId) {
       return NextResponse.json({ ok: false, error: "Could not start quick specialist chat." }, { status: 500 });
     }
+
+    try {
+      const routeLabel =
+        route_type === "white_label"
+          ? "White Label"
+          : route_type === "simple_sourcing"
+            ? "Simple Sourcing"
+            : "Machine Sourcing";
+      const userEmail = String((user as any)?.email || "").trim();
+
+      await sendNoticeEmail({
+        to: "sureimporters@gmail.com",
+        subject: "New quick chat started",
+        title: "New quick chat started",
+        lines: [
+          `Route: ${routeLabel}`,
+          `Conversation ID: ${newId}`,
+          `User ID: ${user.id}`,
+          userEmail ? `User email: ${userEmail}` : "User email: (missing)",
+        ],
+        footerNote: "This email was sent because a quick chat was started on LineScout.",
+      });
+
+      const emailRows = await queryRows<any>(
+        `
+        SELECT ap.email
+        FROM linescout_agent_profiles ap
+        JOIN internal_users u ON u.id = ap.internal_user_id
+        WHERE u.is_active = 1
+          AND ap.approval_status = 'approved'
+          AND COALESCE(ap.email_notifications_enabled, 1) = 1
+          AND ap.email IS NOT NULL
+          AND ap.email <> ''
+        `
+      );
+
+      const emails = (emailRows || [])
+        .map((r: any) => String(r.email || "").trim())
+        .filter(Boolean);
+
+      for (const email of emails) {
+        await sendNoticeEmail({
+          to: email,
+          subject: "New quick chat available",
+          title: "New quick chat available",
+          lines: [
+            `${userEmail || "A customer"} just opened a quick chat.`,
+            `Route: ${routeLabel}`,
+            `Conversation ID: ${newId}`,
+            "Open the LineScout Agent app to respond.",
+          ],
+          footerNote:
+            "This email was sent because a new quick chat became available for LineScout agents.",
+        });
+      }
+    } catch {}
 
     return NextResponse.json({
       ok: true,

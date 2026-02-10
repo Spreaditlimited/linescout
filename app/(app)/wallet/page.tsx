@@ -254,7 +254,7 @@ export default function WalletPage() {
       {data ? (
         <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Wallet balance</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Wallet balance</p>
             <p className="mt-2 text-3xl font-semibold text-neutral-900">
               {money.format(Number(data.wallet?.balance || 0))}
             </p>
@@ -287,7 +287,7 @@ export default function WalletPage() {
                   Copy account number
                 </button>
                 {copyMessage ? (
-                  <p className="mt-2 text-xs text-emerald-700">{copyMessage}</p>
+                  <p className="mt-2 text-xs text-[var(--agent-blue)]">{copyMessage}</p>
                 ) : null}
               </div>
             ) : (
@@ -315,7 +315,7 @@ export default function WalletPage() {
                 <button
                   type="button"
                   onClick={() => setBankOpen((v) => !v)}
-                  className="mt-2 flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="mt-2 flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                 >
                   <span className="truncate">
                     {selectedBank ? selectedBank.name : "Select bank"}
@@ -330,7 +330,7 @@ export default function WalletPage() {
                       value={bankQuery}
                       onChange={(e) => setBankQuery(e.target.value)}
                       placeholder="Search banks"
-                      className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                      className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.12)]"
                     />
                     <div className="mt-2 max-h-56 overflow-y-auto">
                       {filteredBanks.length === 0 ? (
@@ -349,13 +349,13 @@ export default function WalletPage() {
                             }}
                             className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition ${
                               bank.code === bankCode
-                                ? "bg-emerald-50 text-emerald-700"
+                                ? "bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                                 : "text-neutral-700 hover:bg-neutral-50"
                             }`}
                           >
                             <span className="truncate">{bank.name}</span>
                             {bank.code === bankCode ? (
-                              <span className="text-emerald-600">Selected</span>
+                              <span className="text-[var(--agent-blue)]">Selected</span>
                             ) : null}
                           </button>
                         ))
@@ -370,10 +370,10 @@ export default function WalletPage() {
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="Account number"
-                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               />
               {accountName ? (
-                <p className="text-xs text-emerald-700">Resolved name: {accountName}</p>
+                <p className="text-xs text-[var(--agent-blue)]">Resolved name: {accountName}</p>
               ) : null}
               {payoutMessage ? (
                 <p className="text-xs text-neutral-600">{payoutMessage}</p>
@@ -406,7 +406,7 @@ export default function WalletPage() {
                         value={otp}
                         onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                         placeholder="Enter OTP"
-                        className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                        className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                       />
                       <button
                         type="button"
@@ -472,7 +472,7 @@ export default function WalletPage() {
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value.replace(/[^0-9]/g, ""))}
                   placeholder="Amount (NGN)"
-                  className="flex-1 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="flex-1 rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                 />
                 <button
                   type="button"

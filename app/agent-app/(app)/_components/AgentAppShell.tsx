@@ -10,6 +10,7 @@ const navItems = [
   { label: "Dashboard", href: "/agent-app/dashboard" },
   { label: "Inbox", href: "/agent-app/inbox" },
   { label: "Projects", href: "/agent-app/projects" },
+  { label: "Reorders", href: "/agent-app/reorders" },
   { label: "Quote builder", href: "/agent-app/quote-builder" },
   { label: "Payouts", href: "/agent-app/payouts" },
   { label: "Notifications", href: "/agent-app/notifications" },

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import mysql from "mysql2/promise";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { computeAgentPointsForHandoff } from "@/lib/agent-points";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -582,6 +583,15 @@ export async function POST(req: Request) {
     params.push(id);
 
     await conn.execute(`UPDATE linescout_handoffs SET ${setParts.join(", ")} WHERE id = ?`, params);
+
+    // Compute agent points once a project is delivered.
+    if (!manufacturerUpdateOnly && target === "delivered") {
+      try {
+        await computeAgentPointsForHandoff(conn, id);
+      } catch (e) {
+        console.error("points compute error:", (e as any)?.message || e);
+      }
+    }
 
     if (shouldWriteManufacturer) {
       const manufacturerChanged =

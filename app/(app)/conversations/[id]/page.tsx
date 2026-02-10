@@ -58,6 +58,13 @@ function renderMessageText(text: string | null) {
   });
 }
 
+function formatStageLabel(value?: string | null) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === "manufacturer_found") return "Manufacturer found";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 export default function ConversationThreadPage() {
   const router = useRouter();
   const params = useParams();
@@ -94,6 +101,11 @@ export default function ConversationThreadPage() {
         }
         if (res.status === 403 && json?.code === "PROJECT_LOCKED") {
           setLocked(true);
+          if (active) {
+            setData(json as MessagesResponse);
+            setStatus("idle");
+          }
+          return;
         }
         if (active) {
           setStatus("error");
@@ -205,8 +217,8 @@ export default function ConversationThreadPage() {
             {data?.meta?.agent_name ? `Agent: ${data.meta.agent_name}` : "Assigned agent"}
           </p>
         </div>
-        <div className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-          {data?.meta?.handoff_status || "in progress"}
+        <div className="rounded-full border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-3 py-1 text-xs font-semibold text-[var(--agent-blue)]">
+          {formatStageLabel(data?.meta?.handoff_status) || "In progress"}
         </div>
       </div>
 
@@ -228,7 +240,18 @@ export default function ConversationThreadPage() {
 
       {locked ? (
         <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 shadow-sm">
-          {message || "This project is locked. Start a new project to continue."}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              {message || "This project is locked. Start a new project to continue."}
+            </div>
+            <button
+              type="button"
+              onClick={() => router.replace("/projects/new")}
+              className="btn btn-primary px-4 py-2 text-xs"
+            >
+              Start new project
+            </button>
+          </div>
         </div>
       ) : null}
 
@@ -239,11 +262,11 @@ export default function ConversationThreadPage() {
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                   item.sender_type === "user"
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-[var(--agent-blue)] text-white"
                     : "bg-neutral-100 text-neutral-900"
                 }`}
               >
-                <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${item.sender_type === "user" ? "text-emerald-100" : "text-neutral-500"}`}>
+                <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${item.sender_type === "user" ? "text-white/80" : "text-neutral-500"}`}>
                   {item.sender_type === "user" ? customerName : agentName}
                 </p>
                 <div className="space-y-2 text-sm">
@@ -257,7 +280,7 @@ export default function ConversationThreadPage() {
                           target="_blank"
                           rel="noreferrer"
                           className={`inline-flex w-fit max-w-full items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
-                            link.isQuote ? "bg-white text-emerald-700 shadow-sm" : "bg-emerald-700 text-white"
+                            link.isQuote ? "bg-white text-[var(--agent-blue)] shadow-sm" : "bg-[var(--agent-blue)] text-white"
                           }`}
                         >
                           {link.label}
@@ -294,7 +317,7 @@ export default function ConversationThreadPage() {
                     ))}
                   </div>
                 ) : null}
-                <p className={`mt-2 text-[10px] ${item.sender_type === "user" ? "text-emerald-100" : "text-neutral-400"}`}>
+                <p className={`mt-2 text-[10px] ${item.sender_type === "user" ? "text-white/80" : "text-neutral-400"}`}>
                   {shortDate.format(new Date(item.created_at))}
                 </p>
               </div>
@@ -327,7 +350,7 @@ export default function ConversationThreadPage() {
         ) : null}
 
         <form onSubmit={handleSend} className="mt-4 flex items-center gap-2">
-          <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-emerald-200 focus-within:shadow-[0_0_0_4px_rgba(16,185,129,0.15)]">
+          <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-[rgba(45,52,97,0.18)] focus-within:shadow-[0_0_0_4px_rgba(45,52,97,0.18)]">
             <label
               className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
               aria-label="Add image"
@@ -357,7 +380,7 @@ export default function ConversationThreadPage() {
                 }
               }}
               placeholder={locked ? "Chat disabled for this project" : "Type your message"}
-              className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               disabled={locked || sending}
             />
           </div>

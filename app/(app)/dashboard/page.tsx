@@ -142,7 +142,7 @@ export default function DashboardPage() {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">Active projects</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Active projects</p>
           <p className="mt-3 text-3xl font-semibold text-neutral-900">{projects.length}</p>
           <p className="mt-2 text-xs text-neutral-600">Paid sourcing projects in progress.</p>
         </div>
@@ -180,13 +180,13 @@ export default function DashboardPage() {
               <Link
                 key={item.conversation_id}
                 href={`/projects/${item.conversation_id}`}
-                className="min-w-0 rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700 hover:border-emerald-200"
+                className="min-w-0 rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700 hover:border-[rgba(45,52,97,0.2)]"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 truncate font-semibold text-neutral-900">
                     Project #{item.conversation_id}
                   </span>
-                  <span className="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  <span className="shrink-0 rounded-full border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-3 py-1 text-xs font-semibold text-[var(--agent-blue)]">
                     {item.stage}
                   </span>
                 </div>

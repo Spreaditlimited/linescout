@@ -29,6 +29,7 @@ function pickItems(raw: any) {
  * {
  *   ok: true,
  *   conversation_id: number,
+ *   route_type: string,
  *   stage: string,
  *   summary: string | null,
  *   quote_summary?: {...},
@@ -115,6 +116,7 @@ export async function GET(req: Request) {
       };
 
       const stage = String(c.handoff_status || "").trim() || "pending";
+      const routeType = String(c.route_type || "").trim() || "machine_sourcing";
 
       const goal = clip(firstUser, 240);
       const lastC = clip(lastUser, 240);
@@ -253,6 +255,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         conversation_id: conversationId,
+        route_type: routeType,
         stage,
         summary: summaryText,
         quote_summary: quoteSummary,

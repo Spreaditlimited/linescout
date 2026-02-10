@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import type { Transporter } from "nodemailer";
 
@@ -12,10 +13,16 @@ const nodemailer = require("nodemailer");
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 function isValidRouteType(v: any): v is RouteType {
-  return v === "machine_sourcing" || v === "white_label";
+  return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
+}
+
+function routeLabel(rt: RouteType) {
+  if (rt === "white_label") return "White Label";
+  if (rt === "simple_sourcing") return "Simple Sourcing";
+  return "Machine Sourcing";
 }
 
 function safeNum(v: any): number | null {
@@ -28,12 +35,15 @@ function randomChunk(len: number) {
 }
 
 function tokenPrefix(purpose: string) {
-  return purpose === "business_plan" ? "BP-" : "SRC-";
+  if (purpose === "business_plan") return "BP-";
+  if (purpose === "reorder") return "RE-";
+  return "SRC-";
 }
 
 function normalizePurpose(p: any) {
   const s = String(p || "sourcing").trim();
   if (s === "business_plan") return "business_plan";
+  if (s === "reorder") return "reorder";
   return "sourcing";
 }
 
@@ -112,6 +122,18 @@ function buildWhiteLabelBrief(row: any) {
     "",
     `Target landed cost: ${targetCost}`,
   ].join("\n");
+}
+
+function buildProductSummaryFromItems(items: any[]) {
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) return "";
+  const first = safeItems[0] || {};
+  const name = String(first.product_name || "").trim();
+  const qty = safeItems.reduce((sum, item) => sum + Number(item?.quantity || 0), 0);
+  const extras = [];
+  if (name) extras.push(name);
+  if (Number.isFinite(qty) && qty > 0) extras.push(`Qty ${qty}`);
+  return extras.join(" · ");
 }
 
 function firstNameFromUser(u: any) {
@@ -427,8 +449,18 @@ export async function POST(req: Request) {
 
     const routeTypeRaw = String(metadata.route_type || "machine_sourcing").trim();
     const routeType: RouteType = isValidRouteType(routeTypeRaw) ? (routeTypeRaw as RouteType) : "machine_sourcing";
+    let finalRouteType: RouteType = routeType;
 
     const sourceConversationId = safeNum(metadata.source_conversation_id);
+    const productMeta = metadata?.product || {};
+    const productId = normalizeText(productMeta?.id);
+    const productName = normalizeText(productMeta?.name);
+    const productCategory = normalizeText(productMeta?.category);
+    const productLandedPerUnit = normalizeText(productMeta?.landed_ngn_per_unit);
+    const reorderOfConversationId = safeNum(metadata.reorder_of_conversation_id);
+    const reorderOfHandoffId = safeNum(metadata.reorder_of_handoff_id);
+    const reorderOriginalAgentId = safeNum(metadata.reorder_original_agent_id);
+    const reorderUserNote = String(metadata.reorder_user_note || "").trim();
 
     const amountRaw = safeNum(data.amount); // kobo
     const currency = String(data.currency || "NGN").trim() || "NGN";
@@ -474,9 +506,14 @@ export async function POST(req: Request) {
               gateway_response: data.gateway_response || null,
             },
             app: metadata.app || "linescout_mobile",
-            route_type: routeType,
+            route_type: finalRouteType,
             user_id: userId,
             source_conversation_id: sourceConversationId || null,
+            reorder_of_conversation_id: reorderOfConversationId || null,
+            reorder_of_handoff_id: reorderOfHandoffId || null,
+            reorder_original_agent_id: reorderOriginalAgentId || null,
+            reorder_user_note: reorderUserNote || null,
+            product: productMeta || null,
             raw: {
               amount_kobo: amountRaw,
             },
@@ -486,7 +523,95 @@ export async function POST(req: Request) {
         ]
       );
 
-      // 1) Create paid conversation
+      // 1) Resolve re-order context + agent assignment (if applicable)
+      let assignedAgentId: number | null = null;
+      let assignedAgentEmail: string | null = null;
+      let agentEmailNotifications = false;
+      let sourceConversationIdForContext = sourceConversationId;
+      let sourceHandoffIdForContext: number | null = null;
+      let sourceAgentId: number | null = null;
+      let sourceProductSummary = "";
+
+      if (purpose === "reorder") {
+        const sourceId = reorderOfConversationId || sourceConversationId;
+        if (!sourceId) {
+          throw new Error("Missing reorder source project.");
+        }
+
+        const [srcRows]: any = await conn.query(
+          `
+          SELECT c.id, c.user_id, c.route_type, c.assigned_agent_id, c.handoff_id, h.status AS handoff_status, h.delivered_at
+          FROM linescout_conversations c
+          LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+          WHERE c.id = ? AND c.user_id = ?
+          LIMIT 1
+          `,
+          [sourceId, userId]
+        );
+        const src = srcRows?.[0];
+        if (!src?.id || !src?.handoff_id) {
+          throw new Error("Original project not found.");
+        }
+        const status = String(src.handoff_status || "").trim().toLowerCase();
+        const isDelivered = status === "delivered" || !!src.delivered_at;
+        if (!isDelivered) {
+          throw new Error("Re-order is only available for delivered projects.");
+        }
+
+        sourceConversationIdForContext = Number(src.id);
+        sourceHandoffIdForContext = Number(src.handoff_id);
+        sourceAgentId = Number(src.assigned_agent_id || 0) || null;
+        if (isValidRouteType(src.route_type)) {
+          finalRouteType = src.route_type as RouteType;
+        }
+
+        const [quoteRows]: any = await conn.query(
+          `
+          SELECT items_json
+          FROM linescout_quotes
+          WHERE handoff_id = ?
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+          [Number(src.handoff_id)]
+        );
+        if (quoteRows?.length) {
+          let items: any[] = [];
+          const raw = quoteRows[0]?.items_json;
+          if (Array.isArray(raw)) {
+            items = raw;
+          } else if (typeof raw === "string") {
+            try {
+              const parsed = JSON.parse(raw || "[]");
+              items = Array.isArray(parsed) ? parsed : [];
+            } catch {
+              items = [];
+            }
+          }
+          sourceProductSummary = buildProductSummaryFromItems(items);
+        }
+
+        if (sourceAgentId) {
+          const [agentRows]: any = await conn.query(
+            `
+            SELECT u.id, u.is_active, ap.approval_status, ap.email, ap.email_notifications_enabled
+            FROM internal_users u
+            LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+            WHERE u.id = ?
+            LIMIT 1
+            `,
+            [sourceAgentId]
+          );
+          const a = agentRows?.[0];
+          if (a?.id && Number(a.is_active) === 1 && String(a.approval_status || "") === "approved") {
+            assignedAgentId = Number(a.id);
+            assignedAgentEmail = String(a.email || "").trim() || null;
+            agentEmailNotifications = Number(a.email_notifications_enabled ?? 1) === 1;
+          }
+        }
+      }
+
+      // 2) Create paid conversation
       const [insConv]: any = await conn.query(
         `
         INSERT INTO linescout_conversations
@@ -494,15 +619,15 @@ export async function POST(req: Request) {
         VALUES
           (?, ?, 'paid_human', 0, 0, 'paid', 'active')
         `,
-        [userId, routeType]
+        [userId, finalRouteType]
       );
 
       const conversationId = Number(insConv?.insertId || 0);
       if (!conversationId) throw new Error("Failed to create paid conversation");
 
-      // 2) Create handoff and link to conversation_id
+      // 3) Create handoff and link to conversation_id
       let aiContextBlock = "";
-      if (sourceConversationId) {
+      if (sourceConversationIdForContext) {
         const [ctxRows]: any = await conn.query(
           `
           SELECT sender_type, message_text
@@ -511,7 +636,7 @@ export async function POST(req: Request) {
           ORDER BY id DESC
           LIMIT 12
           `,
-          [sourceConversationId]
+          [sourceConversationIdForContext]
         );
 
         const trimmed = (ctxRows || [])
@@ -537,7 +662,7 @@ export async function POST(req: Request) {
       }
 
       let whiteLabelBrief = "";
-      if (routeType === "white_label") {
+      if (finalRouteType === "white_label") {
         const [wlRows]: any = await conn.query(
           `
           SELECT
@@ -564,7 +689,22 @@ export async function POST(req: Request) {
 
       const contextNote = [
         "Created from in-app Paystack payment.",
-        sourceConversationId ? `Source AI conversation_id: ${sourceConversationId}` : "",
+        purpose === "reorder" && sourceConversationIdForContext
+          ? `Re-order of conversation_id: ${sourceConversationIdForContext}`
+          : sourceConversationIdForContext
+          ? `Source AI conversation_id: ${sourceConversationIdForContext}`
+          : "",
+        purpose === "reorder" && sourceHandoffIdForContext
+          ? `Original handoff_id: ${sourceHandoffIdForContext}`
+          : "",
+        sourceProductSummary ? `Original product: ${sourceProductSummary}` : "",
+        reorderUserNote ? `Customer note: ${reorderUserNote}` : "",
+        productName !== "N/A" || productCategory !== "N/A"
+          ? `Selected idea: ${productName !== "N/A" ? productName : "Unknown"}${
+              productCategory !== "N/A" ? ` (${productCategory})` : ""
+            }${productId !== "N/A" ? ` [ID ${productId}]` : ""}`
+          : "",
+        productLandedPerUnit !== "N/A" ? `Landed per unit: ${productLandedPerUnit}` : "",
         aiContextBlock,
         whiteLabelBrief || "Project brief to be provided in paid chat.",
       ]
@@ -578,77 +718,188 @@ export async function POST(req: Request) {
         VALUES
           (?, ?, ?, ?, 'pending', NOW(), ?)
         `,
-        [token, routeType === "white_label" ? "white_label" : "sourcing", payEmail, contextNote, conversationId]
+        [token, finalRouteType === "white_label" ? "white_label" : "sourcing", payEmail, contextNote, conversationId]
       );
 
       const handoffId = Number(insH?.insertId || 0);
       if (!handoffId) throw new Error("Failed to create handoff");
 
-      // 3) Link conversation -> handoff
+      // 4) Link conversation -> handoff
       await conn.query(
         `
         UPDATE linescout_conversations
-        SET handoff_id = ?, payment_status = 'paid', chat_mode = 'paid_human'
+        SET handoff_id = ?, payment_status = 'paid', chat_mode = 'paid_human', assigned_agent_id = COALESCE(?, assigned_agent_id)
         WHERE id = ? AND user_id = ?
         LIMIT 1
         `,
-        [handoffId, conversationId, userId]
+        [handoffId, assignedAgentId, conversationId, userId]
       );
+
+      if (purpose === "reorder") {
+        await ensureReordersTable(conn);
+        const statusOut = assignedAgentId ? "assigned" : "pending_admin";
+        await conn.query(
+          `
+          INSERT INTO linescout_reorder_requests
+            (user_id, conversation_id, handoff_id, source_conversation_id, source_handoff_id, new_conversation_id, new_handoff_id,
+             route_type, status, original_agent_id, assigned_agent_id, user_note, paystack_ref, amount_ngn, paid_at, assigned_at)
+          VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          `,
+          [
+            userId,
+            sourceConversationIdForContext || conversationId,
+            sourceHandoffIdForContext || handoffId,
+            sourceConversationIdForContext,
+            sourceHandoffIdForContext,
+            conversationId,
+            handoffId,
+            finalRouteType,
+            statusOut,
+            sourceAgentId,
+            assignedAgentId,
+            reorderUserNote || null,
+            reference,
+            typeof amountNaira === "number" ? amountNaira : null,
+            assignedAgentId ? new Date() : null,
+          ]
+        );
+      }
 
       await conn.commit();
 
       // 4) Notify agents about new paid chat (push + optional email)
       try {
         const agentLabel = customerFirst || "Customer";
-        const [trows]: any = await conn.query(
-          `
-          SELECT token
-          FROM linescout_agent_device_tokens
-          WHERE is_active = 1
-          `
-        );
-        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
-        await sendExpoPush(tokens, {
-          title: "New paid chat available",
-          body: `${agentLabel} just opened a paid chat. Tap to claim.`,
-          data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: routeType },
-        });
+        if (purpose === "reorder") {
+          if (assignedAgentId) {
+            const [trows]: any = await conn.query(
+              `
+              SELECT token
+              FROM linescout_agent_device_tokens
+              WHERE is_active = 1 AND agent_id = ?
+              `,
+              [assignedAgentId]
+            );
+            const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+            await sendExpoPush(tokens, {
+              title: "Re-order paid chat",
+              body: `${agentLabel} just paid to re-order a delivered project.`,
+              data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: finalRouteType },
+            });
 
-        const [emailRows]: any = await conn.query(
-          `
-          SELECT ap.email
-          FROM linescout_agent_profiles ap
-          JOIN internal_users u ON u.id = ap.internal_user_id
-          WHERE u.is_active = 1
-            AND ap.approval_status = 'approved'
-            AND COALESCE(ap.email_notifications_enabled, 1) = 1
-            AND ap.email IS NOT NULL
-            AND ap.email <> ''
-          `
-        );
-        const emails = (emailRows || [])
-          .map((r: any) => String(r.email || "").trim())
-          .filter(Boolean);
+            if (agentEmailNotifications && assignedAgentEmail) {
+              const mail = buildNoticeEmail({
+                subject: "Re-order paid chat assigned to you",
+                title: "Re-order paid chat",
+                lines: [
+                  `${agentLabel} just paid to re-order a delivered project.`,
+                  `Route: ${routeLabel(finalRouteType)}`,
+                  `Handoff ID: ${handoffId}`,
+                  "Open the LineScout Agent app to follow up.",
+                ],
+                footerNote:
+                  "This email was sent because a re-order paid chat was assigned to you on LineScout.",
+              });
+              await sendEmail({
+                to: assignedAgentEmail,
+                replyTo: "hello@sureimports.com",
+                subject: mail.subject,
+                text: mail.text,
+                html: mail.html,
+              });
+            }
+          } else {
+            const adminMail = buildNoticeEmail({
+              subject: "Re-order needs assignment",
+              title: "Re-order pending assignment",
+              lines: [
+                `Route: ${routeLabel(finalRouteType)}`,
+                `Handoff ID: ${handoffId}`,
+                `Conversation ID: ${conversationId}`,
+                `Customer email: ${payEmail}`,
+                "Original agent is inactive or unavailable. Assign in admin.",
+              ],
+              footerNote: "This email was sent because a re-order needs admin assignment.",
+            });
+            await sendEmail({
+              to: "sureimporters@gmail.com",
+              replyTo: "hello@sureimports.com",
+              subject: adminMail.subject,
+              text: adminMail.text,
+              html: adminMail.html,
+            });
+          }
+        } else {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token
+            FROM linescout_agent_device_tokens
+            WHERE is_active = 1
+            `
+          );
+          const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          await sendExpoPush(tokens, {
+            title: "New paid chat available",
+            body: `${agentLabel} just opened a paid chat. Tap to claim.`,
+            data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: finalRouteType },
+          });
 
-        for (const email of emails) {
-          const mail = buildNoticeEmail({
-            subject: "New paid chat available",
-            title: "New paid chat",
+          const [emailRows]: any = await conn.query(
+            `
+            SELECT ap.email
+            FROM linescout_agent_profiles ap
+            JOIN internal_users u ON u.id = ap.internal_user_id
+            WHERE u.is_active = 1
+              AND ap.approval_status = 'approved'
+              AND COALESCE(ap.email_notifications_enabled, 1) = 1
+              AND ap.email IS NOT NULL
+              AND ap.email <> ''
+            `
+          );
+          const emails = (emailRows || [])
+            .map((r: any) => String(r.email || "").trim())
+            .filter(Boolean);
+
+          for (const email of emails) {
+            const mail = buildNoticeEmail({
+              subject: "New paid chat available",
+              title: "New paid chat",
+              lines: [
+                `${agentLabel} just opened a paid chat.`,
+                `Route: ${routeLabel(finalRouteType)}`,
+                `Handoff ID: ${handoffId}`,
+                "Open the LineScout Agent app to claim this project.",
+              ],
+              footerNote:
+                "This email was sent because a new paid chat became available for LineScout agents.",
+            });
+            await sendEmail({
+              to: email,
+              replyTo: "hello@sureimports.com",
+              subject: mail.subject,
+              text: mail.text,
+              html: mail.html,
+            });
+          }
+
+          const adminMail = buildNoticeEmail({
+            subject: "New paid chat started",
+            title: "New paid chat started",
             lines: [
-              `${agentLabel} just opened a paid chat.`,
-              `Route: ${routeType === "white_label" ? "White Label" : "Machine Sourcing"}`,
+              `Route: ${routeLabel(finalRouteType)}`,
               `Handoff ID: ${handoffId}`,
-              "Open the LineScout Agent app to claim this project.",
+              `Conversation ID: ${conversationId}`,
+              `Customer email: ${payEmail}`,
             ],
-            footerNote:
-              "This email was sent because a new paid chat became available for LineScout agents.",
+            footerNote: "This email was sent because a paid chat was started on LineScout.",
           });
           await sendEmail({
-            to: email,
+            to: "sureimporters@gmail.com",
             replyTo: "hello@sureimports.com",
-            subject: mail.subject,
-            text: mail.text,
-            html: mail.html,
+            subject: adminMail.subject,
+            text: adminMail.text,
+            html: adminMail.html,
           });
         }
       } catch {}
@@ -678,7 +929,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         purpose,
-        route_type: routeType,
+        route_type: finalRouteType,
         receipt_token: token,
         paystack_ref: reference,
         amount: amountNaira,

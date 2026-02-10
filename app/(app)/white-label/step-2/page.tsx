@@ -94,7 +94,7 @@ export default function WhiteLabelStep2Page() {
     <div className="px-6 py-10">
       <div className="relative">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Define the product clearly</h1>
           <p className="text-sm text-neutral-600">
             The goal is to remove guessing. A strong reference link makes quoting faster and more accurate.
@@ -114,7 +114,7 @@ export default function WhiteLabelStep2Page() {
                   <input
                     value={productName}
                     onChange={(e) => setProductName(e.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                     placeholder="Example: 20,000mAh power bank with fast charge"
                   />
                   <p className="mt-2 text-xs text-neutral-500">Use the name you’d use to sell it in Nigeria.</p>
@@ -126,7 +126,7 @@ export default function WhiteLabelStep2Page() {
                     rows={4}
                     value={productDesc}
                     onChange={(e) => setProductDesc(e.target.value)}
-                    className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                     placeholder="Size, material, color, packaging, features..."
                   />
                   <p className="mt-2 text-xs text-neutral-500">
@@ -156,7 +156,7 @@ export default function WhiteLabelStep2Page() {
                     value={referenceLink}
                     onChange={(e) => setReferenceLink(e.target.value)}
                     disabled={noLink}
-                    className="mt-3 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-neutral-50"
+                    className="mt-3 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)] disabled:bg-neutral-50"
                     placeholder="Paste a link that matches your product"
                   />
                   <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">

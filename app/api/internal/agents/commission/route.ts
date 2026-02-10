@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { getAgentEarningsSnapshot } from "@/lib/agent-earnings";
+import { getAgentPointsSummary } from "@/lib/agent-points";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,13 +57,29 @@ async function requireInternalSession() {
 }
 
 async function ensureSettings(conn: any) {
+  const [pointsCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'points_value_ngn'
+    LIMIT 1
+    `
+  );
+  if (!pointsCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN points_value_ngn BIGINT NOT NULL DEFAULT 0`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb)
-     VALUES (0, 5, 40, 20, 0, 0)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, points_value_ngn)
+     VALUES (0, 5, 40, 20, 0, 0, 0)`
   );
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   return after?.[0] || null;
@@ -77,14 +94,18 @@ export async function GET() {
     const settings = await ensureSettings(conn);
     const earnings =
       auth.role === "agent" ? await getAgentEarningsSnapshot(conn, auth.userId) : null;
+    const points =
+      auth.role === "agent" ? await getAgentPointsSummary(conn, auth.userId) : null;
 
     return NextResponse.json({
       ok: true,
       commission: {
         agent_percent: Number(settings?.agent_percent || 0),
         agent_commitment_percent: Number(settings?.agent_commitment_percent || 0),
+        points_value_ngn: Number(settings?.points_value_ngn || 0),
       },
       earnings,
+      points,
     });
   } finally {
     conn.release();

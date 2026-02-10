@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { queryRows } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 // This is what the drawer needs for Projects.
 // NOTE: "stage" comes from linescout_handoffs.status (pending, claimed, etc.)

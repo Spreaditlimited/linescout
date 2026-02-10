@@ -3,14 +3,16 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 type EntryMode = "ai_only" | "limited_human" | "paid_human";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function normRouteType(v: string | null): RouteType {
-  return v === "white_label" ? "white_label" : "machine_sourcing";
+  if (v === "white_label") return "white_label";
+  if (v === "simple_sourcing") return "simple_sourcing";
+  return "machine_sourcing";
 }
 
 function computeEntryMode(row: any): {

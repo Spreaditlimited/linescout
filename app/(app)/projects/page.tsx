@@ -60,21 +60,15 @@ export default function ProjectsPage() {
     () => [
       { value: "all", label: "All routes" },
       { value: "machine_sourcing", label: "Machine sourcing" },
+      { value: "simple_sourcing", label: "Simple sourcing" },
       { value: "white_label", label: "White label" },
     ],
     []
   );
 
-  const stageOptions = useMemo(
-    () => [
-      { value: "all", label: "All stages" },
-      { value: "pending", label: "Pending" },
-      { value: "claimed", label: "Claimed" },
-      { value: "in_progress", label: "In progress" },
-      { value: "completed", label: "Completed" },
-    ],
-    []
-  );
+  const [stageOptions, setStageOptions] = useState<Array<{ value: string; label: string }>>([
+    { value: "all", label: "All stages" },
+  ]);
 
   const filteredRouteOptions = useMemo(() => {
     const q = routeQuery.trim().toLowerCase();
@@ -150,6 +144,29 @@ export default function ProjectsPage() {
     };
   }, [router]);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/handshake/handoff-stages", { cache: "no-store" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok || !Array.isArray(json.stages)) return;
+        const items = json.stages.map((s: any) => ({
+          value: String(s.value || "").trim(),
+          label: String(s.label || "").trim(),
+        })).filter((s: any) => s.value);
+        if (active && items.length) {
+          setStageOptions([{ value: "all", label: "All stages" }, ...items]);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -173,13 +190,13 @@ export default function ProjectsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by project ID or stage"
-              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
             />
             <div ref={routeRef} className="relative">
               <button
                 type="button"
                 onClick={() => setRouteOpen((v) => !v)}
-                className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               >
                 <span>{routeFilter === "all" ? "All routes" : routeFilter.replace("_", " ")}</span>
                 <ChevronDown className="h-4 w-4 text-neutral-400" />
@@ -218,7 +235,7 @@ export default function ProjectsPage() {
                     value={routeQuery}
                     onChange={(e) => setRouteQuery(e.target.value)}
                     placeholder="Search routes"
-                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.12)]"
                   />
                   <div className="mt-2 max-h-48 overflow-y-auto">
                     {filteredRouteOptions.length === 0 ? (
@@ -237,13 +254,13 @@ export default function ProjectsPage() {
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition ${
                         routeFilter === item.value || routeActive === index
-                          ? "bg-emerald-50 text-emerald-700"
+                          ? "bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                           : "text-neutral-700 hover:bg-neutral-50"
                       }`}
                     >
                       <span>{item.label}</span>
                       {routeFilter === item.value ? (
-                        <span className="text-emerald-600">Selected</span>
+                        <span className="text-[var(--agent-blue)]">Selected</span>
                       ) : null}
                     </button>
                       ))
@@ -256,7 +273,7 @@ export default function ProjectsPage() {
               <button
                 type="button"
                 onClick={() => setStageOpen((v) => !v)}
-                className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               >
                 <span>{stageFilter === "all" ? "All stages" : stageFilter.replace("_", " ")}</span>
                 <ChevronDown className="h-4 w-4 text-neutral-400" />
@@ -295,7 +312,7 @@ export default function ProjectsPage() {
                     value={stageQuery}
                     onChange={(e) => setStageQuery(e.target.value)}
                     placeholder="Search stages"
-                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                    className="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.12)]"
                   />
                   <div className="mt-2 max-h-48 overflow-y-auto">
                     {filteredStageOptions.length === 0 ? (
@@ -314,13 +331,13 @@ export default function ProjectsPage() {
                       }}
                       className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition ${
                         stageFilter === item.value || stageActive === index
-                          ? "bg-emerald-50 text-emerald-700"
+                          ? "bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                           : "text-neutral-700 hover:bg-neutral-50"
                       }`}
                     >
                       <span>{item.label}</span>
                       {stageFilter === item.value ? (
-                        <span className="text-emerald-600">Selected</span>
+                        <span className="text-[var(--agent-blue)]">Selected</span>
                       ) : null}
                     </button>
                       ))
@@ -357,11 +374,11 @@ export default function ProjectsPage() {
           <Link
             key={project.conversation_id}
             href={`/projects/${project.conversation_id}`}
-            className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-200"
+            className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[rgba(45,52,97,0.2)]"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
                   {project.route_type?.replace("_", " ") || "Project"}
                 </p>
                 <h2 className="mt-2 text-lg font-semibold text-neutral-900">

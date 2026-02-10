@@ -29,6 +29,8 @@ type SettingsItem = {
   agent_percent: number;
   agent_commitment_percent: number;
   markup_percent: number;
+  points_value_ngn?: number;
+  points_config_json?: any;
   exchange_rate_usd: number;
   exchange_rate_rmb: number;
   payout_summary_email?: string | null;
@@ -45,6 +47,40 @@ type ShippingRateItem = {
   rate_unit: "per_kg" | "per_cbm";
   currency: string;
   is_active?: number;
+};
+
+type Threshold = { max: number; points: number };
+type PointsConfig = {
+  claim_hours: Threshold[];
+  manufacturer_hours: Threshold[];
+  ship_days: Threshold[];
+  response_minutes: Threshold[];
+};
+
+const defaultPointsConfig: PointsConfig = {
+  claim_hours: [
+    { max: 2, points: 15 },
+    { max: 6, points: 12 },
+    { max: 24, points: 8 },
+    { max: 72, points: 4 },
+  ],
+  manufacturer_hours: [
+    { max: 24, points: 20 },
+    { max: 48, points: 16 },
+    { max: 96, points: 10 },
+    { max: 168, points: 5 },
+  ],
+  ship_days: [
+    { max: 14, points: 20 },
+    { max: 21, points: 14 },
+    { max: 28, points: 8 },
+  ],
+  response_minutes: [
+    { max: 30, points: 30 },
+    { max: 120, points: 24 },
+    { max: 360, points: 18 },
+    { max: 1440, points: 10 },
+  ],
 };
 
 export default function InternalSettingsPage() {
@@ -75,6 +111,8 @@ export default function InternalSettingsPage() {
   const [agentPercent, setAgentPercent] = useState("5");
   const [agentCommitmentPercent, setAgentCommitmentPercent] = useState("40");
   const [markupPercent, setMarkupPercent] = useState("20");
+  const [pointsValue, setPointsValue] = useState("0");
+  const [pointsConfig, setPointsConfig] = useState<PointsConfig>(defaultPointsConfig);
   const [exchangeUsd, setExchangeUsd] = useState("0");
   const [exchangeRmb, setExchangeRmb] = useState("0");
   const [payoutSummaryEmail, setPayoutSummaryEmail] = useState("");
@@ -142,6 +180,32 @@ export default function InternalSettingsPage() {
       setAgentPercent(String(item.agent_percent ?? 0));
       setAgentCommitmentPercent(String(item.agent_commitment_percent ?? 0));
       setMarkupPercent(String(item.markup_percent ?? 0));
+      setPointsValue(String(item.points_value_ngn ?? 0));
+      if (item.points_config_json) {
+        const raw = item.points_config_json;
+        const parsed =
+          typeof raw === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(raw);
+                } catch {
+                  return null;
+                }
+              })()
+            : raw;
+        if (parsed && typeof parsed === "object") {
+          setPointsConfig({
+            claim_hours: Array.isArray(parsed.claim_hours) ? parsed.claim_hours : defaultPointsConfig.claim_hours,
+            manufacturer_hours: Array.isArray(parsed.manufacturer_hours)
+              ? parsed.manufacturer_hours
+              : defaultPointsConfig.manufacturer_hours,
+            ship_days: Array.isArray(parsed.ship_days) ? parsed.ship_days : defaultPointsConfig.ship_days,
+            response_minutes: Array.isArray(parsed.response_minutes)
+              ? parsed.response_minutes
+              : defaultPointsConfig.response_minutes,
+          });
+        }
+      }
       setExchangeUsd(String(item.exchange_rate_usd ?? 0));
       setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
       setPayoutSummaryEmail(String(item.payout_summary_email || ""));
@@ -167,6 +231,8 @@ export default function InternalSettingsPage() {
         agent_percent: Number(agentPercent),
         agent_commitment_percent: Number(agentCommitmentPercent),
         markup_percent: Number(markupPercent),
+        points_value_ngn: Number(pointsValue),
+        points_config_json: pointsConfig,
         exchange_rate_usd: Number(exchangeUsd),
         exchange_rate_rmb: Number(exchangeRmb),
         payout_summary_email: payoutSummaryEmail.trim(),
@@ -402,10 +468,32 @@ export default function InternalSettingsPage() {
     const agentPct = Number(agentPercent);
     const agentCommitPct = Number(agentCommitmentPercent);
     const markupPct = Number(markupPercent);
+    const pointsValueNgn = Number(pointsValue);
     const usdRate = Number(exchangeUsd);
     const rmbRate = Number(exchangeRmb);
     const payoutEmail = payoutSummaryEmail.trim();
     const otpModeOk = agentOtpMode === "phone" || agentOtpMode === "email";
+    const configOk = (label: string, list: Threshold[]) => {
+      if (!Array.isArray(list) || list.length === 0) {
+        errors.push(`${label} thresholds are required.`);
+        return;
+      }
+      let prev = -1;
+      list.forEach((t, idx) => {
+        const max = Number(t?.max);
+        const pts = Number(t?.points);
+        if (!Number.isFinite(max) || max <= 0) {
+          errors.push(`${label} row ${idx + 1}: max must be > 0`);
+        }
+        if (!Number.isFinite(pts) || pts < 0) {
+          errors.push(`${label} row ${idx + 1}: points must be >= 0`);
+        }
+        if (max <= prev) {
+          errors.push(`${label} row ${idx + 1}: max must increase`);
+        }
+        prev = max;
+      });
+    };
 
     if (!Number.isFinite(commitment) || commitment < 0) {
       errors.push("Commitment fee must be 0 or more.");
@@ -419,6 +507,9 @@ export default function InternalSettingsPage() {
     if (!Number.isFinite(markupPct) || markupPct < 0 || markupPct > 100) {
       errors.push("Markup percent must be between 0 and 100.");
     }
+    if (!Number.isFinite(pointsValueNgn) || pointsValueNgn < 0) {
+      errors.push("Points value (NGN per point) must be 0 or more.");
+    }
     if (!Number.isFinite(usdRate) || usdRate <= 0) {
       errors.push("Exchange rate USD → NGN must be greater than 0.");
     }
@@ -431,6 +522,10 @@ export default function InternalSettingsPage() {
     if (!otpModeOk) {
       errors.push("Agent OTP mode must be phone or email.");
     }
+    configOk("Claim speed (hours)", pointsConfig.claim_hours);
+    configOk("Manufacturer found (hours)", pointsConfig.manufacturer_hours);
+    configOk("Payment to shipped (days)", pointsConfig.ship_days);
+    configOk("Response time (minutes)", pointsConfig.response_minutes);
 
     return { ok: errors.length === 0, errors };
   }, [
@@ -438,6 +533,8 @@ export default function InternalSettingsPage() {
     agentPercent,
     agentCommitmentPercent,
     markupPercent,
+    pointsValue,
+    pointsConfig,
     exchangeUsd,
     exchangeRmb,
     payoutSummaryEmail,
@@ -477,6 +574,16 @@ export default function InternalSettingsPage() {
       return `$${value.toFixed(2)}`;
     }
   };
+
+  function updateThreshold(listKey: keyof PointsConfig, index: number, field: "max" | "points", value: string) {
+    const num = Number(value);
+    setPointsConfig((prev) => {
+      const list = [...(prev[listKey] || [])];
+      const item = { ...list[index], [field]: Number.isFinite(num) ? num : 0 };
+      list[index] = item;
+      return { ...prev, [listKey]: list };
+    });
+  }
 
   function resetForm() {
     setCustomerName("");
@@ -677,6 +784,124 @@ export default function InternalSettingsPage() {
               placeholder="20"
               inputMode="decimal"
             />
+          </div>
+          <div>
+            <label className="text-xs text-neutral-400">Points value (NGN per point)</label>
+            <input
+              value={pointsValue}
+              onChange={(e) => setPointsValue(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="100"
+              inputMode="decimal"
+            />
+          </div>
+          <div className="sm:col-span-3 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-neutral-100">Agent points scoring</p>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Configure time thresholds and points for each transition.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4">
+              <div>
+                <p className="text-xs font-semibold text-neutral-300">Claim speed (hours)</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  {pointsConfig.claim_hours.map((row, idx) => (
+                    <div key={`claim-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                      <label className="text-[11px] text-neutral-500">Max hours</label>
+                      <input
+                        value={row.max}
+                        onChange={(e) => updateThreshold("claim_hours", idx, "max", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <input
+                        value={row.points}
+                        onChange={(e) => updateThreshold("claim_hours", idx, "points", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-neutral-300">Manufacturer found (hours)</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  {pointsConfig.manufacturer_hours.map((row, idx) => (
+                    <div key={`mfg-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                      <label className="text-[11px] text-neutral-500">Max hours</label>
+                      <input
+                        value={row.max}
+                        onChange={(e) => updateThreshold("manufacturer_hours", idx, "max", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <input
+                        value={row.points}
+                        onChange={(e) => updateThreshold("manufacturer_hours", idx, "points", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-neutral-300">Payment to shipped (days)</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {pointsConfig.ship_days.map((row, idx) => (
+                    <div key={`ship-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                      <label className="text-[11px] text-neutral-500">Max days</label>
+                      <input
+                        value={row.max}
+                        onChange={(e) => updateThreshold("ship_days", idx, "max", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <input
+                        value={row.points}
+                        onChange={(e) => updateThreshold("ship_days", idx, "points", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-neutral-300">Response time (minutes)</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+                  {pointsConfig.response_minutes.map((row, idx) => (
+                    <div key={`resp-${idx}`} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                      <label className="text-[11px] text-neutral-500">Max minutes</label>
+                      <input
+                        value={row.max}
+                        onChange={(e) => updateThreshold("response_minutes", idx, "max", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                      <label className="mt-2 block text-[11px] text-neutral-500">Points</label>
+                      <input
+                        value={row.points}
+                        onChange={(e) => updateThreshold("response_minutes", idx, "points", e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                        inputMode="decimal"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
           <div>
             <label className="text-xs text-neutral-400">Exchange rate (USD → NGN)</label>

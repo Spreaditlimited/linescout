@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import EmailOtpForm from "@/components/auth/EmailOtpForm";
 
@@ -10,7 +11,9 @@ export default function SignInPage() {
       >
         ← Back to home
       </Link>
-      <EmailOtpForm />
+      <Suspense fallback={null}>
+        <EmailOtpForm />
+      </Suspense>
     </div>
   );
 }

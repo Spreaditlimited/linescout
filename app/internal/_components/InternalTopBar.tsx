@@ -234,6 +234,7 @@ export default function InternalTopBar() {
     adminItems.push({ label: "Reviewer Access", href: "/internal/admin/reviewer-accounts" });
     adminItems.push({ label: "White Label Products", href: "/internal/admin/white-label-products" });
     adminItems.push({ label: "Agent Approval", href: "/internal/admin/agent-approval" });
+    adminItems.push({ label: "Reorders", href: "/internal/admin/reorders" });
     adminItems.push({ label: "Payouts", href: "/internal/admin/payouts" });
     adminItems.push({ label: "Agent Support", href: "/internal/agent-support" });
     adminItems.push({ label: "Notifications", href: "/internal/notifications" });

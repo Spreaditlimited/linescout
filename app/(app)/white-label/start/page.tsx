@@ -74,13 +74,13 @@ export default function WhiteLabelStartPage() {
   return (
     <div className="px-6 py-10">
       <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
         <h1 className="mt-2 text-2xl font-semibold text-neutral-900">Preparing your draft</h1>
         <p className="mt-2 text-sm text-neutral-600">
           We’re loading your latest progress so you can continue where you left off.
         </p>
         <div className="mt-5 h-2 w-full rounded-full bg-neutral-100">
-          <div className="h-2 w-1/2 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="h-2 w-1/2 rounded-full bg-[rgba(45,52,97,0.35)] animate-pulse" />
         </div>
       </div>
     </div>

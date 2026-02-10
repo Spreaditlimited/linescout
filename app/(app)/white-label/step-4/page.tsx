@@ -100,7 +100,7 @@ export default function WhiteLabelStep4Page() {
     <div className="px-6 py-10">
       <div className="relative">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Target landed cost per unit</h1>
           <p className="text-sm text-neutral-600">
             This is your maximum cost per unit after shipping and clearing into Nigeria. If it’s unrealistic, we will
@@ -121,7 +121,7 @@ export default function WhiteLabelStep4Page() {
                   value={targetLandedCost}
                   onChange={(e) => setTargetLandedCost(String(e.target.value || "").replace(/[^\d]/g, ""))}
                   inputMode="numeric"
-                  className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                  className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                   placeholder="Example: 8500"
                 />
                 <p className="mt-2 text-xs text-neutral-500">

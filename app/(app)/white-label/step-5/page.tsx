@@ -106,7 +106,7 @@ export default function WhiteLabelStep5Page() {
     <div className="px-6 py-10">
       <div className="relative">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Review your project file</h1>
           <p className="text-sm text-neutral-600">
             This summary is what your specialist will use once you proceed. If anything is wrong, go back and correct

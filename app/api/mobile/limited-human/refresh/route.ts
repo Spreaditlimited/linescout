@@ -4,9 +4,9 @@ import { requireUser } from "@/lib/auth";
 import { queryOne, exec } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
 
-type RouteType = "machine_sourcing" | "white_label";
+type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 function isRouteType(x: any): x is RouteType {
-  return x === "machine_sourcing" || x === "white_label";
+  return x === "machine_sourcing" || x === "white_label" || x === "simple_sourcing";
 }
 
 type QuickRow = RowDataPacket & {

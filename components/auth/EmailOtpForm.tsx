@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 
 type Step = "email" | "otp";
 
 export default function EmailOtpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -15,17 +16,13 @@ export default function EmailOtpForm() {
   const [message, setMessage] = useState<string | null>(null);
 
   async function routeAfterProfile() {
-    const projectsRes = await authFetch("/api/mobile/projects");
-    const projectsJson = await projectsRes.json().catch(() => ({}));
-    if (!projectsRes.ok) {
-      router.replace("/machine");
-      return;
+    const nextParam = String(searchParams.get("next") || "").trim();
+    let safeNext =
+      nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+    if (safeNext === "/white-label" || safeNext.startsWith("/white-label?")) {
+      safeNext = "/white-label/ideas";
     }
-    const projects: Array<{ has_active_project?: boolean }> = Array.isArray(projectsJson?.projects)
-      ? projectsJson.projects
-      : [];
-    const hasActive = projects.some((p) => Boolean(p?.has_active_project));
-    router.replace(hasActive ? "/dashboard" : "/machine");
+    router.replace(safeNext || "/white-label/ideas");
   }
 
   useEffect(() => {
@@ -114,9 +111,9 @@ export default function EmailOtpForm() {
   }
 
   return (
-    <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white/80 p-8 shadow-2xl shadow-emerald-200/40 backdrop-blur">
+    <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white/80 p-8 shadow-2xl shadow-[rgba(45,52,97,0.25)] backdrop-blur">
       <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
           LineScout
         </p>
         <h1 className="text-3xl font-semibold text-neutral-900">Welcome to LineScout</h1>
@@ -137,7 +134,7 @@ export default function EmailOtpForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
-              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
             />
           </div>
         ) : (
@@ -151,7 +148,7 @@ export default function EmailOtpForm() {
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
               placeholder="123456"
-              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm tracking-[0.4em] text-neutral-900 shadow-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+              className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm tracking-[0.4em] text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
             />
           </div>
         )}
@@ -161,7 +158,7 @@ export default function EmailOtpForm() {
             className={`rounded-2xl border px-4 py-3 text-xs ${
               status === "error"
                 ? "border-red-200 bg-red-50 text-red-700"
-                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
             }`}
           >
             {message}
@@ -185,7 +182,7 @@ export default function EmailOtpForm() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-600">
           <button
             type="button"
-            className="text-emerald-600 hover:text-emerald-700"
+            className="text-[var(--agent-blue)] hover:text-[var(--agent-blue)]"
             onClick={() => {
               setStep("email");
               setOtp("");
@@ -196,7 +193,7 @@ export default function EmailOtpForm() {
           </button>
           <button
             type="button"
-            className="text-emerald-600 hover:text-emerald-700"
+            className="text-[var(--agent-blue)] hover:text-[var(--agent-blue)]"
             onClick={async () => {
               setStatus("idle");
               setMessage(null);

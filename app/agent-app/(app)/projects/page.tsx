@@ -39,6 +39,7 @@ function getDisplayFirstName(fullName?: string | null) {
 
 function getRouteLabel(route?: string | null) {
   if (route === "white_label") return "White Label";
+  if (route === "simple_sourcing") return "Simple Sourcing";
   if (route === "machine_sourcing") return "Machine Sourcing";
   return "General";
 }

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import QuoteClient from "./QuoteClient";
@@ -101,20 +102,22 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     }
 
     return (
-      <QuoteClient
-        token={quote.token}
-        customerName={quote.customer_name}
-        agentNote={quote.agent_note}
-        items={items}
-        exchangeRmb={exchangeRmb}
-        exchangeUsd={exchangeUsd}
-        markupPercent={markupPercent}
-        shippingRates={shippingRates}
-        defaultShippingTypeId={quote.shipping_type_id}
-        depositEnabled={!!quote.deposit_enabled}
-        depositPercent={Number(quote.deposit_percent || 0)}
-        commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
-      />
+      <Suspense fallback={null}>
+        <QuoteClient
+          token={quote.token}
+          customerName={quote.customer_name}
+          agentNote={quote.agent_note}
+          items={items}
+          exchangeRmb={exchangeRmb}
+          exchangeUsd={exchangeUsd}
+          markupPercent={markupPercent}
+          shippingRates={shippingRates}
+          defaultShippingTypeId={quote.shipping_type_id}
+          depositEnabled={!!quote.deposit_enabled}
+          depositPercent={Number(quote.deposit_percent || 0)}
+          commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
+        />
+      </Suspense>
     );
   } finally {
     conn.release();

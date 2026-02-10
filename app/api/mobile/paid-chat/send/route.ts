@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { sendNoticeEmail } from "@/lib/notice-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,6 +151,7 @@ export async function POST(req: Request) {
         SELECT
           c.id,
           c.user_id,
+          c.route_type,
           c.chat_mode,
           c.payment_status,
           c.project_status,
@@ -172,6 +174,13 @@ export async function POST(req: Request) {
       }
 
       const c = crows[0];
+      const routeRaw = String(c.route_type || "");
+      const routeLabel =
+        routeRaw === "white_label"
+          ? "White Label"
+          : routeRaw === "simple_sourcing"
+            ? "Simple Sourcing"
+            : "Machine Sourcing";
       const assignedAgentId = c.assigned_agent_id == null ? null : Number(c.assigned_agent_id);
 
       if (String(c.chat_mode) !== "paid_human") {
@@ -403,6 +412,42 @@ export async function POST(req: Request) {
             body: (hasText ? messageText : "Attachment").slice(0, 120),
             data: { kind: "paid", conversation_id: conversationId },
           });
+
+          const [emailRows]: any = await conn.query(
+            `
+            SELECT ap.email
+            FROM linescout_agent_profiles ap
+            JOIN internal_users iu ON iu.id = ap.internal_user_id
+            WHERE iu.is_active = 1
+              AND ap.approval_status = 'approved'
+              AND COALESCE(ap.email_notifications_enabled, 1) = 1
+              AND ap.email IS NOT NULL
+              AND ap.email <> ''
+              ${assignedAgentId ? "AND ap.internal_user_id = ?" : ""}
+            `,
+            assignedAgentId ? [assignedAgentId] : []
+          );
+
+          const emails = (emailRows || [])
+            .map((r: any) => String(r.email || "").trim())
+            .filter(Boolean);
+
+          const preview = (hasText ? messageText : "Attachment").trim().slice(0, 120);
+          for (const email of emails) {
+            await sendNoticeEmail({
+              to: email,
+              subject: "New paid chat message",
+              title: "New paid chat message",
+              lines: [
+                "A customer sent a new message in a paid chat.",
+                `Route: ${routeLabel}`,
+                `Conversation ID: ${conversationId}`,
+                `Preview: ${preview || "Attachment"}`,
+              ],
+              footerNote:
+                "This email was sent because a paid chat received a new message on LineScout.",
+            });
+          }
         }
       } catch {}
 

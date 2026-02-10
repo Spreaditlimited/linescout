@@ -98,7 +98,7 @@ export default function WhiteLabelStep1Page() {
     <div className="px-6 py-10">
       <div className="relative">
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">White Label Wizard</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Choose your product category</h1>
           <p className="text-sm text-neutral-600">
             This helps us route your project to the right specialist. If you’re not sure, pick the closest option.
@@ -122,8 +122,8 @@ export default function WhiteLabelStep1Page() {
                       onClick={() => setCategory(c)}
                       className={`group rounded-2xl border px-4 py-4 text-left transition ${
                         selected
-                          ? "border-emerald-600 bg-emerald-600 text-white"
-                          : "border-neutral-200 bg-white text-neutral-900 hover:border-emerald-200"
+                          ? "border-[var(--agent-blue)] bg-[var(--agent-blue)] text-white"
+                          : "border-neutral-200 bg-white text-neutral-900 hover:border-[rgba(45,52,97,0.2)]"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">

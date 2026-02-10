@@ -56,7 +56,11 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const routeType = String(body?.route_type || "");
 
-    if (routeType !== "machine_sourcing" && routeType !== "white_label") {
+    if (
+      routeType !== "machine_sourcing" &&
+      routeType !== "white_label" &&
+      routeType !== "simple_sourcing"
+    ) {
       return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
     }
 
