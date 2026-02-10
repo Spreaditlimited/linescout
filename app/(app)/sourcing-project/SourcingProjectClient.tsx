@@ -97,12 +97,20 @@ export default function SourcingProjectClient() {
   const productName = String(searchParams.get("product_name") || "").trim();
   const productCategory = String(searchParams.get("product_category") || "").trim();
   const productLandedPerUnit = String(searchParams.get("product_landed_ngn_per_unit") || "").trim();
+  const simpleProductName = String(searchParams.get("simple_product_name") || "").trim();
+  const simpleQuantity = String(searchParams.get("simple_quantity") || "").trim();
+  const simpleDestination = String(searchParams.get("simple_destination") || "").trim();
+  const simpleNotes = String(searchParams.get("simple_notes") || "").trim();
   const nextUrl = `/sourcing-project?route_type=${encodeURIComponent(routeType)}${
     sourceConversationId ? `&source_conversation_id=${encodeURIComponent(String(sourceConversationId))}` : ""
   }${productId ? `&product_id=${encodeURIComponent(productId)}` : ""}${
     productName ? `&product_name=${encodeURIComponent(productName)}` : ""
   }${productCategory ? `&product_category=${encodeURIComponent(productCategory)}` : ""}${
     productLandedPerUnit ? `&product_landed_ngn_per_unit=${encodeURIComponent(productLandedPerUnit)}` : ""
+  }${simpleProductName ? `&simple_product_name=${encodeURIComponent(simpleProductName)}` : ""}${
+    simpleQuantity ? `&simple_quantity=${encodeURIComponent(simpleQuantity)}` : ""
+  }${simpleDestination ? `&simple_destination=${encodeURIComponent(simpleDestination)}` : ""}${
+    simpleNotes ? `&simple_notes=${encodeURIComponent(simpleNotes)}` : ""
   }`;
   const signInUrl = `/sign-in?next=${encodeURIComponent(nextUrl)}`;
 
@@ -192,6 +200,10 @@ export default function SourcingProjectClient() {
       ...(productName ? { product_name: productName } : {}),
       ...(productCategory ? { product_category: productCategory } : {}),
       ...(productLandedPerUnit ? { product_landed_ngn_per_unit: productLandedPerUnit } : {}),
+      ...(simpleProductName ? { simple_product_name: simpleProductName } : {}),
+      ...(simpleQuantity ? { simple_quantity: simpleQuantity } : {}),
+      ...(simpleDestination ? { simple_destination: simpleDestination } : {}),
+      ...(simpleNotes ? { simple_notes: simpleNotes } : {}),
     });
     router.push(`/paystack-checkout?${qs.toString()}`);
     setTimeout(() => setWorking(null), 250);

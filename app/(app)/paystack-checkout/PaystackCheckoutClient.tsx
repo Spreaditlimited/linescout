@@ -40,6 +40,22 @@ export default function PaystackCheckoutClient() {
     () => String(searchParams.get("reorder_user_note") || "").trim(),
     [searchParams]
   );
+  const simpleProductName = useMemo(
+    () => String(searchParams.get("simple_product_name") || "").trim(),
+    [searchParams]
+  );
+  const simpleQuantity = useMemo(
+    () => String(searchParams.get("simple_quantity") || "").trim(),
+    [searchParams]
+  );
+  const simpleDestination = useMemo(
+    () => String(searchParams.get("simple_destination") || "").trim(),
+    [searchParams]
+  );
+  const simpleNotes = useMemo(
+    () => String(searchParams.get("simple_notes") || "").trim(),
+    [searchParams]
+  );
 
   const [loading, setLoading] = useState(true);
   const [authUrl, setAuthUrl] = useState("");
@@ -65,6 +81,10 @@ export default function PaystackCheckoutClient() {
           source_conversation_id: sourceConversationId,
           reorder_of_conversation_id: reorderOfConversationId,
           reorder_user_note: reorderUserNote,
+          simple_product_name: simpleProductName || null,
+          simple_quantity: simpleQuantity || null,
+          simple_destination: simpleDestination || null,
+          simple_notes: simpleNotes || null,
           callback_url: callbackUrl,
         }),
       });
@@ -89,7 +109,17 @@ export default function PaystackCheckoutClient() {
     return () => {
       active = false;
     };
-  }, [purpose, routeType, sourceConversationId, reorderOfConversationId, reorderUserNote]);
+  }, [
+    purpose,
+    routeType,
+    sourceConversationId,
+    reorderOfConversationId,
+    reorderUserNote,
+    simpleProductName,
+    simpleQuantity,
+    simpleDestination,
+    simpleNotes,
+  ]);
 
   return (
     <div className="flex min-h-[70vh] items-center px-6 py-10">

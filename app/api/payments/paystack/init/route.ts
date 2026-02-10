@@ -73,6 +73,10 @@ export async function POST(req: Request) {
     const productName = String(body?.product_name || "").trim();
     const productCategory = String(body?.product_category || "").trim();
     const productLandedPerUnit = String(body?.product_landed_ngn_per_unit || "").trim();
+    const simpleProductName = String(body?.simple_product_name || "").trim();
+    const simpleQuantity = String(body?.simple_quantity || "").trim();
+    const simpleDestination = String(body?.simple_destination || "").trim();
+    const simpleNotes = String(body?.simple_notes || "").trim();
     const reorderOfConversationIdRaw = Number(body?.reorder_of_conversation_id || 0);
     const reorderUserNote = String(body?.reorder_user_note || "").trim();
 
@@ -169,6 +173,15 @@ export async function POST(req: Request) {
         reorder_of_handoff_id: reorderOfHandoffId,
         reorder_original_agent_id: reorderOriginalAgentId,
         reorder_user_note: reorderUserNote || null,
+        simple_sourcing_brief:
+          simpleProductName || simpleQuantity || simpleDestination || simpleNotes
+            ? {
+                product_name: simpleProductName || null,
+                quantity: simpleQuantity || null,
+                destination: simpleDestination || null,
+                notes: simpleNotes || null,
+              }
+            : null,
         product: productId || productName || productCategory
           ? {
               id: productId || null,

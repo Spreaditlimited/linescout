@@ -124,6 +124,24 @@ function buildWhiteLabelBrief(row: any) {
   ].join("\n");
 }
 
+function buildSimpleSourcingBrief(raw: any) {
+  if (!raw) return "";
+  const productName = normalizeText(raw?.product_name);
+  const quantity = normalizeText(raw?.quantity);
+  const destination = normalizeText(raw?.destination);
+  const notes = normalizeText(raw?.notes);
+  const lines: string[] = ["SOURCING BRIEF"];
+  if (productName !== "N/A") lines.push(`Product: ${productName}`);
+  if (quantity !== "N/A") lines.push(`Quantity: ${quantity}`);
+  if (destination !== "N/A") lines.push(`Destination: ${destination}`);
+  if (notes !== "N/A") {
+    lines.push("");
+    lines.push("Notes:");
+    lines.push(notes);
+  }
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
 function buildProductSummaryFromItems(items: any[]) {
   const safeItems = Array.isArray(items) ? items : [];
   if (!safeItems.length) return "";
@@ -453,6 +471,7 @@ export async function POST(req: Request) {
 
     const sourceConversationId = safeNum(metadata.source_conversation_id);
     const productMeta = metadata?.product || {};
+    const simpleBrief = metadata?.simple_sourcing_brief || null;
     const productId = normalizeText(productMeta?.id);
     const productName = normalizeText(productMeta?.name);
     const productCategory = normalizeText(productMeta?.category);
@@ -687,6 +706,8 @@ export async function POST(req: Request) {
         }
       }
 
+      const simpleSourcingBrief = buildSimpleSourcingBrief(simpleBrief);
+
       const contextNote = [
         "Created from in-app Paystack payment.",
         purpose === "reorder" && sourceConversationIdForContext
@@ -706,6 +727,7 @@ export async function POST(req: Request) {
           : "",
         productLandedPerUnit !== "N/A" ? `Landed per unit: ${productLandedPerUnit}` : "",
         aiContextBlock,
+        simpleSourcingBrief,
         whiteLabelBrief || "Project brief to be provided in paid chat.",
       ]
         .filter(Boolean)
