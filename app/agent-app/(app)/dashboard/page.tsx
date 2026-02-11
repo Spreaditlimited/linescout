@@ -136,6 +136,8 @@ export default function DashboardPage() {
       note: "Pending requests",
     },
   ];
+  const approvalLower = String(approvalStatus || "").trim().toLowerCase();
+  const needsVerification = !approvalLower || approvalLower === "pending";
 
   return (
     <AgentAppShell title="Dashboard" subtitle="Snapshot of your agent workspace activity.">
@@ -151,6 +153,21 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid gap-6">
+          {needsVerification ? (
+            <section className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
+              <p className="font-semibold text-amber-900">Complete your verification process</p>
+              <p className="mt-1 text-sm text-amber-700">
+                Finish your profile and verification steps to unlock the workspace.
+              </p>
+              <Link
+                href="/agent-app/settings"
+                className="mt-3 inline-flex rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+              >
+                Go to settings
+              </Link>
+            </section>
+          ) : null}
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {stats.map((item) => (
               <div

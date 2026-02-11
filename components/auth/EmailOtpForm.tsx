@@ -6,6 +6,11 @@ import { authFetch } from "@/lib/auth-client";
 
 type Step = "email" | "otp";
 
+function isValidEmail(value: string) {
+  const v = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 export default function EmailOtpForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -14,6 +19,7 @@ export default function EmailOtpForm() {
   const [otp, setOtp] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const canSubmitEmail = isValidEmail(email) && status !== "loading";
 
   async function routeAfterProfile() {
     const nextParam = String(searchParams.get("next") || "").trim();
@@ -52,6 +58,12 @@ export default function EmailOtpForm() {
   async function requestOtp() {
     setStatus("loading");
     setMessage(null);
+
+    if (!isValidEmail(email)) {
+      setStatus("error");
+      setMessage("Enter a valid email address.");
+      return false;
+    }
 
     const res = await fetch("/api/auth/request-otp", {
       method: "POST",
@@ -168,7 +180,7 @@ export default function EmailOtpForm() {
         <button
           type="submit"
           className="btn btn-primary w-full"
-          disabled={status === "loading"}
+          disabled={step === "email" ? !canSubmitEmail : status === "loading"}
         >
           {status === "loading"
             ? "Working..."

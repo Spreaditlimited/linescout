@@ -90,8 +90,8 @@ export default function ProfilePage() {
                 <p className="text-sm font-semibold text-neutral-900">{profile?.china_phone || "—"}</p>
               </div>
               <div>
-                <p className="text-xs text-neutral-500">Nigeria phone</p>
-                <p className="text-sm font-semibold text-neutral-900">{profile?.ng_phone || "—"}</p>
+                <p className="text-xs text-neutral-500">China phone</p>
+                <p className="text-sm font-semibold text-neutral-900">{profile?.china_phone || "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-neutral-500">China city</p>

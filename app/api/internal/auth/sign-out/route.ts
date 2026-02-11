@@ -8,6 +8,16 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
+function getCookieDomain(hostHeader: string) {
+  const host = String(hostHeader || "")
+    .trim()
+    .toLowerCase()
+    .split(":")[0];
+  if (!host || host === "localhost" || host === "127.0.0.1") return undefined;
+  if (host.endsWith(".sureimports.com")) return ".sureimports.com";
+  return undefined;
+}
+
 export async function POST(req: Request) {
   const adminCookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
   const agentCookieName = (process.env.AGENT_AUTH_COOKIE_NAME || "linescout_agent_session").trim();
@@ -39,12 +49,21 @@ export async function POST(req: Request) {
   }
 
   const res = NextResponse.json({ ok: true });
+  const url = new URL(req.url);
+  const host = req.headers.get("host") || url.host;
+  const forwardedProto = String(req.headers.get("x-forwarded-proto") || "").toLowerCase();
+  const isHttps = forwardedProto === "https" || url.protocol === "https:";
+  const isProd = process.env.NODE_ENV === "production";
+  const cookieDomain = isProd ? getCookieDomain(host) : undefined;
   res.cookies.set({
     name: cookieName,
     value: "",
     httpOnly: true,
     path: "/",
     maxAge: 0,
+    sameSite: isProd ? "none" : "lax",
+    secure: isProd ? isHttps : false,
+    ...(cookieDomain ? { domain: cookieDomain } : {}),
   });
 
   return res;

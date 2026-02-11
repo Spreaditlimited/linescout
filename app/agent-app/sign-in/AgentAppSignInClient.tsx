@@ -11,6 +11,11 @@ function clean(v: unknown) {
   return String(v ?? "").trim();
 }
 
+function isValidEmail(value: string) {
+  const v = value.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 export default function AgentAppSignInClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -21,7 +26,10 @@ export default function AgentAppSignInClient() {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit = useMemo(() => {
-    return clean(login).length > 0 && clean(password).length >= 8 && !busy;
+    const loginValue = clean(login);
+    const isEmail = loginValue.includes("@");
+    const emailOk = isEmail ? isValidEmail(loginValue) : true;
+    return loginValue.length > 0 && clean(password).length >= 8 && emailOk && !busy;
   }, [login, password, busy]);
 
   async function onSubmit(e: FormEvent) {
@@ -29,12 +37,18 @@ export default function AgentAppSignInClient() {
     setError(null);
     if (!canSubmit) return;
 
+    const loginValue = clean(login);
+    if (loginValue.includes("@") && !isValidEmail(loginValue)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
     setBusy(true);
     try {
       const res = await fetch("/api/internal/auth/sign-in", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ login: clean(login), password: clean(password), app: "agent" }),
+        body: JSON.stringify({ login: loginValue, password: clean(password), app: "agent" }),
       });
       const data = await res.json().catch(() => null);
 

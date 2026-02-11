@@ -101,6 +101,11 @@ function redirectToSignIn(req: NextRequest, pathname: string) {
 }
 
 function handleInternalApi(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  if (pathname.startsWith("/api/internal/admin/")) {
+    return NextResponse.next();
+  }
+
   const adminCookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
   const agentCookieName = (process.env.AGENT_AUTH_COOKIE_NAME || "linescout_agent_session").trim();
 
@@ -111,6 +116,7 @@ function handleInternalApi(req: NextRequest) {
   if (!isAgent) return NextResponse.next();
 
   const agentToken = req.cookies.get(agentCookieName)?.value || "";
+  if (!agentToken) return NextResponse.next();
   const cookieHeader = req.headers.get("cookie") || "";
   const filtered = cookieHeader
     .split(";")

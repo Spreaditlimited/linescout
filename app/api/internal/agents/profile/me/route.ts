@@ -5,6 +5,18 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function normalizeChinaPhone(value: string) {
+  const raw = String(value || "").trim().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("+86")) return raw;
+  if (raw.startsWith("86")) return `+${raw}`;
+  return raw;
+}
+
+function isValidChinaMobile(value: string) {
+  return /^\+86(1[3-9]\d{9})$/.test(value);
+}
+
 async function requireInternalSession() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -162,7 +174,7 @@ export async function GET() {
       canViewHandoffs = true;
     }
 
-    const phoneVerified = !!profile?.china_phone_verified_at;
+    const phoneVerified = isValidChinaMobile(normalizeChinaPhone(profile?.china_phone || ""));
     let emailVerified = false;
     if (auth.role === "agent") {
       const [emailTable]: any = await conn.query(

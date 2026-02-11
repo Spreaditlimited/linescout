@@ -74,7 +74,9 @@ function accountPill(isActive: boolean) {
 }
 
 function readiness(a: AgentRow) {
-  const phoneOk = !!a.china_phone_verified_at;
+  const rawPhone = String(a.china_phone || "").trim().replace(/[\s-]/g, "");
+  const normalizedPhone = rawPhone.startsWith("86") && !rawPhone.startsWith("+86") ? `+${rawPhone}` : rawPhone;
+  const phoneOk = !!a.china_phone_verified_at || /^\+86(1[3-9]\d{9})$/.test(normalizedPhone);
   const ninProvided = !!(a.nin && String(a.nin).trim());
   const ninOk = !!a.nin_verified_at;
   const addressOk = !!(a.full_address && String(a.full_address).trim());
@@ -83,7 +85,7 @@ function readiness(a: AgentRow) {
   const bankOk = !!bankVerifiedAt || bankStatus === "verified";
 
   const missing: string[] = [];
-  if (!phoneOk) missing.push("China phone not verified");
+  if (!phoneOk) missing.push("China phone missing or invalid");
   if (!ninProvided) missing.push("NIN not provided");
   if (ninProvided && !ninOk) missing.push("NIN not verified");
   if (!addressOk) missing.push("Address not provided");
@@ -138,11 +140,14 @@ export default function AdminAgentApprovalPage() {
     try {
       const res = await fetch(
         `/api/internal/admin/agent-approval?page=${p}&page_size=${pageSize}`,
-        { cache: "no-store" }
+        { cache: "no-store", credentials: "include" }
       );
       const data = await res.json().catch(() => null);
 
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load agents");
+      if (!res.ok || !data?.ok) {
+        const detail = data ? JSON.stringify(data) : "";
+        throw new Error(detail || data?.error || "Failed to load agents");
+      }
 
       setItems((data.items || []) as AgentRow[]);
       setTotal(Number(data.total || 0));
@@ -254,6 +259,7 @@ export default function AdminAgentApprovalPage() {
       const res = await fetch("/api/internal/admin/agent-approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           internal_user_id: confirmUserId,
           action: confirmAction,

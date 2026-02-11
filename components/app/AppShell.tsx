@@ -96,7 +96,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <aside className="hidden w-56 shrink-0 flex-col gap-3 self-start rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)] lg:flex h-fit">
           <div className="px-2 pt-2">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">LineScout</p>
-            <p className="mt-1 text-lg font-semibold text-neutral-900">User App</p>
+            <p className="mt-1 text-lg font-semibold text-neutral-900">Sourcing Workspace</p>
           </div>
           <nav className="mt-4 flex flex-col gap-2">
             {navItems.map((item) => (
@@ -121,7 +121,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center justify-between rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white px-4 py-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">LineScout</p>
-                <p className="text-sm font-semibold text-neutral-900">User App</p>
+                <p className="text-sm font-semibold text-neutral-900">Sourcing Workspace</p>
               </div>
               <button
                 type="button"

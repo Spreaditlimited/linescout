@@ -5,6 +5,18 @@ import { db } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function normalizeChinaPhone(value: string) {
+  const raw = String(value || "").trim().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("+86")) return raw;
+  if (raw.startsWith("86")) return `+${raw}`;
+  return raw;
+}
+
+function isValidChinaMobile(value: string) {
+  return /^\+86(1[3-9]\d{9})$/.test(value);
+}
+
 function clean(v: any) {
   return String(v ?? "").trim();
 }
@@ -134,7 +146,9 @@ export async function GET(req: Request) {
     );
 
     const items = (rows || []).map((r: any) => {
-      const phoneVerified = !!r.china_phone_verified_at;
+      const phoneVerified =
+        !!r.china_phone_verified_at ||
+        isValidChinaMobile(normalizeChinaPhone(r.china_phone || ""));
       const ninProvided = !!(r.nin && String(r.nin).trim().length > 0);
       const ninVerified = !!r.nin_verified_at;
       const addressProvided = !!(r.full_address && String(r.full_address).trim().length > 0);

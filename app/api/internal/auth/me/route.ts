@@ -10,6 +10,18 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME,
 });
 
+function normalizeChinaPhone(value: string) {
+  const raw = String(value || "").trim().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("+86")) return raw;
+  if (raw.startsWith("86")) return `+${raw}`;
+  return raw;
+}
+
+function isValidChinaMobile(value: string) {
+  return /^\+86(1[3-9]\d{9})$/.test(value);
+}
+
 export async function GET() {
   const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
   const hdrs = await headers();
@@ -24,9 +36,6 @@ export async function GET() {
       .map((c) => c.trim())
       .find((c) => c.startsWith(`${cookieName}=`))
       ?.slice(cookieName.length + 1) || null;
-
-  console.log("AUTH_ME cookie header:", cookieHeader);
-  console.log("AUTH_ME extracted token:", token);
 
   if (!token) {
     return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
@@ -71,7 +80,6 @@ export async function GET() {
     );
 
     if (!rows?.length) {
-      console.log("AUTH_ME lookup failed for token:", token);
       return NextResponse.json({ ok: false, error: "Invalid session" }, { status: 401 });
     }
 
@@ -145,13 +153,14 @@ export async function GET() {
 
       if (!phone_verified) {
         const [profileRows]: any = await conn.query(
-          `SELECT china_phone_verified_at
+          `SELECT china_phone
            FROM linescout_agent_profiles
            WHERE internal_user_id = ?
            LIMIT 1`,
           [r.id]
         );
-        phone_verified = !!profileRows?.[0]?.china_phone_verified_at;
+        const chinaPhone = normalizeChinaPhone(profileRows?.[0]?.china_phone || "");
+        phone_verified = isValidChinaMobile(chinaPhone);
       }
 
       otp_verified = otpMode === "email" ? email_verified : phone_verified;

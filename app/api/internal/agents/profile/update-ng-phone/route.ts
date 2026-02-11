@@ -9,6 +9,18 @@ function clean(v: any) {
   return String(v ?? "").trim().replace(/\s+/g, " ");
 }
 
+function normalizeChinaPhone(value: string) {
+  const raw = String(value || "").trim().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("+86")) return raw;
+  if (raw.startsWith("86")) return `+${raw}`;
+  return raw;
+}
+
+function isValidChinaMobile(value: string) {
+  return /^\+86(1[3-9]\d{9})$/.test(value);
+}
+
 async function requireInternalSession() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -78,16 +90,19 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const phone = clean(body?.ng_phone || body?.phone || "");
+  const phone = normalizeChinaPhone(clean(body?.china_phone || body?.phone || ""));
 
-  if (!phone) {
-    return NextResponse.json({ ok: false, error: "Nigeria phone is required" }, { status: 400 });
+  if (!phone || !isValidChinaMobile(phone)) {
+    return NextResponse.json(
+      { ok: false, error: "China phone must be a valid mobile number (e.g., +8613712345678)." },
+      { status: 400 }
+    );
   }
 
   const conn = await db.getConnection();
   try {
     // Ensure profile exists
-    const pendingPhone = `pending:${auth.userId}`;
+    const pendingPhone = phone;
     await conn.query(
       `
       INSERT INTO linescout_agent_profiles
@@ -111,14 +126,14 @@ export async function POST(req: Request) {
     await conn.query(
       `
       UPDATE linescout_agent_profiles
-      SET ng_phone = ?, updated_at = CURRENT_TIMESTAMP
+      SET china_phone = ?, china_phone_verified_at = NOW(), updated_at = CURRENT_TIMESTAMP
       WHERE internal_user_id = ?
       LIMIT 1
       `,
       [phone, auth.userId]
     );
 
-    return NextResponse.json({ ok: true, ng_phone: phone });
+    return NextResponse.json({ ok: true, china_phone: phone });
   } finally {
     conn.release();
   }

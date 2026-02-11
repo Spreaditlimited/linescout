@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AgentAppShell from "../_components/AgentAppShell";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type ProjectItem = {
   conversation_id: number;
@@ -57,6 +58,8 @@ export default function ProjectsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [releasingId, setReleasingId] = useState<number | null>(null);
+  const [confirmReleaseId, setConfirmReleaseId] = useState<number | null>(null);
 
   const load = useCallback(
     async (scopeOverride?: "unclaimed" | "mine") => {
@@ -180,6 +183,11 @@ export default function ProjectsPage() {
             const status = statusLabel(item.handoff_status);
             const ago = timeAgoSafe(item.last_message_at);
             const canClaim = !item.assigned_agent_id && tab === "unclaimed" && item.conversation_id;
+            const canRelease =
+              tab === "mine" &&
+              !!item.assigned_agent_id &&
+              !!item.conversation_id &&
+              ["pending", "claimed", ""].includes(String(item.handoff_status || "pending").toLowerCase());
             const handoffId = item.handoff_id || 0;
 
             return (
@@ -239,6 +247,16 @@ export default function ProjectsPage() {
                         Claim project
                       </button>
                     ) : null}
+                    {canRelease ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmReleaseId(item.conversation_id || null)}
+                        disabled={releasingId === item.conversation_id}
+                        className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                      >
+                        {releasingId === item.conversation_id ? "Releasing…" : "Release project"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -246,6 +264,36 @@ export default function ProjectsPage() {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmReleaseId != null}
+        variant="light"
+        title="Release project?"
+        description="This will return the project to the unclaimed pool so another agent can take it."
+        confirmText="Yes, release"
+        cancelText="Cancel"
+        danger
+        onCancel={() => setConfirmReleaseId(null)}
+        onConfirm={async () => {
+          const convoId = confirmReleaseId || 0;
+          if (!convoId) return;
+          setReleasingId(convoId);
+          setConfirmReleaseId(null);
+          const res = await fetch("/api/internal/paid-chat/unclaim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ conversation_id: convoId }),
+          });
+          const json = await res.json().catch(() => null);
+          setReleasingId(null);
+          if (!res.ok || !json?.ok) {
+            setErr(String(json?.error || `Failed (${res.status})`));
+            return;
+          }
+          await load(tab);
+        }}
+      />
     </AgentAppShell>
   );
 }

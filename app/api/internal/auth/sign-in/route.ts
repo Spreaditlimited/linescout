@@ -10,6 +10,16 @@ function clean(s: any) {
   return String(s || "").trim();
 }
 
+function getCookieDomain(hostHeader: string) {
+  const host = String(hostHeader || "")
+    .trim()
+    .toLowerCase()
+    .split(":")[0];
+  if (!host || host === "localhost" || host === "127.0.0.1") return undefined;
+  if (host.endsWith(".sureimports.com")) return ".sureimports.com";
+  return undefined;
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
 
@@ -84,14 +94,21 @@ export async function POST(req: Request) {
       },
     });
 
+    const url = new URL(req.url);
+    const host = req.headers.get("host") || url.host;
+    const forwardedProto = String(req.headers.get("x-forwarded-proto") || "").toLowerCase();
+    const isHttps = forwardedProto === "https" || url.protocol === "https:";
+    const isProd = process.env.NODE_ENV === "production";
+    const cookieDomain = isProd ? getCookieDomain(host) : undefined;
     // ✅ web admin still works (cookie)
     res.cookies.set({
       name: cookieName,
       value: sessionToken,
       httpOnly: true,
       path: "/",
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      sameSite: isProd ? "none" : "lax",
+      secure: isProd ? isHttps : false,
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
     });
 
     return res;

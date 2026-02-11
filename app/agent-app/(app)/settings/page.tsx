@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const [activeStep, setActiveStep] = useState(0);
   const [otpMode, setOtpMode] = useState<AgentOtpMode | null>(null);
 
-  const [ngPhone, setNgPhone] = useState("");
+  const [chinaPhone, setChinaPhone] = useState("");
   const [addrLine, setAddrLine] = useState("");
   const [addrDistrict, setAddrDistrict] = useState("");
   const [addrCity, setAddrCity] = useState("");
@@ -75,7 +75,7 @@ export default function SettingsPage() {
         setUser(profileJson.user || null);
         setPayout(profileJson.payout_account || null);
         setChecklist(profileJson.checklist || null);
-        setNgPhone(profileJson.profile?.ng_phone || "");
+        setChinaPhone(profileJson.profile?.china_phone || "");
         const city = String(profileJson.profile?.china_city || "");
         const fullAddr = String(profileJson.profile?.full_address || "");
         setAddrCity(city);
@@ -173,7 +173,9 @@ export default function SettingsPage() {
   }, [checklist, otpMode]);
 
   const ninInvalid = nin.trim().length > 0 && !/^\d{11}$/.test(nin.trim());
-  const phoneInvalid = ngPhone.trim().length > 0 && ngPhone.trim().length < 8;
+  const normalizedChinaPhone = chinaPhone.replace(/[\s-]/g, "").trim();
+  const chinaPhoneValid = /^\+86(1[3-9]\d{9})$/.test(normalizedChinaPhone);
+  const phoneInvalid = normalizedChinaPhone.length > 0 && !chinaPhoneValid;
   const addressInvalid = addrLine.trim().length > 0 && addrCity.trim().length === 0;
   const bankInvalid = bankCode && !/^\d{10}$/.test(accountNumber.trim());
   const selectedCity = useMemo(
@@ -187,7 +189,7 @@ export default function SettingsPage() {
   const resolvedOtpOk = resolvedOtpMode === "email" ? emailOk : phoneOk;
 
   const steps = useMemo(() => {
-    const otpLabel = resolvedOtpMode === "email" ? "Email" : "Phone";
+    const otpLabel = resolvedOtpMode === "email" ? "Email" : "China phone";
     return [
       { label: otpLabel, done: resolvedOtpOk },
       { label: "NIN", done: !!checklist?.nin_provided },
@@ -211,9 +213,9 @@ export default function SettingsPage() {
   const stepLabel = activeStep >= steps.length ? "Complete" : steps[activeStep]?.label || "Complete";
   const stepNumber = Math.min(activeStep + 1, steps.length);
 
-  const updateNgPhone = async () => {
-    if (phoneInvalid) {
-      setToast({ type: "error", message: "Enter a valid Nigeria phone number." });
+  const updateChinaPhone = async () => {
+    if (!normalizedChinaPhone || phoneInvalid) {
+      setToast({ type: "error", message: "Enter a valid China mobile number (e.g., +8613712345678)." });
       return;
     }
     setSaving(true);
@@ -224,7 +226,7 @@ export default function SettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         credentials: "include",
-        body: JSON.stringify({ ng_phone: clean(ngPhone) }),
+        body: JSON.stringify({ china_phone: normalizedChinaPhone }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
@@ -232,8 +234,8 @@ export default function SettingsPage() {
         setToast({ type: "error", message: String(json?.error || "Phone update failed.") });
         return;
       }
-      setSuccess("Nigeria phone updated.");
-      setToast({ type: "success", message: "Nigeria phone updated." });
+      setSuccess("China phone updated.");
+      setToast({ type: "success", message: "China phone updated." });
       await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to update phone.");
@@ -584,16 +586,21 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const mode = resolvedOtpMode === "email" ? "email-verify" : "phone-verify";
-                    const emailParam =
-                      resolvedOtpMode === "email" && profile?.email
-                        ? `&email=${encodeURIComponent(profile.email)}`
-                        : "";
-                    router.push(`/agent-app/${mode}?user_id=${encodeURIComponent(user.id)}${emailParam}`);
+                    if (resolvedOtpMode === "email") {
+                      const emailParam = profile?.email ? `&email=${encodeURIComponent(profile.email)}` : "";
+                      router.push(`/agent-app/email-verify?user_id=${encodeURIComponent(user.id)}${emailParam}`);
+                      return;
+                    }
+                    const el = document.getElementById("contact-phone");
+                    if (el) {
+                      el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    } else {
+                      window.location.hash = "#contact-phone";
+                    }
                   }}
                   className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461]"
                 >
-                  Verify {resolvedOtpMode === "email" ? "email" : "phone"}
+                  {resolvedOtpMode === "email" ? "Verify email" : "Enter China phone"}
                 </button>
               </div>
             ) : null}
@@ -794,7 +801,10 @@ export default function SettingsPage() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+          <section
+            id="contact-phone"
+            className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+          >
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Contact</p>
@@ -803,20 +813,24 @@ export default function SettingsPage() {
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Nigeria phone</label>
+                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">China phone</label>
                 <input
-                  value={ngPhone}
-                  onChange={(e) => setNgPhone(e.target.value)}
+                  value={chinaPhone}
+                  onChange={(e) => setChinaPhone(e.target.value)}
                   className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                  placeholder="0803..."
+                  placeholder="+8613712345678"
                 />
-                {phoneInvalid ? <p className="mt-2 text-xs text-amber-600">Phone looks too short.</p> : null}
+                {phoneInvalid ? (
+                  <p className="mt-2 text-xs text-amber-600">
+                    Enter a valid China mobile number (e.g., +8613712345678).
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={updateNgPhone}
+                onClick={updateChinaPhone}
                 disabled={saving}
                 className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
               >

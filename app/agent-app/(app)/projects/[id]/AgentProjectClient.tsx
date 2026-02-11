@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentAppShell from "../../_components/AgentAppShell";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type HandoffDetail = {
   id: number;
@@ -109,6 +110,8 @@ function ProjectDetailInner() {
   const [err, setErr] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [confirmReleaseOpen, setConfirmReleaseOpen] = useState(false);
   const [shipper, setShipper] = useState("");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [showManufacturerForm, setShowManufacturerForm] = useState(false);
@@ -228,6 +231,10 @@ function ProjectDetailInner() {
 
   const canClaim =
     statusRaw === "pending" && !detail?.assigned_agent_id && !!conversationId;
+  const canRelease =
+    isMine &&
+    !!conversationId &&
+    ["pending", "claimed", ""].includes(statusRaw);
 
   const claimProject = useCallback(async () => {
     if (!conversationId) return false;
@@ -254,6 +261,30 @@ function ProjectDetailInner() {
       setClaiming(false);
     }
   }, [conversationId, loadDetail]);
+
+  const releaseProject = useCallback(async () => {
+    if (!conversationId) return;
+    setReleasing(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/internal/paid-chat/unclaim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ conversation_id: conversationId }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setErr(String(json?.error || `Failed (${res.status})`));
+        return;
+      }
+      window.location.href = "/agent-app/projects";
+    } catch (e: any) {
+      setErr(e?.message || "Failed to release project.");
+    } finally {
+      setReleasing(false);
+    }
+  }, [conversationId]);
 
   const updateStatus = useCallback(
     async (next: "manufacturer_found" | "paid" | "shipped" | "delivered") => {
@@ -372,6 +403,16 @@ function ProjectDetailInner() {
                     className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
                   >
                     {claiming ? "Claiming…" : "Claim project"}
+                  </button>
+                ) : null}
+                {canRelease ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmReleaseOpen(true)}
+                    disabled={releasing}
+                    className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                  >
+                    {releasing ? "Releasing…" : "Release project"}
                   </button>
                 ) : null}
                 {conversationId ? (
@@ -754,6 +795,21 @@ function ProjectDetailInner() {
           </section>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={confirmReleaseOpen}
+        variant="light"
+        title="Release project?"
+        description="This will return the project to the unclaimed pool so another agent can take it."
+        confirmText="Yes, release"
+        cancelText="Cancel"
+        danger
+        onCancel={() => setConfirmReleaseOpen(false)}
+        onConfirm={async () => {
+          setConfirmReleaseOpen(false);
+          await releaseProject();
+        }}
+      />
     </AgentAppShell>
   );
 }

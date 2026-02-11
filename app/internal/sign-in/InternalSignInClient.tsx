@@ -43,18 +43,19 @@ export default function InternalSignInPage() {
       }
 
       // decide landing page based on permissions
-const meRes = await fetch("/internal/auth/me", { cache: "no-store" });
-const me = await meRes.json().catch(() => null);
+      const meRes = await fetch("/internal/auth/me", { cache: "no-store" });
+      const me = await meRes.json().catch(() => null);
 
-const canLeads = !!me?.user?.permissions?.can_view_leads;
-const canHandoffs = !!me?.user?.permissions?.can_view_handoffs;
+      const canLeads = !!me?.user?.permissions?.can_view_leads;
+      const canHandoffs = !!me?.user?.permissions?.can_view_handoffs;
 
-const target =
-  canHandoffs ? "/internal/agent-handoffs" :
-  canLeads ? "/internal/leads" :
-  "/internal/sign-in?next=/internal/agent-handoffs";
+      const target = canHandoffs
+        ? "/internal/agent-handoffs"
+        : canLeads
+        ? "/internal/leads"
+        : "/internal/sign-in?next=/internal/agent-handoffs";
 
-router.replace(nextParam || target);
+      router.replace(nextParam || target);
 
     } catch {
       setError("Network error. Try again.");

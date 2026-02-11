@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import type { Transporter } from "nodemailer";
@@ -58,6 +57,18 @@ function safeFirstName(name: string | null) {
   return raw.split(" ")[0] || raw;
 }
 
+function normalizeChinaPhone(value: string) {
+  const raw = String(value || "").trim().replace(/[\s-]/g, "");
+  if (!raw) return "";
+  if (raw.startsWith("+86")) return raw;
+  if (raw.startsWith("86")) return `+${raw}`;
+  return raw;
+}
+
+function isValidChinaMobile(value: string) {
+  return /^\+86(1[3-9]\d{9})$/.test(value);
+}
+
 function buildApprovalEmail(params: { firstName: string | null }) {
   const firstName = safeFirstName(params.firstName) || "there";
   const link = "https://linescout.sureimports.com/agents";
@@ -94,27 +105,47 @@ function buildRejectionEmail(params: { firstName: string | null; reason: string 
   });
 }
 
-async function requireAdminSession() {
-  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
-  if (!cookieName) {
+async function requireAdminSession(req: Request) {
+  const primaryCookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "").trim();
+  const cookieNames = [
+    primaryCookieName,
+    "linescout_internal_session",
+    "linescout_admin_session",
+  ].filter(Boolean);
+  if (!cookieNames.length) {
     return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
   }
 
-  const h = await headers();
+  const bearer = req.headers.get("authorization") || "";
+  const bearerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
 
-  const bearer = h.get("authorization") || "";
-  const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
-
-  const cookieHeader = h.get("cookie") || "";
+  const cookieHeader = req.headers.get("cookie") || "";
   const cookieToken =
     cookieHeader
       .split(/[;,]/)
       .map((c) => c.trim())
-      .find((c) => c.startsWith(`${cookieName}=`))
-      ?.slice(cookieName.length + 1) || "";
+      .map((c) => {
+        const [name, ...rest] = c.split("=");
+        return { name, value: rest.join("=") };
+      })
+      .find((c) => cookieNames.includes(String(c.name || "")))
+      ?.value || "";
 
-  const token = headerToken || cookieToken;
-  if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
+  const token = bearerToken || cookieToken;
+  if (!token) {
+    return {
+      ok: false as const,
+      status: 401 as const,
+      error: "Not signed in",
+      debug: {
+        cookie_header: cookieHeader,
+        cookie_names: cookieNames,
+        bearer_present: !!bearerToken,
+        app_header: req.headers.get("x-linescout-app") || "",
+        referer: req.headers.get("referer") || "",
+      },
+    };
+  }
 
   const conn = await db.getConnection();
   try {
@@ -144,8 +175,13 @@ async function requireAdminSession() {
  * GET /api/internal/admin/agent-approval?page=1&page_size=25
  */
 export async function GET(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  const auth = await requireAdminSession(req);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { ok: false, error: auth.error, debug: (auth as any).debug },
+      { status: auth.status }
+    );
+  }
 
   const url = new URL(req.url);
   const page = Math.max(1, num(url.searchParams.get("page"), 1));
@@ -218,8 +254,13 @@ export async function GET(req: Request) {
  * body: { internal_user_id: number, action: "approve" | "block" | "pending" }
  */
 export async function POST(req: Request) {
-  const auth = await requireAdminSession();
-  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+  const auth = await requireAdminSession(req);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { ok: false, error: auth.error, debug: (auth as any).debug },
+      { status: auth.status }
+    );
+  }
 
   const body = await req.json().catch(() => null);
   const internalUserId = Number(body?.internal_user_id);
@@ -269,7 +310,9 @@ export async function POST(req: Request) {
 
     const p = pRows[0];
 
-    const phoneOk = !!p.china_phone_verified_at;
+    const phoneOk =
+      !!p.china_phone_verified_at ||
+      isValidChinaMobile(normalizeChinaPhone(p.china_phone || ""));
     const ninProvided = !!(p.nin && String(p.nin).trim());
     const ninOk = !!p.nin_verified_at;
     const addressOk = !!(p.full_address && String(p.full_address).trim());
@@ -285,7 +328,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Cannot approve agent. Missing readiness requirements (phone verify, NIN provided + verified, address, bank verified).",
+            "Cannot approve agent. Missing readiness requirements (China phone, NIN provided + verified, address, bank verified).",
         },
         { status: 400 }
       );
