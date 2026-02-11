@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../_components/SearchableSelect";
 
 type Lead = {
   id: number;
@@ -459,24 +460,23 @@ export default function InternalLeadsPage() {
                             {st.open ? (
                               <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
                                 <label className="text-xs text-neutral-400">Action</label>
-                                <select
+                                <SearchableSelect
+                                  className="mt-1"
                                   value={st.action}
-                                  onChange={(e) =>
+                                  options={[
+                                    { value: "", label: "Select action" },
+                                    ...(allowed.includes("claim") ? [{ value: "claim", label: "Claim" }] : []),
+                                    ...(allowed.includes("mark_called")
+                                      ? [{ value: "mark_called", label: "Mark called" }]
+                                      : []),
+                                  ]}
+                                  onChange={(next) =>
                                     setRowState(lead.id, {
-                                      action: e.target.value as any,
+                                      action: next as any,
                                       summary: "",
                                     })
                                   }
-                                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                                >
-                                  <option value="">Select action</option>
-                                  {allowed.includes("claim") ? (
-                                    <option value="claim">Claim</option>
-                                  ) : null}
-                                  {allowed.includes("mark_called") ? (
-                                    <option value="mark_called">Mark called</option>
-                                  ) : null}
-                                </select>
+                                />
 
                                 {st.action === "mark_called" ? (
                                   <div className="mt-3">

@@ -53,6 +53,33 @@ async function requireInternalSession() {
   }
 }
 
+async function ensureAddressColumns(conn: any) {
+  const columns = [
+    { name: "address_line", type: "VARCHAR(255) NULL" },
+    { name: "address_district", type: "VARCHAR(255) NULL" },
+    { name: "address_province", type: "VARCHAR(255) NULL" },
+    { name: "address_postal", type: "VARCHAR(32) NULL" },
+  ];
+  for (const col of columns) {
+    const [rows]: any = await conn.query(
+      `
+      SELECT COLUMN_NAME
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'linescout_agent_profiles'
+        AND column_name = ?
+      LIMIT 1
+      `,
+      [col.name]
+    );
+    if (!rows?.length) {
+      await conn.query(
+        `ALTER TABLE linescout_agent_profiles ADD COLUMN ${col.name} ${col.type}`
+      );
+    }
+  }
+}
+
 export async function POST(req: Request) {
   const auth = await requireInternalSession();
   if (!auth.ok) {
@@ -65,10 +92,15 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const fullAddress = clean(body?.full_address);
+  const addressLine = clean(body?.address_line);
+  const addressDistrict = clean(body?.address_district);
+  const addressProvince = clean(body?.address_province);
+  const addressPostal = clean(body?.address_postal);
   const chinaCity = clean(body?.china_city);
   const country = clean(body?.country || "China");
 
-  if (!fullAddress || !chinaCity) {
+  const hasStructured = !!addressLine;
+  if ((!fullAddress && !hasStructured) || !chinaCity) {
     return NextResponse.json({ ok: false, error: "Address and city are required" }, { status: 400 });
   }
 
@@ -78,6 +110,7 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensureAddressColumns(conn);
     const pendingPhone = `pending:${auth.userId}`;
     await conn.query(
       `
@@ -99,14 +132,34 @@ export async function POST(req: Request) {
       [pendingPhone, auth.userId]
     );
 
+    const finalFull =
+      fullAddress ||
+      [addressLine, addressDistrict, chinaCity, addressProvince, addressPostal, "China"]
+        .filter(Boolean)
+        .join(", ");
+
     await conn.query(
       `
       UPDATE linescout_agent_profiles
-      SET full_address = ?, china_city = ?, updated_at = CURRENT_TIMESTAMP
+      SET full_address = ?,
+          china_city = ?,
+          address_line = ?,
+          address_district = ?,
+          address_province = ?,
+          address_postal = ?,
+          updated_at = CURRENT_TIMESTAMP
       WHERE internal_user_id = ?
       LIMIT 1
       `,
-      [fullAddress, chinaCity, auth.userId]
+      [
+        finalFull,
+        chinaCity,
+        addressLine || null,
+        addressDistrict || null,
+        addressProvince || null,
+        addressPostal || null,
+        auth.userId,
+      ]
     );
 
     return NextResponse.json({ ok: true });

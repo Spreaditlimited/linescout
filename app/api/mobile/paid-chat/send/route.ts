@@ -368,6 +368,7 @@ export async function POST(req: Request) {
       // Notify assigned agent (or all) if they are not active
       try {
         let shouldNotify = true;
+        let activeAgentIds: number[] = [];
         if (assignedAgentId) {
           const [rrows]: any = await conn.query(
             `
@@ -382,6 +383,17 @@ export async function POST(req: Request) {
           const updatedAt = rrows?.[0]?.updated_at ? new Date(rrows[0].updated_at).getTime() : 0;
           const activeRecently = updatedAt && Date.now() - updatedAt < 2 * 60 * 1000;
           if (lastSeen >= messageId || activeRecently) shouldNotify = false;
+        } else {
+          const [activeRows]: any = await conn.query(
+            `
+            SELECT internal_user_id
+            FROM linescout_conversation_reads
+            WHERE conversation_id = ?
+              AND updated_at > (NOW() - INTERVAL 2 MINUTE)
+            `,
+            [conversationId]
+          );
+          activeAgentIds = (activeRows || []).map((r: any) => Number(r.internal_user_id)).filter(Boolean);
         }
 
         if (shouldNotify) {
@@ -402,7 +414,9 @@ export async function POST(req: Request) {
               SELECT token
               FROM linescout_agent_device_tokens
               WHERE is_active = 1
-              `
+              ${activeAgentIds.length ? `AND agent_id NOT IN (${activeAgentIds.map(() => "?").join(",")})` : ""}
+              `,
+              activeAgentIds.length ? activeAgentIds : []
             );
             tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
           }
@@ -424,8 +438,13 @@ export async function POST(req: Request) {
               AND ap.email IS NOT NULL
               AND ap.email <> ''
               ${assignedAgentId ? "AND ap.internal_user_id = ?" : ""}
+              ${!assignedAgentId && activeAgentIds.length ? `AND ap.internal_user_id NOT IN (${activeAgentIds.map(() => "?").join(",")})` : ""}
             `,
-            assignedAgentId ? [assignedAgentId] : []
+            assignedAgentId
+              ? [assignedAgentId]
+              : activeAgentIds.length
+                ? activeAgentIds
+                : []
           );
 
           const emails = (emailRows || [])

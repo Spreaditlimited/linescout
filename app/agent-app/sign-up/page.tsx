@@ -80,10 +80,11 @@ export default function AgentAppSignUpPage() {
           String(data?.error || data?.message || data?.detail || "").trim() ||
           (Array.isArray(data?.errors) ? data.errors.join(", ") : "") ||
           rawText.trim();
-        const fallback =
-          res.status === 409
-            ? "Signup failed (409). The server reports a conflict."
-            : `Signup failed (${res.status})`;
+        if (res.status === 409) {
+          setError("This email already has an account. Please sign in instead.");
+          return;
+        }
+        const fallback = `Signup failed (${res.status})`;
         setError(raw ? `(${res.status}) ${raw}` : fallback);
         return;
       }

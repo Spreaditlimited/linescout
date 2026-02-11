@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const APPROVAL_MESSAGE =
-  "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.";
+  "Thank you for creating an account. Please go to your settings to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.";
 
 type PermissionRow = RowDataPacket & { can_view_handoffs: number };
 
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     const approved = await ensureApprovedAgent(Number(agent.id), String(agent.role || ""));
     if (!approved) {
       return NextResponse.json(
-        { ok: false, error: "ACCOUNT_APPROVAL_REQUIRED", message: APPROVAL_MESSAGE },
+        { ok: false, error: "ACCOUNT_APPROVAL_REQUIRED", approval_required: true, message: APPROVAL_MESSAGE },
         { status: 403 }
       );
     }

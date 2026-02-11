@@ -28,6 +28,7 @@ type AgentProfile = {
   nin_verified_at: string | null;
   full_address: string | null;
   payout_status: string | null;
+  approval_status?: string | null;
 };
 
 type AgentPayoutAccount = {
@@ -122,7 +123,7 @@ export default function AgentsPanel() {
     try {
       // 1) Rich agent list (profile + checklist)
       const [agentsRes, usersRes] = await Promise.all([
-        fetch("/api/internal/agents", { cache: "no-store" }),
+        fetch("/api/internal/admin/agents", { cache: "no-store" }),
         fetch("/api/internal/users", { cache: "no-store" }),
       ]);
 
@@ -319,7 +320,9 @@ export default function AgentsPanel() {
                 {items.map((u) => {
                   const c = u.checklist;
 
-                  const approved = !!u.can_view_handoffs; // this is the gate for projects/chats
+                  const approved =
+                    !!u.can_view_handoffs ||
+                    String(u.profile?.approval_status || "").toLowerCase() === "approved";
                   const phoneOk = c ? c.phone_verified : false;
                   const bankOk = c ? c.bank_verified : false;
                   const ninOk = c ? c.nin_provided : false;
@@ -366,6 +369,13 @@ export default function AgentsPanel() {
                         >
                           Edit access
                         </button>
+
+                        <a
+                          href={`/internal/agents/${u.id}`}
+                          className="ml-2 inline-flex rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                        >
+                          View details
+                        </a>
 
                         {/* Quick approve / revoke shortcut */}
                         <button

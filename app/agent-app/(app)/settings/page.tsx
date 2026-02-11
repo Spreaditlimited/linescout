@@ -46,6 +46,8 @@ export default function SettingsPage() {
   const [accountName, setAccountName] = useState("");
   const [showNin, setShowNin] = useState(false);
   const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [bankErrorOpen, setBankErrorOpen] = useState(false);
+  const [bankErrorMessage, setBankErrorMessage] = useState("");
   const [otpCooldown, setOtpCooldown] = useState(0);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpSending, setOtpSending] = useState(false);
@@ -75,11 +77,21 @@ export default function SettingsPage() {
         setUser(profileJson.user || null);
         setPayout(profileJson.payout_account || null);
         setChecklist(profileJson.checklist || null);
-        setChinaPhone(profileJson.profile?.china_phone || "");
+        const rawChina = String(profileJson.profile?.china_phone || "").trim();
+        setChinaPhone(rawChina.startsWith("pending:") ? "" : rawChina);
         const city = String(profileJson.profile?.china_city || "");
         const fullAddr = String(profileJson.profile?.full_address || "");
+        const addrLineSaved = String(profileJson.profile?.address_line || "").trim();
+        const addrDistrictSaved = String(profileJson.profile?.address_district || "").trim();
+        const addrProvinceSaved = String(profileJson.profile?.address_province || "").trim();
+        const addrPostalSaved = String(profileJson.profile?.address_postal || "").trim();
         setAddrCity(city);
-        if (fullAddr) {
+        if (addrLineSaved || addrDistrictSaved || addrProvinceSaved || addrPostalSaved) {
+          setAddrLine(addrLineSaved);
+          setAddrDistrict(addrDistrictSaved);
+          setAddrProvince(addrProvinceSaved);
+          setAddrPostal(addrPostalSaved);
+        } else if (fullAddr) {
           const parts = fullAddr.split(",").map((p: string) => p.trim());
           setAddrLine(parts[0] || "");
           setAddrDistrict(parts[1] || "");
@@ -157,21 +169,6 @@ export default function SettingsPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  useEffect(() => {
-    if (!checklist) return;
-    const mode = otpMode || (checklist?.otp_mode === "email" ? "email" : "phone");
-    const resolvedOk =
-      mode === "email" ? !!checklist?.email_verified : !!(checklist?.phone_verified ?? checklist?.otp_verified);
-    const steps = [
-      resolvedOk,
-      !!checklist?.nin_provided,
-      !!checklist?.bank_verified,
-      !!checklist?.address_provided,
-    ];
-    const next = steps.findIndex((s) => !s);
-    setActiveStep(next === -1 ? steps.length : next);
-  }, [checklist, otpMode]);
-
   const ninInvalid = nin.trim().length > 0 && !/^\d{11}$/.test(nin.trim());
   const normalizedChinaPhone = chinaPhone.replace(/[\s-]/g, "").trim();
   const chinaPhoneValid = /^\+86(1[3-9]\d{9})$/.test(normalizedChinaPhone);
@@ -188,15 +185,32 @@ export default function SettingsPage() {
   const emailOk = !!checklist?.email_verified;
   const resolvedOtpOk = resolvedOtpMode === "email" ? emailOk : phoneOk;
 
+  useEffect(() => {
+    if (!checklist) return;
+    const mode = otpMode || (checklist?.otp_mode === "email" ? "email" : "phone");
+    const resolvedOk =
+      mode === "email" ? !!checklist?.email_verified : !!(checklist?.phone_verified ?? checklist?.otp_verified);
+    const steps = [
+      resolvedOk,
+      !!checklist?.nin_provided,
+      !!checklist?.bank_verified,
+      !!checklist?.address_provided,
+      chinaPhoneValid,
+    ];
+    const next = steps.findIndex((s) => !s);
+    setActiveStep(next === -1 ? steps.length : next);
+  }, [checklist, otpMode, chinaPhoneValid]);
+
   const steps = useMemo(() => {
-    const otpLabel = resolvedOtpMode === "email" ? "Email" : "China phone";
+    const otpLabel = resolvedOtpMode === "email" ? "Email" : "Phone OTP";
     return [
       { label: otpLabel, done: resolvedOtpOk },
       { label: "NIN", done: !!checklist?.nin_provided },
       { label: "Bank", done: !!checklist?.bank_verified },
       { label: "Address", done: !!checklist?.address_provided },
+      { label: "China phone", done: chinaPhoneValid },
     ];
-  }, [checklist, resolvedOtpMode]);
+  }, [checklist, resolvedOtpMode, resolvedOtpOk, chinaPhoneValid]);
 
   const progressPct = useMemo(() => {
     if (!steps.length) return 0;
@@ -206,7 +220,7 @@ export default function SettingsPage() {
 
   const awaitingApproval = checklist
     ? resolvedOtpOk
-      ? checklist?.nin_provided && checklist?.bank_verified && checklist?.address_provided
+      ? checklist?.nin_provided && checklist?.bank_verified && checklist?.address_provided && chinaPhoneValid
       : false
     : false;
 
@@ -268,7 +282,15 @@ export default function SettingsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         credentials: "include",
-        body: JSON.stringify({ full_address: full, china_city: city, country: "China" }),
+        body: JSON.stringify({
+          full_address: full,
+          address_line: line,
+          address_district: district,
+          address_province: province,
+          address_postal: postal,
+          china_city: city,
+          country: "China",
+        }),
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
@@ -406,7 +428,15 @@ export default function SettingsPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
-        setErr(String(json?.error || `Failed (${res.status})`));
+        const errMsg = String(json?.error || `Failed (${res.status})`);
+        if (/account number cannot be resolved/i.test(errMsg)) {
+          setBankErrorMessage("We couldn’t resolve that account number. Please double-check the bank and try again.");
+          setBankErrorOpen(true);
+          setErr(null);
+          setToast(null);
+          return;
+        }
+        setErr(errMsg);
         setToast({ type: "error", message: String(json?.error || "Bank verification failed.") });
         return;
       }
@@ -437,7 +467,13 @@ export default function SettingsPage() {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
-        setOtpError(String(json?.error || `Failed (${res.status})`));
+        const errMsg = String(json?.error || `Failed (${res.status})`);
+        if (/account number cannot be resolved/i.test(errMsg)) {
+          setBankErrorMessage("We couldn’t resolve that account number. Please double-check the bank and try again.");
+          setBankErrorOpen(true);
+          return;
+        }
+        setOtpError(errMsg);
         return;
       }
       setOtpModalOpen(true);
@@ -508,17 +544,6 @@ export default function SettingsPage() {
 
   return (
     <AgentAppShell title="Settings" subtitle="Update your details, payout account, and notifications.">
-      {toast ? (
-        <div
-          className={`rounded-2xl border px-4 py-3 text-sm ${
-            toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {toast.message}
-        </div>
-      ) : null}
       {err ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
       ) : null}
@@ -644,6 +669,9 @@ export default function SettingsPage() {
 
           <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">Step 3 · Bank</p>
+            <p className="mt-1 text-sm text-neutral-500">
+              Select your bank, enter the 10‑digit account number, then verify.
+            </p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <PremiumSelect
                 label="Bank"
@@ -661,23 +689,6 @@ export default function SettingsPage() {
                 />
                 {bankInvalid ? <p className="mt-2 text-xs text-amber-600">Account number must be 10 digits.</p> : null}
               </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Account name</label>
-                <input
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                  disabled
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-neutral-50 px-4 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Status</label>
-                <input
-                  value={bankVerified ? "Verified" : "Pending"}
-                  disabled
-                  className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-neutral-50 px-4 py-2 text-sm"
-                />
-              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -690,6 +701,11 @@ export default function SettingsPage() {
                 {bankChange ? "Update bank" : "Verify bank"}
               </button>
             </div>
+            {bankVerified && accountName ? (
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Verified account name: <span className="font-semibold">{accountName}</span>
+              </div>
+            ) : null}
             {bankChange ? (
               <div className="mt-2 text-xs text-neutral-500">
                 Changing bank details requires OTP confirmation.
@@ -977,6 +993,53 @@ export default function SettingsPage() {
                 className="btn btn-primary px-4 py-2 text-xs"
               >
                 {supportSending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
+          <div
+            className={`rounded-2xl border px-4 py-3 text-sm shadow-2xl ${
+              toast.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            {toast.message}
+          </div>
+        </div>
+      ) : null}
+
+      {bankErrorOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close bank error modal"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => setBankErrorOpen(false)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                Bank verification
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">We couldn’t verify that account</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                {bankErrorMessage || "Please double-check the bank and account number, then try again."}
+              </p>
+              <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600">
+                Tip: Make sure the account number is 10 digits and matches the selected bank.
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[rgba(45,52,97,0.12)] bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setBankErrorOpen(false)}
+                className="btn btn-primary px-4 py-2 text-xs"
+              >
+                Okay
               </button>
             </div>
           </div>

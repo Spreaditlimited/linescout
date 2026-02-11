@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../_components/SearchableSelect";
 import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
 
 type MeResponse =
@@ -938,18 +939,20 @@ export default function InternalSettingsPage() {
           </div>
           <div className="sm:col-span-3">
             <label className="text-sm font-medium text-neutral-300">Agent OTP mode</label>
-            <select
+            <SearchableSelect
+              className="mt-2"
               value={agentOtpMode}
-              onChange={(e) => setAgentOtpMode(e.target.value === "email" ? "email" : "phone")}
-              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-            >
-              <option value="phone">Phone OTP (SMS)</option>
-              <option value="email">Email OTP</option>
-            </select>
+              options={[
+                { value: "phone", label: "Phone OTP (SMS)" },
+                { value: "email", label: "Email OTP" },
+              ]}
+              onChange={(next) => setAgentOtpMode(next === "email" ? "email" : "phone")}
+            />
             <div className="mt-1 text-xs text-neutral-400">
               Controls agent verification during sign in and onboarding.
             </div>
           </div>
+
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
@@ -995,20 +998,14 @@ export default function InternalSettingsPage() {
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <div className="text-sm font-semibold text-neutral-100">Shipping rates</div>
             <div className="mt-3 grid grid-cols-1 gap-2">
-              <select
-                value={newRateTypeId ?? ""}
-                onChange={(e) => setNewRateTypeId(Number(e.target.value))}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-              >
-                <option value="" disabled>
-                  Select shipping type
-                </option>
-                {shippingTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={newRateTypeId ? String(newRateTypeId) : ""}
+                options={[
+                  { value: "", label: "Select shipping type" },
+                  ...shippingTypes.map((t) => ({ value: String(t.id), label: t.name })),
+                ]}
+                onChange={(next) => setNewRateTypeId(next ? Number(next) : null)}
+              />
               <input
                 value={newRateValue}
                 onChange={(e) => setNewRateValue(e.target.value)}
@@ -1035,14 +1032,14 @@ export default function InternalSettingsPage() {
                 );
               })()}
               <div className="grid grid-cols-2 gap-2">
-                <select
+                <SearchableSelect
                   value={newRateUnit}
-                  onChange={(e) => setNewRateUnit(e.target.value as "per_kg" | "per_cbm")}
-                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                >
-                  <option value="per_kg">Per KG</option>
-                  <option value="per_cbm">Per CBM</option>
-                </select>
+                  options={[
+                    { value: "per_kg", label: "Per KG" },
+                    { value: "per_cbm", label: "Per CBM" },
+                  ]}
+                  onChange={(next) => setNewRateUnit(next as "per_kg" | "per_cbm")}
+                />
                 <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-500 flex items-center">
                   USD (base)
                 </div>
@@ -1072,14 +1069,14 @@ export default function InternalSettingsPage() {
                             className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                             placeholder="USD rate"
                           />
-                          <select
+                          <SearchableSelect
                             value={editRateUnit}
-                            onChange={(e) => setEditRateUnit(e.target.value as "per_kg" | "per_cbm")}
-                            className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
-                          >
-                            <option value="per_kg">Per KG</option>
-                            <option value="per_cbm">Per CBM</option>
-                          </select>
+                            options={[
+                              { value: "per_kg", label: "Per KG" },
+                              { value: "per_cbm", label: "Per CBM" },
+                            ]}
+                            onChange={(next) => setEditRateUnit(next as "per_kg" | "per_cbm")}
+                          />
                         </div>
                         <div className="mt-2 text-[11px] text-neutral-500">
                           {(() => {
@@ -1474,35 +1471,33 @@ export default function InternalSettingsPage() {
 
                       <div>
                         <label className="text-xs font-medium text-neutral-300">Purpose</label>
-                        <select
+                        <SearchableSelect
+                          className="mt-1"
                           value={initialPurpose}
-                          onChange={(e) => setInitialPurpose(e.target.value as any)}
-                          className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                        >
-                          <option value="downpayment">downpayment</option>
-                          <option value="full_payment">full_payment</option>
-                          <option value="shipping_payment">shipping_payment</option>
-                          <option value="additional_payment">additional_payment</option>
-                        </select>
+                          options={[
+                            { value: "downpayment", label: "downpayment" },
+                            { value: "full_payment", label: "full_payment" },
+                            { value: "shipping_payment", label: "shipping_payment" },
+                            { value: "additional_payment", label: "additional_payment" },
+                          ]}
+                          onChange={(next) => setInitialPurpose(next as any)}
+                        />
                       </div>
 
                       <div className="sm:col-span-2">
                         <label className="text-xs font-medium text-neutral-300">Bank</label>
-                        <select
-                          value={selectedBankId ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value ? Number(e.target.value) : null;
+                        <SearchableSelect
+                          className="mt-1"
+                          value={selectedBankId ? String(selectedBankId) : ""}
+                          options={[
+                            { value: "", label: "Select bank" },
+                            ...activeBanks.map((b) => ({ value: String(b.id), label: b.name })),
+                          ]}
+                          onChange={(next) => {
+                            const v = next ? Number(next) : null;
                             setSelectedBankId(v);
                           }}
-                          className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                        >
-                          <option value="">Select bank</option>
-                          {activeBanks.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
+                        />
                         <p className="mt-1 text-xs text-neutral-500">
                           Required when recording a payment.
                         </p>

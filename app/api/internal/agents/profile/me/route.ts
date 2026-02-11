@@ -92,6 +92,31 @@ export async function GET() {
 
   const conn = await db.getConnection();
   try {
+    const addressColumns = [
+      { name: "address_line", type: "VARCHAR(255) NULL" },
+      { name: "address_district", type: "VARCHAR(255) NULL" },
+      { name: "address_province", type: "VARCHAR(255) NULL" },
+      { name: "address_postal", type: "VARCHAR(32) NULL" },
+    ];
+    for (const col of addressColumns) {
+      const [rows]: any = await conn.query(
+        `
+        SELECT COLUMN_NAME
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND table_name = 'linescout_agent_profiles'
+          AND column_name = ?
+        LIMIT 1
+        `,
+        [col.name]
+      );
+      if (!rows?.length) {
+        await conn.query(
+          `ALTER TABLE linescout_agent_profiles ADD COLUMN ${col.name} ${col.type}`
+        );
+      }
+    }
+
     const [modeCols]: any = await conn.query(
       `
       SELECT COLUMN_NAME
@@ -126,6 +151,10 @@ export async function GET() {
           nin,
           nin_verified_at,
           full_address,
+          address_line,
+          address_district,
+          address_province,
+          address_postal,
           payout_status,
           email_notifications_enabled,
           approval_status
@@ -227,6 +256,10 @@ export async function GET() {
             nin: profile.nin ? String(profile.nin) : null,
             nin_verified_at: profile.nin_verified_at,
             full_address: profile.full_address ? String(profile.full_address) : null,
+            address_line: profile.address_line ? String(profile.address_line) : null,
+            address_district: profile.address_district ? String(profile.address_district) : null,
+            address_province: profile.address_province ? String(profile.address_province) : null,
+            address_postal: profile.address_postal ? String(profile.address_postal) : null,
             payout_status: String(profile.payout_status || "pending"),
             approval_status: String(profile.approval_status || "pending"),
           }

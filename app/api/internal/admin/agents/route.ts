@@ -126,6 +126,7 @@ export async function GET(req: Request) {
         ap.nin_verified_at,
         ap.full_address,
         ap.payout_status,
+        ap.approval_status,
 
         pa.bank_code,
         pa.account_number,
@@ -178,6 +179,7 @@ export async function GET(req: Request) {
           nin_verified_at: r.nin_verified_at,
           full_address: r.full_address ? String(r.full_address) : null,
           payout_status: r.payout_status ? String(r.payout_status) : "pending",
+          approval_status: r.approval_status ? String(r.approval_status) : "pending",
         },
 
         payout_account: r.account_number

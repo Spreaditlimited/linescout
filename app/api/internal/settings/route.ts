@@ -96,13 +96,93 @@ async function ensureRow(conn: mysql.PoolConnection) {
     );
   }
 
+  const [stickyEnabledCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'sticky_notice_enabled'
+    LIMIT 1
+    `
+  );
+  if (!stickyEnabledCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_enabled TINYINT(1) NOT NULL DEFAULT 0`
+    );
+  }
+
+  const [stickyTitleCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'sticky_notice_title'
+    LIMIT 1
+    `
+  );
+  if (!stickyTitleCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_title VARCHAR(200) NULL`
+    );
+  }
+
+  const [stickyBodyCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'sticky_notice_body'
+    LIMIT 1
+    `
+  );
+  if (!stickyBodyCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_body TEXT NULL`
+    );
+  }
+
+  const [stickyTargetCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'sticky_notice_target'
+    LIMIT 1
+    `
+  );
+  if (!stickyTargetCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_target VARCHAR(16) NOT NULL DEFAULT 'both'`
+    );
+  }
+
+  const [stickyVersionCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'sticky_notice_version'
+    LIMIT 1
+    `
+  );
+  if (!stickyVersionCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_version INT NOT NULL DEFAULT 0`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0)`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -147,6 +227,22 @@ export async function POST(req: Request) {
     body?.agent_otp_mode === "email" || body?.agent_otp_mode === "phone"
       ? body.agent_otp_mode
       : "phone";
+  const hasStickyPayload =
+    Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_enabled") ||
+    Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_title") ||
+    Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_body") ||
+    Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_target") ||
+    Object.prototype.hasOwnProperty.call(body || {}, "publish_sticky_notice");
+  const sticky_notice_enabled = body?.sticky_notice_enabled ? 1 : 0;
+  const sticky_notice_title =
+    typeof body?.sticky_notice_title === "string" ? body.sticky_notice_title.trim() : "";
+  const sticky_notice_body =
+    typeof body?.sticky_notice_body === "string" ? body.sticky_notice_body.trim() : "";
+  const sticky_notice_target =
+    body?.sticky_notice_target === "user" || body?.sticky_notice_target === "agent" || body?.sticky_notice_target === "both"
+      ? body.sticky_notice_target
+      : "both";
+  const publish_sticky_notice = Boolean(body?.publish_sticky_notice);
 
   const values = {
     commitment_due_ngn,
@@ -166,6 +262,25 @@ export async function POST(req: Request) {
   const conn = await pool.getConnection();
   try {
     const row = await ensureRow(conn);
+    const prevEnabled = Number(row.sticky_notice_enabled || 0);
+    const prevTitle = String(row.sticky_notice_title || "");
+    const prevBody = String(row.sticky_notice_body || "");
+    const prevTarget = String(row.sticky_notice_target || "both");
+    const prevVersion = Number(row.sticky_notice_version || 0);
+
+    const effectiveEnabled = hasStickyPayload ? sticky_notice_enabled : prevEnabled;
+    const effectiveTitle = hasStickyPayload ? sticky_notice_title : prevTitle;
+    const effectiveBody = hasStickyPayload ? sticky_notice_body : prevBody;
+    const effectiveTarget = hasStickyPayload ? sticky_notice_target : prevTarget;
+    const newStickyVersion =
+      publish_sticky_notice ? prevVersion + 1 : prevVersion;
+
+    if (hasStickyPayload && effectiveEnabled && (!effectiveTitle || !effectiveBody)) {
+      return NextResponse.json(
+        { ok: false, error: "Sticky notice title and body are required when enabled." },
+        { status: 400 }
+      );
+    }
     await conn.query(
       `UPDATE linescout_settings
        SET commitment_due_ngn = ?,
@@ -178,6 +293,11 @@ export async function POST(req: Request) {
            points_config_json = ?,
            payout_summary_email = ?,
            agent_otp_mode = ?,
+           sticky_notice_enabled = ?,
+           sticky_notice_title = ?,
+           sticky_notice_body = ?,
+           sticky_notice_target = ?,
+           sticky_notice_version = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -191,6 +311,11 @@ export async function POST(req: Request) {
         points_config_json ? JSON.stringify(points_config_json) : null,
         payout_summary_email || null,
         agent_otp_mode,
+        effectiveEnabled,
+        effectiveTitle || null,
+        effectiveBody || null,
+        effectiveTarget,
+        newStickyVersion,
         row.id,
       ]
     );

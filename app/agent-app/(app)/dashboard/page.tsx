@@ -157,7 +157,7 @@ export default function DashboardPage() {
             <section className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-5">
               <p className="font-semibold text-amber-900">Complete your verification process</p>
               <p className="mt-1 text-sm text-amber-700">
-                Finish your profile and verification steps to unlock the workspace.
+                Finish your settings and verification steps to unlock the workspace.
               </p>
               <Link
                 href="/agent-app/settings"

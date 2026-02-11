@@ -103,6 +103,7 @@ function AgentChatThreadInner() {
   const [items, setItems] = useState<Msg[]>([]);
   const [lastId, setLastId] = useState<number>(0);
   const lastIdRef = useRef<number>(0);
+  const lastReadRef = useRef<number>(0);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [claimNote, setClaimNote] = useState<string>("");
@@ -124,6 +125,19 @@ function AgentChatThreadInner() {
   useEffect(() => {
     lastIdRef.current = lastId;
   }, [lastId]);
+
+  useEffect(() => {
+    const latest = lastIdRef.current;
+    if (!conversationId || !latest || latest <= lastReadRef.current) return;
+    lastReadRef.current = latest;
+    const endpoint = isQuick ? "/api/agent/quick-human/read" : "/api/internal/paid-chat/read";
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ conversation_id: conversationId, last_seen_message_id: latest }),
+    }).catch(() => {});
+  }, [conversationId, isQuick, lastId]);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {

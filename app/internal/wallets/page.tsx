@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../_components/SearchableSelect";
 
 type WalletRow = {
   wallet_id: number;
@@ -127,15 +128,16 @@ export default function InternalWalletsPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select
-          className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white"
+        <SearchableSelect
           value={ownerType}
-          onChange={(e) => setOwnerType(e.target.value as any)}
-        >
-          <option value="">All</option>
-          <option value="user">Users</option>
-          <option value="agent">Agents</option>
-        </select>
+          options={[
+            { value: "", label: "All" },
+            { value: "user", label: "Users" },
+            { value: "agent", label: "Agents" },
+          ]}
+          onChange={(next) => setOwnerType(next as any)}
+          className="w-40"
+        />
         <button
           onClick={load}
           className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black"

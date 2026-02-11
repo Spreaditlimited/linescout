@@ -33,6 +33,75 @@ const stats = [
   { label: "4.8/5", desc: "Google rating from 90+ reviews" },
 ];
 
+const testimonials = [
+  {
+    name: "Chioma Ifeanyi-Eze",
+    title: "Founder, Accountinghub & Fresh Eggs Market",
+    location: "Nigeria",
+    highlight:
+      "Transparent, deeply knowledgeable, and trustworthy. I felt safe enough to sleep after paying a huge sum. The team listens closely and follows through with care.",
+    initials: "CI",
+  },
+  {
+    name: "Chukwuedozie Nwokoye",
+    title: "Businessman",
+    location: "Nigeria",
+    highlight:
+      "Delivered 2,000 custom-branded items with flawless quality and integrity. Pricing came in below expectation. The process was smooth from brief to delivery.",
+    initials: "CN",
+  },
+  {
+    name: "Amarachi Ndukauba Ogbuagu",
+    title: "Businesswoman",
+    location: "Canada",
+    highlight:
+      "Professional, timely delivery and excellent attention to detail. The entire process was smooth and reliable. Everything arrived in perfect condition.",
+    initials: "AO",
+  },
+  {
+    name: "Emmanuel Ayobami Adewumi",
+    title: "Customer",
+    location: "Nigeria",
+    highlight:
+      "Lightning-fast delivery, transparent refurbishment, and generous extras. Reliable service from start to finish. The customer support stayed responsive throughout.",
+    initials: "EA",
+  },
+  {
+    name: "Agu Mba",
+    title: "Customer",
+    location: "United Kingdom",
+    highlight:
+      "Timely arrival and impressive quality for event souvenirs. Cost-effective sourcing without stress. The gifts impressed everyone at the celebration. I would gladly use them again.",
+    initials: "AM",
+  },
+  {
+    name: "Okoli, Augustine J. FCIA",
+    title: "Head of HR & Admin, Microware Solutions Limited",
+    location: "Nigeria",
+    highlight:
+      "Securely packaged, on-time delivery with quality that exceeded expectations. Professional communication throughout. Everything performed flawlessly.",
+    initials: "OA",
+  },
+  {
+    name: "Roberta Edu",
+    title: "Founder, Moppet Foods",
+    location: "Nigeria",
+    highlight:
+      "Equipment arrived early, matched power specs, and installed without drama. Output quality exceeded expectations and production capacity jumped by 3.5x.",
+    long:
+      "We had been burned by two previous China imports, so I needed this expansion to land perfectly. Sure Imports delivered early with the correct power rating, and the installation finished without a single issue. The machine now runs beautifully, and our capacity is up by 3.5x. The quote even came in lower than expected, and the team kept us confident at every step. I recommend them to anyone who needs China sourcing without the headache.",
+    initials: "RE",
+  },
+  {
+    name: "Boma Sydney",
+    title: "Customer",
+    location: "Nigeria",
+    highlight:
+      "I was afraid of losing my money, but I received my goods and never looked back. Fast service, quick support, and real integrity. I now recommend them with confidence.",
+    initials: "BS",
+  },
+];
+
 export default function HomePage() {
   const brandBlue = "#2D3461";
   const [showAppModal, setShowAppModal] = useState(false);
@@ -120,6 +189,69 @@ export default function HomePage() {
               <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-neutral-600 sm:text-xs">
                 <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Secure payments</span>
                 <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Verified specialists</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
+            <div className="rounded-[28px] border border-[rgba(45,52,97,0.12)] bg-white/70 p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--agent-blue)]">
+                    Testimonials
+                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-neutral-900 sm:text-3xl">
+                    Trusted by founders, operators, and growth teams.
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm text-neutral-600">
+                    Real stories from business owners who source from China with Sure Imports and LineScout.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-4 py-2 text-xs font-semibold text-[var(--agent-blue)]">
+                  90+ verified reviews
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-3">
+                <div className="rounded-[24px] border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-5 shadow-sm lg:row-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--agent-blue)]">
+                    Featured review
+                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-neutral-700">
+                    {testimonials[6].long || testimonials[6].highlight}
+                  </p>
+                  <div className="mt-6 flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-[var(--agent-blue)] shadow-sm">
+                      {testimonials[6].initials}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-neutral-900">{testimonials[6].name}</p>
+                      <p className="text-xs text-neutral-600">
+                        {testimonials[6].title} · {testimonials[6].location}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {testimonials.filter((_, idx) => idx !== 6).map((t) => (
+                  <div
+                    key={t.name}
+                    className="flex h-full flex-col rounded-[22px] border border-neutral-200 bg-white p-5 shadow-sm"
+                  >
+                    <p className="text-sm text-neutral-700">{t.highlight}</p>
+                    <div className="mt-auto flex items-center gap-3 pt-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(45,52,97,0.08)] text-xs font-semibold text-[var(--agent-blue)]">
+                        {t.initials}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-neutral-900">{t.name}</p>
+                        <p className="text-[11px] text-neutral-600">
+                          {t.title} · {t.location}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </section>

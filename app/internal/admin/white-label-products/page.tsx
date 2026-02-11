@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../../_components/SearchableSelect";
 
 type WhiteLabelProduct = {
   id: number;
@@ -421,36 +422,35 @@ export default function WhiteLabelProductsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+          <SearchableSelect
+            className="w-52"
             value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            options={[
+              { value: "", label: "All categories" },
+              ...categories.map((c) => ({ value: c, label: c })),
+            ]}
+            onChange={(next) => setCategory(next)}
+          />
+          <SearchableSelect
+            className="w-44"
             value={activeFilter}
-            onChange={(e) => setActiveFilter(e.target.value)}
-          >
-            <option value="1">Active only</option>
-            <option value="0">Inactive only</option>
-            <option value="">All</option>
-          </select>
-          <select
-            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            options={[
+              { value: "1", label: "Active only" },
+              { value: "0", label: "Inactive only" },
+              { value: "", label: "All" },
+            ]}
+            onChange={(next) => setActiveFilter(next)}
+          />
+          <SearchableSelect
+            className="w-44"
             value={imageFilter}
-            onChange={(e) => setImageFilter(e.target.value)}
-          >
-            <option value="">All images</option>
-            <option value="with">With images</option>
-            <option value="missing">Missing images</option>
-          </select>
+            options={[
+              { value: "", label: "All images" },
+              { value: "with", label: "With images" },
+              { value: "missing", label: "Missing images" },
+            ]}
+            onChange={(next) => setImageFilter(next)}
+          />
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-400">
           <span>Missing images: {missingImageCount}</span>

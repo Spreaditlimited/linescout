@@ -111,13 +111,58 @@ export async function POST(req: Request) {
         [handoffId]
       );
       const status = String(hrows?.[0]?.status || "pending").trim().toLowerCase();
-      if (!["pending", "claimed", ""].includes(status)) {
+      if (!["pending", "manufacturer_found", ""].includes(status)) {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "You can only release projects that are still pending or claimed." },
+          { ok: false, error: "You can only release projects that are pending or manufacturer found." },
           { status: 403 }
         );
       }
+
+      const [payRows]: any = await conn.query(
+        `
+        SELECT
+          COALESCE(SUM(CASE WHEN qp.purpose IN ('product_balance','full_product_payment') AND qp.status = 'paid' THEN qp.amount ELSE 0 END), 0) AS product_paid,
+          COALESCE(SUM(CASE WHEN qp.purpose = 'shipping_payment' AND qp.status = 'paid' THEN qp.amount ELSE 0 END), 0) AS shipping_paid
+        FROM linescout_quotes q
+        JOIN linescout_quote_payments qp ON qp.quote_id = q.id
+        WHERE q.handoff_id = ?
+        `,
+        [handoffId]
+      );
+      const productPaid = Number(payRows?.[0]?.product_paid || 0);
+      const shippingPaid = Number(payRows?.[0]?.shipping_paid || 0);
+      if (productPaid > 0 || shippingPaid > 0) {
+        await conn.rollback();
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Cannot release this project because product or shipping payment has already started.",
+          },
+          { status: 403 }
+        );
+      }
+
+      // Record audit before releasing
+      await conn.query(
+        `
+        INSERT INTO linescout_handoff_release_audits
+          (handoff_id, conversation_id, released_by_id, released_by_name, released_by_role,
+           previous_status, product_paid, shipping_paid, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        `,
+        [
+          handoffId,
+          conversationId,
+          auth.userId,
+          auth.username || null,
+          auth.role || null,
+          status || null,
+          productPaid,
+          shippingPaid,
+        ]
+      );
     }
 
     await conn.query(
@@ -135,7 +180,7 @@ export async function POST(req: Request) {
             claimed_by = NULL,
             claimed_at = NULL
         WHERE id = ?
-          AND (status = 'claimed' OR status = 'pending' OR status IS NULL)
+          AND (status = 'pending' OR status = 'manufacturer_found' OR status IS NULL)
         `,
         [handoffId]
       );

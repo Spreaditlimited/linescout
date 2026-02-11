@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../_components/SearchableSelect";
 
 type MeResponse =
   | {
@@ -136,38 +137,40 @@ export default function AgentSupportPage() {
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <label className="text-xs text-neutral-300">
                   Status
-                  <select
-                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white"
+                  <SearchableSelect
+                    className="mt-1"
                     value={item.status}
-                    onChange={(e) =>
+                    options={[
+                      { value: "pending", label: "pending" },
+                      { value: "reviewed", label: "reviewed" },
+                      { value: "resolved", label: "resolved" },
+                    ]}
+                    onChange={(next) =>
                       setItems((prev) =>
-                        prev.map((x) => (x.id === item.id ? { ...x, status: e.target.value as SupportItem["status"] } : x))
+                        prev.map((x) => (x.id === item.id ? { ...x, status: next as SupportItem["status"] } : x))
                       )
                     }
-                  >
-                    <option value="pending">pending</option>
-                    <option value="reviewed">reviewed</option>
-                    <option value="resolved">resolved</option>
-                  </select>
+                  />
                 </label>
                 <label className="text-xs text-neutral-300">
                   Response channel
-                  <select
-                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white"
+                  <SearchableSelect
+                    className="mt-1"
                     value={item.admin_response_channel || ""}
-                    onChange={(e) =>
+                    options={[
+                      { value: "", label: "Not set" },
+                      { value: "email", label: "email" },
+                      { value: "whatsapp", label: "whatsapp" },
+                      { value: "phone", label: "phone" },
+                    ]}
+                    onChange={(next) =>
                       setItems((prev) =>
                         prev.map((x) =>
-                          x.id === item.id ? { ...x, admin_response_channel: (e.target.value || null) as any } : x
+                          x.id === item.id ? { ...x, admin_response_channel: (next || null) as any } : x
                         )
                       )
                     }
-                  >
-                    <option value="">Not set</option>
-                    <option value="email">email</option>
-                    <option value="whatsapp">whatsapp</option>
-                    <option value="phone">phone</option>
-                  </select>
+                  />
                 </label>
                 <label className="text-xs text-neutral-300 md:col-span-1">
                   Admin note

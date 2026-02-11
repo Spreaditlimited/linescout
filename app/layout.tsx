@@ -28,9 +28,9 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   applicationName: "LineScout",
-  title: "LineScout – Machine Sourcing Intelligence by Sure Imports",
+  title: "LineScout - China Sourcing Intelligence by Sure Imports",
   description:
-    "LineScout helps entrepreneurs design production lines, estimate realistic machine and landing costs, and generate full business plans powered by Sure Imports’ expertise.",
+    "LineScout helps entrepreneurs source products in China, compare suppliers, estimate landed costs, and plan reliable production and white-label launches with Sure Imports’ expertise.",
   manifest: "/manifest.webmanifest",
 
   appleWebApp: {
@@ -50,25 +50,25 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "LineScout",
-    title: "LineScout – Machine Sourcing Intelligence by Sure Imports",
+    title: "LineScout - China Sourcing Intelligence by Sure Imports",
     description:
-      "Nigeria-aware machine sourcing guidance. Think through machines, costs, power, and execution before you import.",
+      "China sourcing guidance for products and white-label launches. Compare suppliers, estimate landed costs, and plan execution with confidence.",
     url: "https://linescout.sureimports.com",
     images: [
       {
         url: "/linescout-social.png",
         width: 1200,
         height: 630,
-        alt: "LineScout – Machine Sourcing Intelligence",
+        alt: "LineScout - China Sourcing Intelligence",
       },
     ],
   },
 
   twitter: {
     card: "summary_large_image",
-    title: "LineScout – Machine Sourcing Intelligence by Sure Imports",
+    title: "LineScout - China Sourcing Intelligence by Sure Imports",
     description:
-      "Nigeria-aware machine sourcing guidance. Think through machines, costs, power, and execution before you import.",
+      "China sourcing guidance for products and white-label launches. Compare suppliers, estimate landed costs, and plan execution with confidence.",
     images: ["/linescout-social.png"],
   },
 };

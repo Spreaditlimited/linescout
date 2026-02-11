@@ -228,13 +228,26 @@ function ProjectDetailInner() {
     payments?.quote_summary ? Number(payments.quote_summary.product_balance || 0) <= 0 : false;
   const shippingFullyPaid =
     payments?.quote_summary ? Number(payments.quote_summary.shipping_balance || 0) <= 0 : false;
+  const productPaid = payments?.quote_summary ? Number(payments.quote_summary.product_paid || 0) : 0;
+  const shippingPaid = payments?.quote_summary ? Number(payments.quote_summary.shipping_paid || 0) : 0;
+  const hasStartedPayment = productPaid > 0 || shippingPaid > 0;
 
   const canClaim =
     statusRaw === "pending" && !detail?.assigned_agent_id && !!conversationId;
   const canRelease =
     isMine &&
     !!conversationId &&
-    ["pending", "claimed", ""].includes(statusRaw);
+    ["pending", "manufacturer_found", ""].includes(statusRaw) &&
+    !hasStartedPayment;
+  const releaseDisabledReason = !isMine
+    ? "Only your claimed projects can be released."
+    : !conversationId
+    ? "Missing conversation details."
+    : !["pending", "manufacturer_found", ""].includes(statusRaw)
+    ? "Release is allowed only at Pending or Manufacturer Found."
+    : hasStartedPayment
+    ? "Release is disabled because product or shipping payment has started."
+    : null;
 
   const claimProject = useCallback(async () => {
     if (!conversationId) return false;
@@ -405,16 +418,22 @@ function ProjectDetailInner() {
                     {claiming ? "Claiming…" : "Claim project"}
                   </button>
                 ) : null}
-                {canRelease ? (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmReleaseOpen(true)}
-                    disabled={releasing}
-                    className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
-                  >
-                    {releasing ? "Releasing…" : "Release project"}
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!canRelease) return;
+                    setConfirmReleaseOpen(true);
+                  }}
+                  disabled={!canRelease || releasing}
+                  title={!canRelease ? releaseDisabledReason || "Release not available." : ""}
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold ${
+                    canRelease
+                      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                      : "border-neutral-200 bg-neutral-50 text-neutral-400 cursor-not-allowed"
+                  }`}
+                >
+                  {releasing ? "Releasing…" : "Release project"}
+                </button>
                 {conversationId ? (
                   <button
                     type="button"

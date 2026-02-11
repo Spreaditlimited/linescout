@@ -337,14 +337,28 @@ export async function POST(req: Request) {
           );
         }
 
-        // notify ALL active agents (unclaimed pool)
+        const [activeRows]: any = await conn.query(
+          `
+          SELECT internal_user_id
+          FROM linescout_conversation_reads
+          WHERE conversation_id = ?
+            AND updated_at > (NOW() - INTERVAL 2 MINUTE)
+          `,
+          [conversationId]
+        );
+        const activeAgentIds = (activeRows || [])
+          .map((r: any) => Number(r.internal_user_id))
+          .filter(Boolean);
+
+        // notify ALL active agents (unclaimed pool), excluding those active in chat
         const [trows]: any = await conn.query(
           `
           SELECT token
           FROM linescout_agent_device_tokens
           WHERE is_active = 1
+          ${activeAgentIds.length ? `AND agent_id NOT IN (${activeAgentIds.map(() => "?").join(",")})` : ""}
           `,
-          []
+          activeAgentIds.length ? activeAgentIds : []
         );
 
         const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
@@ -377,7 +391,10 @@ export async function POST(req: Request) {
               AND COALESCE(ap.email_notifications_enabled, 1) = 1
               AND ap.email IS NOT NULL
               AND ap.email <> ''
+              ${activeAgentIds.length ? `AND ap.internal_user_id NOT IN (${activeAgentIds.map(() => "?").join(",")})` : ""}
             `
+            ,
+            activeAgentIds.length ? activeAgentIds : []
           );
           const emails = (emailRows || [])
             .map((r: any) => String(r.email || "").trim())
@@ -414,8 +431,24 @@ export async function POST(req: Request) {
         }
 
         let tokens: string[] = [];
+        let shouldNotify = true;
+        let activeAgentIds: number[] = [];
 
         if (assignedAgentId) {
+          const [rrows]: any = await conn.query(
+            `
+            SELECT last_seen_message_id, updated_at
+            FROM linescout_conversation_reads
+            WHERE conversation_id = ? AND internal_user_id = ?
+            LIMIT 1
+            `,
+            [conversationId, assignedAgentId]
+          );
+          const lastSeen = Number(rrows?.[0]?.last_seen_message_id || 0);
+          const updatedAt = rrows?.[0]?.updated_at ? new Date(rrows[0].updated_at).getTime() : 0;
+          const activeRecently = updatedAt && Date.now() - updatedAt < 2 * 60 * 1000;
+          if (lastSeen >= userMessageId || activeRecently) shouldNotify = false;
+
           const [trows]: any = await conn.query(
             `
             SELECT token
@@ -426,26 +459,42 @@ export async function POST(req: Request) {
           );
           tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
         } else {
+          const [activeRows]: any = await conn.query(
+            `
+            SELECT internal_user_id
+            FROM linescout_conversation_reads
+            WHERE conversation_id = ?
+              AND updated_at > (NOW() - INTERVAL 2 MINUTE)
+            `,
+            [conversationId]
+          );
+          activeAgentIds = (activeRows || [])
+            .map((r: any) => Number(r.internal_user_id))
+            .filter(Boolean);
+
           const [trows]: any = await conn.query(
             `
             SELECT token
             FROM linescout_agent_device_tokens
             WHERE is_active = 1
+            ${activeAgentIds.length ? `AND agent_id NOT IN (${activeAgentIds.map(() => "?").join(",")})` : ""}
             `,
-            []
+            activeAgentIds.length ? activeAgentIds : []
           );
           tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
         }
 
-        await sendExpoPush(tokens, {
-          title: "New paid message",
-          body: messageText.trim().slice(0, 120),
-          data: {
-            kind: "paid",
-            conversation_id: conversationId,
-            route_type: routeType,
-          },
-        });
+        if (shouldNotify) {
+          await sendExpoPush(tokens, {
+            title: "New paid message",
+            body: messageText.trim().slice(0, 120),
+            data: {
+              kind: "paid",
+              conversation_id: conversationId,
+              route_type: routeType,
+            },
+          });
+        }
 
         return NextResponse.json({
           ok: true,

@@ -57,6 +57,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [approvalRequired, setApprovalRequired] = useState(false);
   const [query, setQuery] = useState("");
   const [releasingId, setReleasingId] = useState<number | null>(null);
   const [confirmReleaseId, setConfirmReleaseId] = useState<number | null>(null);
@@ -73,11 +74,15 @@ export default function ProjectsPage() {
         );
         const json = await res.json().catch(() => ({}));
         if (!res.ok || !json?.ok) {
+          const requiresApproval =
+            json?.approval_required || String(json?.error || "") === "ACCOUNT_APPROVAL_REQUIRED";
+          setApprovalRequired(Boolean(requiresApproval));
           setErr(String(json?.message || json?.error || `Failed (${res.status})`));
           setItems([]);
           return;
         }
         setItems(Array.isArray(json.items) ? json.items : []);
+        setApprovalRequired(false);
       } catch (e: any) {
         setErr(e?.message || "Network error");
       } finally {
@@ -161,7 +166,15 @@ export default function ProjectsPage() {
 
       {err ? (
         <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
+          <div>{err}</div>
+          {approvalRequired ? (
+            <Link
+              href="/agent-app/settings"
+              className="mt-3 inline-flex rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+            >
+              Go to settings
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
@@ -169,7 +182,7 @@ export default function ProjectsPage() {
         <div className="mt-4 rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-4 text-sm text-neutral-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
           Loading projects…
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !approvalRequired ? (
         <div className="mt-4 rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 text-sm text-neutral-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
           {tab === "unclaimed"
             ? "When projects are available to claim, they show up here."
@@ -187,7 +200,21 @@ export default function ProjectsPage() {
               tab === "mine" &&
               !!item.assigned_agent_id &&
               !!item.conversation_id &&
-              ["pending", "claimed", ""].includes(String(item.handoff_status || "pending").toLowerCase());
+              ["pending", "manufacturer_found", ""].includes(
+                String(item.handoff_status || "pending").toLowerCase()
+              );
+            const releaseDisabledReason =
+              tab !== "mine"
+                ? "Only your claimed projects can be released."
+                : !item.assigned_agent_id
+                ? "Only the assigned agent can release this project."
+                : !item.conversation_id
+                ? "Missing conversation details."
+                : ["pending", "manufacturer_found", ""].includes(
+                    String(item.handoff_status || "pending").toLowerCase()
+                  )
+                ? null
+                : "Release is allowed only at Pending or Manufacturer Found.";
             const handoffId = item.handoff_id || 0;
 
             return (
@@ -247,16 +274,22 @@ export default function ProjectsPage() {
                         Claim project
                       </button>
                     ) : null}
-                    {canRelease ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmReleaseId(item.conversation_id || null)}
-                        disabled={releasingId === item.conversation_id}
-                        className="rounded-full border border-red-200 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
-                      >
-                        {releasingId === item.conversation_id ? "Releasing…" : "Release project"}
-                      </button>
-                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!canRelease) return;
+                        setConfirmReleaseId(item.conversation_id || null);
+                      }}
+                      disabled={!canRelease || releasingId === item.conversation_id}
+                      title={!canRelease ? releaseDisabledReason || "Release not available." : ""}
+                      className={`rounded-full border px-4 py-2 text-xs font-semibold ${
+                        canRelease
+                          ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                          : "border-neutral-200 bg-neutral-50 text-neutral-400 cursor-not-allowed"
+                      }`}
+                    >
+                      {releasingId === item.conversation_id ? "Releasing…" : "Release project"}
+                    </button>
                   </div>
                 </div>
               </div>

@@ -37,6 +37,18 @@ type HandoffItem = {
   tracking_number: string | null;
 
   conversation_id: number | null;
+
+  release_audit?: Array<{
+    id: number;
+    conversation_id: number | null;
+    released_by_id: number | null;
+    released_by_name: string | null;
+    released_by_role: string | null;
+    previous_status: string | null;
+    product_paid: number | null;
+    shipping_paid: number | null;
+    created_at: string | null;
+  }>;
 };
 
 type ApiResp = { ok: true; item: HandoffItem } | { ok: false; error: string };
@@ -334,6 +346,50 @@ export default function InternalHandoffDetailPage() {
                 {field("Bank ID", handoff.bank_id ?? "N/A", { mono: true })}
                 {field("Shipping company ID", handoff.shipping_company_id ?? "N/A", { mono: true })}
               </div>
+            </div>
+
+            {/* Release audit */}
+            <div className={card}>
+              <div className="text-sm font-semibold text-neutral-100">Release audit</div>
+              {handoff.release_audit && handoff.release_audit.length ? (
+                <div className="mt-3 space-y-3">
+                  {handoff.release_audit.map((row) => (
+                    <div key={row.id} className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs text-neutral-400">
+                          {row.created_at ? fmt(row.created_at) : "N/A"}
+                        </div>
+                        {row.previous_status ? (
+                          <span className={badge(row.previous_status)}>{row.previous_status}</span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 text-sm text-neutral-200">
+                        Released by{" "}
+                        <span className="font-semibold">
+                          {row.released_by_name || `User ${row.released_by_id || "N/A"}`}
+                        </span>
+                        {row.released_by_role ? ` (${row.released_by_role})` : ""}
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-neutral-400 sm:grid-cols-2">
+                        <div>
+                          Conversation ID:{" "}
+                          <span className="text-neutral-200">{row.conversation_id ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          Product paid:{" "}
+                          <span className="text-neutral-200">{row.product_paid ?? 0}</span>
+                        </div>
+                        <div>
+                          Shipping paid:{" "}
+                          <span className="text-neutral-200">{row.shipping_paid ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-500">No release activity recorded.</p>
+              )}
             </div>
           </div>
         </div>

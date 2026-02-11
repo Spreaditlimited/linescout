@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SearchableSelect from "../_components/SearchableSelect";
 
 type Row = {
   id: number;
@@ -103,17 +104,18 @@ export default function UserPayoutsPage() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select
-          className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-white"
+        <SearchableSelect
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">All</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="paid">Paid</option>
-        </select>
+          options={[
+            { value: "", label: "All" },
+            { value: "pending", label: "Pending" },
+            { value: "approved", label: "Approved" },
+            { value: "rejected", label: "Rejected" },
+            { value: "paid", label: "Paid" },
+          ]}
+          onChange={(next) => setStatus(next)}
+          className="w-52"
+        />
         <button onClick={load} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black">
           Search
         </button>

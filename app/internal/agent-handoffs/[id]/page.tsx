@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../../_components/SearchableSelect";
 import { useParams } from "next/navigation";
 import ConfirmModal from "../../_components/ConfirmModal";
 
@@ -48,6 +49,17 @@ type Handoff = {
       manufacturer_contact_email: string | null;
       manufacturer_contact_phone: string | null;
     };
+    created_at: string | null;
+  }>;
+  release_audit?: Array<{
+    id: number;
+    conversation_id: number | null;
+    released_by_id: number | null;
+    released_by_name: string | null;
+    released_by_role: string | null;
+    previous_status: string | null;
+    product_paid: number | null;
+    shipping_paid: number | null;
     created_at: string | null;
   }>;
   paid_at?: string | null;
@@ -829,6 +841,48 @@ export default function HandoffDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="text-sm font-semibold text-neutral-100">Release audit</div>
+              {handoff.release_audit?.length ? (
+                <div className="mt-3 space-y-2">
+                  {handoff.release_audit.map((row) => (
+                    <div
+                      key={row.id}
+                      className="rounded-xl border border-neutral-800 bg-neutral-950/50 p-3 text-xs text-neutral-300"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                        <span>{row.created_at ? fmt(row.created_at) : "N/A"}</span>
+                        {row.previous_status ? <span>· {row.previous_status}</span> : null}
+                      </div>
+                      <div className="mt-2 text-sm text-neutral-200">
+                        Released by{" "}
+                        <span className="font-semibold">
+                          {row.released_by_name || `User ${row.released_by_id || "N/A"}`}
+                        </span>
+                        {row.released_by_role ? ` (${row.released_by_role})` : ""}
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] text-neutral-500 sm:grid-cols-2">
+                        <div>
+                          Conversation ID:{" "}
+                          <span className="text-neutral-200">{row.conversation_id ?? "N/A"}</span>
+                        </div>
+                        <div>
+                          Product paid:{" "}
+                          <span className="text-neutral-200">{row.product_paid ?? 0}</span>
+                        </div>
+                        <div>
+                          Shipping paid:{" "}
+                          <span className="text-neutral-200">{row.shipping_paid ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-neutral-500">No release activity recorded.</div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-neutral-100">Quotes</div>
                 <Link
@@ -986,24 +1040,24 @@ export default function HandoffDetailPage() {
 
               <div className="mt-4">
                 <label className="text-xs text-neutral-400">Next action</label>
-                <select
+                <SearchableSelect
+                  className="mt-2"
                   value={action}
-                  onChange={(e) => {
+                  options={[
+                    { value: "", label: "Select" },
+                    ...allowedNextActions(handoff, paySummary || undefined).map((a) => ({
+                      value: a,
+                      label: actionLabel(a),
+                    })),
+                  ]}
+                  onChange={(next) => {
                     setBanner(null);
-                    setAction(e.target.value as any);
+                    setAction(next as any);
                     setShipper("");
                     setTracking("");
                     setCancelReason("");
                   }}
-                  className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                >
-                  <option value="">Select</option>
-                  {allowedNextActions(handoff, paySummary || undefined).map((a) => (
-                    <option key={a} value={a}>
-                      {actionLabel(a)}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
 
               {action === "shipped" ? (
@@ -1193,16 +1247,17 @@ export default function HandoffDetailPage() {
 
                     <div>
                       <label className="text-xs text-neutral-400">Purpose</label>
-                      <select
+                      <SearchableSelect
+                        className="mt-2"
                         value={payPurpose}
-                        onChange={(e) => setPayPurpose(e.target.value as PaymentPurpose)}
-                        className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                      >
-                        <option value="downpayment">Downpayment</option>
-                        <option value="full_payment">Full Payment</option>
-                        <option value="shipping_payment">Shipping Payment</option>
-                        <option value="additional_payment">Additional Payment</option>
-                      </select>
+                        options={[
+                          { value: "downpayment", label: "Downpayment" },
+                          { value: "full_payment", label: "Full Payment" },
+                          { value: "shipping_payment", label: "Shipping Payment" },
+                          { value: "additional_payment", label: "Additional Payment" },
+                        ]}
+                        onChange={(next) => setPayPurpose(next as PaymentPurpose)}
+                      />
                     </div>
                   </div>
 

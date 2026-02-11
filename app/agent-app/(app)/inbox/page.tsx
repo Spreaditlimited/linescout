@@ -50,6 +50,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [approvalRequired, setApprovalRequired] = useState(false);
 
   const [paid, setPaid] = useState<InboxItem[]>([]);
   const [quick, setQuick] = useState<InboxItem[]>([]);
@@ -80,6 +81,12 @@ export default function InboxPage() {
       if (meRes.ok && meJson?.ok && meJson?.user?.id) setSelfId(Number(meJson.user.id));
 
       if ((!paidRes.ok || !paidJson?.ok) && (!quickRes.ok || !quickJson?.ok)) {
+        const requiresApproval =
+          paidJson?.approval_required ||
+          quickJson?.approval_required ||
+          String(paidJson?.error || "") === "ACCOUNT_APPROVAL_REQUIRED" ||
+          String(quickJson?.error || "") === "ACCOUNT_APPROVAL_REQUIRED";
+        setApprovalRequired(Boolean(requiresApproval));
         setErr(
           paidJson?.message ||
             quickJson?.message ||
@@ -87,6 +94,8 @@ export default function InboxPage() {
             quickJson?.error ||
             "Could not load inbox."
         );
+      } else {
+        setApprovalRequired(false);
       }
     } catch (e: any) {
       setErr(e?.message || "Network error");
@@ -168,7 +177,15 @@ export default function InboxPage() {
 
       {err ? (
         <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {err}
+          <div>{err}</div>
+          {approvalRequired ? (
+            <Link
+              href="/agent-app/settings"
+              className="mt-3 inline-flex rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+            >
+              Go to settings
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
@@ -176,7 +193,7 @@ export default function InboxPage() {
         <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-3 text-sm text-neutral-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-4">
           Loading inbox…
         </div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !approvalRequired ? (
         <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-3 text-sm text-neutral-600 shadow-[0_12px_30px_rgba(15,23,42,0.08)] sm:p-4">
           {emptyState}
         </div>

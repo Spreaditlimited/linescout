@@ -818,6 +818,25 @@ export async function POST(req: Request) {
         [handoffId, assignedAgentId, conversationId, userId]
       );
 
+      // 4.1) Insert default agent welcome message for the paid chat
+      const firstName = firstNameFromUser(u) || (customerFirst || null);
+      const agentWelcomeLines = [
+        `Hello ${firstName ? firstName : "there"},`,
+        "",
+        "Our China-based agents have been notified of your request, and one of them will attend to you shortly.",
+        "",
+        "Please keep all discussions professional and respectful. Do not exchange personal contact details within the chat. If at any point you need assistance, use the Report or Escalate button and our team will respond promptly.",
+        "",
+        "Thank you.",
+      ];
+      await conn.query(
+        `
+        INSERT INTO linescout_messages (conversation_id, sender_type, sender_id, message_text)
+        VALUES (?, 'agent', ?, ?)
+        `,
+        [conversationId, assignedAgentId || null, agentWelcomeLines.join("\n")]
+      );
+
       if (purpose === "reorder") {
         await ensureReordersTable(conn);
         const statusOut = assignedAgentId ? "assigned" : "pending_admin";
@@ -916,9 +935,13 @@ export async function POST(req: Request) {
         } else {
           const [trows]: any = await conn.query(
             `
-            SELECT token
-            FROM linescout_agent_device_tokens
-            WHERE is_active = 1
+            SELECT t.token
+            FROM linescout_agent_device_tokens t
+            JOIN internal_users u ON u.id = t.agent_id
+            JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+            WHERE t.is_active = 1
+              AND u.is_active = 1
+              AND ap.approval_status = 'approved'
             `
           );
           const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
@@ -988,7 +1011,6 @@ export async function POST(req: Request) {
       } catch {}
 
       // 4) Send email (do AFTER commit so user never gets email for failed DB writes)
-      const firstName = firstNameFromUser(u) || (customerFirst || null);
       const amountText = formatNaira(amountNaira);
 
       const emailPack = buildEmail({

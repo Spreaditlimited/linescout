@@ -111,6 +111,7 @@ export default function ConversationThreadPage() {
   const [escalateError, setEscalateError] = useState<string | null>(null);
   const [escalateSuccess, setEscalateSuccess] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const lastReadRef = useRef<number>(0);
 
   const attachmentsByMessage = useMemo(() => data?.attachments_by_message_id || {}, [data]);
   const agentName = data?.meta?.agent_name || "Agent";
@@ -160,6 +161,18 @@ export default function ConversationThreadPage() {
     if (!messagesRef.current) return;
     messagesRef.current.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
   }, [data?.items?.length]);
+
+  const latestMessageId = data?.items?.length ? data.items[data.items.length - 1]?.id : 0;
+
+  useEffect(() => {
+    if (!conversationId || !latestMessageId || latestMessageId <= lastReadRef.current) return;
+    lastReadRef.current = latestMessageId;
+    authFetch("/api/mobile/paid-chat/read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: conversationId, last_seen_message_id: latestMessageId }),
+    }).catch(() => {});
+  }, [conversationId, latestMessageId]);
 
   useEffect(() => {
     if (!conversationId) return;

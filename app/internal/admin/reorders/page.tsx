@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../../_components/SearchableSelect";
 
 type ReorderItem = {
   id: number;
@@ -154,17 +155,18 @@ export default function ReordersAdminPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
+          <SearchableSelect
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-          >
-            <option value="">All statuses</option>
-            <option value="pending_admin">Pending admin</option>
-            <option value="assigned">Assigned</option>
-            <option value="in_progress">In progress</option>
-            <option value="closed">Closed</option>
-          </select>
+            options={[
+              { value: "", label: "All statuses" },
+              { value: "pending_admin", label: "Pending admin" },
+              { value: "assigned", label: "Assigned" },
+              { value: "in_progress", label: "In progress" },
+              { value: "closed", label: "Closed" },
+            ]}
+            onChange={(next) => setStatusFilter(next)}
+            className="w-44"
+          />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -243,20 +245,20 @@ export default function ReordersAdminPage() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <select
+                <SearchableSelect
                   value={agentPick[item.id] || ""}
-                  onChange={(e) =>
-                    setAgentPick((prev) => ({ ...prev, [item.id]: e.target.value }))
+                  options={[
+                    { value: "", label: "Assign agent" },
+                    ...activeAgents.map((agent) => ({
+                      value: String(agent.id),
+                      label: agent.username || `Agent ${agent.id}`,
+                    })),
+                  ]}
+                  onChange={(next) =>
+                    setAgentPick((prev) => ({ ...prev, [item.id]: next }))
                   }
-                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-                >
-                  <option value="">Assign agent</option>
-                  {activeAgents.map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.username || `Agent ${agent.id}`}
-                    </option>
-                  ))}
-                </select>
+                  className="w-60"
+                />
                 <input
                   value={noteDraft[item.id] || ""}
                   onChange={(e) =>

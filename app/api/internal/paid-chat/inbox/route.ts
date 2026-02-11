@@ -83,8 +83,9 @@ async function requireInternalAccess() {
       ok: false as const,
       status: 403 as const,
       error: "ACCOUNT_APPROVAL_REQUIRED",
+      approval_required: true,
       message:
-        "Thank you for creating an account. Please go to your profile to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.",
+        "Thank you for creating an account. Please go to your settings to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.",
     };
   } finally {
     conn.release();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import SearchableSelect from "../../_components/SearchableSelect";
 
 type ReviewerAccount = {
   id: number;
@@ -214,14 +215,15 @@ export default function ReviewerAccountsPage() {
         <div className="mt-4 flex flex-col gap-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {appTarget === "agent" ? (
-              <select
+              <SearchableSelect
                 value={formChannel}
-                onChange={(e) => setFormChannel(e.target.value as "email" | "phone")}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 sm:w-40"
-              >
-                <option value="email">Email OTP</option>
-                <option value="phone">Phone OTP</option>
-              </select>
+                options={[
+                  { value: "email", label: "Email OTP" },
+                  { value: "phone", label: "Phone OTP" },
+                ]}
+                onChange={(next) => setFormChannel(next as "email" | "phone")}
+                className="w-full sm:w-40"
+              />
             ) : (
               <div className="text-xs text-neutral-400">Email OTP only</div>
             )}

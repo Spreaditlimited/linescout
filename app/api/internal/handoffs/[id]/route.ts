@@ -218,6 +218,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       [handoffId]
     );
 
+    const [releaseRows]: any = await conn.query(
+      `SELECT id, conversation_id, released_by_id, released_by_name, released_by_role,
+              previous_status, product_paid, shipping_paid, created_at
+       FROM linescout_handoff_release_audits
+       WHERE handoff_id = ?
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [handoffId]
+    );
+
     return NextResponse.json({
       ok: true,
       item: {
@@ -281,6 +291,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
             manufacturer_contact_email: row.new_manufacturer_contact_email ?? null,
             manufacturer_contact_phone: row.new_manufacturer_contact_phone ?? null,
           },
+          created_at: row.created_at ?? null,
+        })),
+        release_audit: (releaseRows || []).map((row: any) => ({
+          id: Number(row.id),
+          conversation_id: row.conversation_id ?? null,
+          released_by_id: row.released_by_id ?? null,
+          released_by_name: row.released_by_name ?? null,
+          released_by_role: row.released_by_role ?? null,
+          previous_status: row.previous_status ?? null,
+          product_paid: row.product_paid ?? null,
+          shipping_paid: row.shipping_paid ?? null,
           created_at: row.created_at ?? null,
         })),
       },

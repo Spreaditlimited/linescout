@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import type { Transporter } from "nodemailer";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const nodemailer = require("nodemailer");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +36,42 @@ async function sendExpoPush(tokens: string[], payload: { title: string; body: st
       body: JSON.stringify(messages),
     }).catch(() => {});
   }
+}
+
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  return { ok: true as const, host, port, user, pass, from };
+}
+
+async function sendEmail(to: string, subject: string, text: string, html?: string) {
+  const smtp = getSmtpConfig();
+  if (!smtp.ok) return { ok: false as const, error: smtp.error };
+
+  const transporter: Transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.pass },
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
+    to,
+    subject,
+    text,
+    html: html || text,
+  });
+
+  return { ok: true as const };
 }
 
 async function requireAdmin() {
@@ -164,6 +203,23 @@ export async function POST(req: Request) {
 
     const tokens = (tokenRows || []).map((r: any) => r.token).filter(Boolean);
     await sendExpoPush(tokens, { title, body: message, data: data || {} });
+
+    if (audience === "single" && target === "agent") {
+      const [emailRows]: any = await conn.query(
+        `
+        SELECT COALESCE(ap.email, u.email) AS email
+        FROM internal_users u
+        LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+        WHERE u.id = ?
+        LIMIT 1
+        `,
+        [recipientId]
+      );
+      const email = String(emailRows?.[0]?.email || "").trim();
+      if (email) {
+        await sendEmail(email, title, message).catch(() => null);
+      }
+    }
 
     return NextResponse.json({ ok: true, inserted, sent: tokens.length });
   } finally {
