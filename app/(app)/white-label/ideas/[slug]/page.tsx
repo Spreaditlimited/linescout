@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
+import DeferredSection from "@/components/white-label/DeferredSection";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -320,7 +321,8 @@ export default async function WhiteLabelIdeaDetailPage({
         </div>
 
         <div className="space-y-6">
-          <div className="rounded-[24px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+          <DeferredSection>
+            <div className="rounded-[24px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
             <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">Similar in {product.category}</h3>
             <div className="mt-4 space-y-4">
               {similarItems.length ? (
@@ -332,7 +334,15 @@ export default async function WhiteLabelIdeaDetailPage({
                   >
                     <div className="h-14 w-14 overflow-hidden rounded-xl border border-neutral-200 bg-[#F2F3F5]">
                       {item.image_url ? (
-                        <img src={item.image_url} alt={item.product_name} className="h-full w-full object-cover" />
+                        <img
+                          src={cloudinaryTransform(item.image_url, 160)}
+                          alt={item.product_name}
+                          width={160}
+                          height={160}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-neutral-500">
                           WL
@@ -351,9 +361,11 @@ export default async function WhiteLabelIdeaDetailPage({
                 <p className="text-sm text-neutral-500">More ideas coming soon in this category.</p>
               )}
             </div>
-          </div>
+            </div>
+          </DeferredSection>
 
-          <div className="rounded-[24px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+          <DeferredSection>
+            <div className="rounded-[24px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
             <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">Most viewed ideas</h3>
             <div className="mt-4 space-y-4">
               {trendingItems.map((item) => (
@@ -370,7 +382,8 @@ export default async function WhiteLabelIdeaDetailPage({
                 </Link>
               ))}
             </div>
-          </div>
+            </div>
+          </DeferredSection>
         </div>
       </div>
     </div>
