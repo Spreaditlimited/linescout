@@ -1,8 +1,6 @@
-"use client";
-
-import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import MarketingTopNavMenu from "@/components/marketing/MarketingTopNavMenu";
 
 type NavItem = { href: string; label: string };
 
@@ -43,8 +41,6 @@ export default function MarketingTopNav({
   menuHoverClassName?: string;
   disabledNavClassName?: string;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
     <header className={`z-40 border-b ${borderClassName} ${backgroundClassName} backdrop-blur`}>
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
@@ -73,34 +69,18 @@ export default function MarketingTopNav({
             )
           )}
         </nav>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label="Toggle menu"
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-full border bg-white shadow-sm lg:hidden ${buttonBorderClassName} ${buttonTextClassName}`}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <span className="text-lg font-semibold">≡</span>
-          </button>
-        </div>
+        <MarketingTopNavMenu
+          navItems={navItems}
+          disabledNavLabel={disabledNavLabel}
+          buttonBorderClassName={buttonBorderClassName}
+          buttonTextClassName={buttonTextClassName}
+          menuBorderClassName={menuBorderClassName}
+          menuBgClassName={menuBgClassName}
+          menuTextClassName={menuTextClassName}
+          menuHoverClassName={menuHoverClassName}
+          disabledNavClassName={disabledNavClassName}
+        />
       </div>
-      {menuOpen ? (
-        <div className={`border-t px-4 py-3 text-sm font-semibold lg:hidden ${menuBorderClassName} ${menuBgClassName} ${menuTextClassName}`}>
-          <div className="flex flex-col gap-3">
-            {navItems.map((item) =>
-              item.label === disabledNavLabel ? (
-                <span key={item.href} className={`cursor-default ${disabledNavClassName}`}>
-                  {item.label}
-                </span>
-              ) : (
-                <Link key={item.href} href={item.href} className={menuHoverClassName}>
-                  {item.label}
-                </Link>
-              )
-            )}
-          </div>
-        </div>
-      ) : null}
     </header>
   );
 }
