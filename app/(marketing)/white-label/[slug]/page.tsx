@@ -80,6 +80,13 @@ function fallbackAngle(product: ProductRow) {
   return "Focus on durable packaging, a clean brand story, and consistent availability. Offer bundles or starter kits to make your brand feel premium while keeping pricing accessible.";
 }
 
+function cloudinaryTransform(url: string, size: number) {
+  if (!url.includes("res.cloudinary.com/") || !url.includes("/image/upload/")) {
+    return url;
+  }
+  return url.replace("/image/upload/", `/image/upload/f_auto,q_auto,w_${size},h_${size},c_fit/`);
+}
+
 async function fetchProduct(slug: string) {
   const conn = await db.getConnection();
   try {
@@ -273,8 +280,13 @@ export default async function WhiteLabelMarketingDetailPage({
             <div className="mt-6 overflow-hidden rounded-[22px] border border-neutral-200 bg-[#F2F3F5] p-4">
               {product.image_url ? (
                 <img
-                  src={product.image_url}
+                  src={cloudinaryTransform(product.image_url, 640)}
                   alt={`${product.product_name} white label idea`}
+                  width={640}
+                  height={640}
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
                   className="h-[320px] w-full rounded-[18px] object-contain"
                 />
               ) : (
