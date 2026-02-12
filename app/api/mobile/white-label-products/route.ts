@@ -3,8 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import {
   computeLandedRange,
-  ensureWhiteLabelProductsTable,
-  seedWhiteLabelProducts,
+  ensureWhiteLabelProductsReady,
 } from "@/lib/white-label-products";
 
 export const runtime = "nodejs";
@@ -20,8 +19,7 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
-      await ensureWhiteLabelProductsTable(conn);
-      await seedWhiteLabelProducts(conn);
+      await ensureWhiteLabelProductsReady(conn);
 
       const clauses = ["is_active = 1", "COALESCE(image_url, '') <> ''"];
       const params: any[] = [];

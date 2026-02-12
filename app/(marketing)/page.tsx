@@ -183,6 +183,8 @@ export default function HomePage() {
                     width={520}
                     height={980}
                     className="h-auto w-full rounded-[16px] sm:rounded-[22px]"
+                    priority
+                    sizes="(min-width: 1024px) 520px, (min-width: 768px) 45vw, 90vw"
                   />
                 </div>
               </div>

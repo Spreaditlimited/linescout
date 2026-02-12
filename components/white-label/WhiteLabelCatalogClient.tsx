@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 
 type ProductItem = {
@@ -12,6 +12,7 @@ type ProductItem = {
   regulatory_note: string | null;
   mockup_prompt: string | null;
   image_url: string | null;
+  slug?: string | null;
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
@@ -46,33 +47,42 @@ function initials(name?: string | null) {
   return (first + second).toUpperCase() || "WL";
 }
 
-function categoryColor(category?: string | null) {
-  const c = String(category || "").toLowerCase();
-  if (c.includes("phone") || c.includes("computer")) return "#DDEAFE";
-  if (c.includes("tech")) return "#E6F6F0";
-  if (c.includes("fitness")) return "#FFF1E1";
-  return "#EEF2FF";
+function slugify(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
 }
 
-export default function WhiteLabelCatalogClient({ items }: { items: ProductItem[] }) {
-  const [selected, setSelected] = useState<ProductItem | null>(null);
+export default function WhiteLabelCatalogClient({
+  items,
+  detailBase = "/white-label",
+}: {
+  items: ProductItem[];
+  detailBase?: string;
+}) {
+  const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
 
-  const selectedPreview = useMemo(() => {
-    if (!selected) return "";
-    const text = selected.short_desc || selected.why_sells || "Market-ready product idea.";
-    return String(text || "").trim();
-  }, [selected]);
+  const itemLinks = useMemo(
+    () =>
+      items.map((item) => ({
+        ...item,
+        detailHref: `${normalizedBase}/${item.slug || slugify(item.product_name)}`,
+      })),
+    [items, normalizedBase]
+  );
 
   return (
     <>
       <div className="grid gap-6 md:grid-cols-4">
-        {items.length ? (
-          items.map((item) => (
+        {itemLinks.length ? (
+          itemLinks.map((item) => (
             <div
               key={`${item.id}-${item.product_name}`}
               className="flex h-full flex-col overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
             >
-              <div className="relative h-52 w-full border-b border-neutral-100 bg-[#F7F8FB] p-4">
+              <div className="relative h-52 w-full border-b border-neutral-100 bg-[#F2F3F5] p-4">
                 {item.image_url ? (
                   <img
                     src={item.image_url}
@@ -109,13 +119,12 @@ export default function WhiteLabelCatalogClient({ items }: { items: ProductItem[
               </div>
 
               <div className="mt-auto px-5 pb-6">
-                <button
-                  type="button"
-                  onClick={() => setSelected(item)}
-                  className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-700"
+                <Link
+                  href={item.detailHref}
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-700"
                 >
                   View detail
-                </button>
+                </Link>
                 <Link
                   href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(item.id))}&product_name=${encodeURIComponent(item.product_name)}&product_category=${encodeURIComponent(item.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(item.landed_ngn_per_unit_low, item.landed_ngn_per_unit_high))}`}
                   className="mt-3 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--agent-blue)] px-4 py-3 text-sm font-semibold text-white"
@@ -131,73 +140,6 @@ export default function WhiteLabelCatalogClient({ items }: { items: ProductItem[
           </div>
         )}
       </div>
-
-      {selected ? (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center px-4 py-6">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setSelected(null)}
-            aria-label="Close"
-          />
-          <div className="relative w-full max-w-xl overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-2xl">
-            <div
-              className="flex h-48 w-full items-center justify-center"
-              style={{ backgroundColor: categoryColor(selected.category) }}
-            >
-              {selected.image_url ? (
-                <img
-                  src={selected.image_url}
-                  alt={selected.product_name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="h-28 w-28 items-center justify-center rounded-2xl border border-white/60 bg-white/80 text-center">
-                  <div className="pt-4 text-[10px] font-semibold text-emerald-700">YOUR LOGO</div>
-                  <div className="mt-1 text-[12px] font-semibold text-neutral-700">
-                    {initials(selected.product_name)}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="px-6 pb-6 pt-5">
-              <h3 className="text-xl font-semibold text-neutral-900">{selected.product_name}</h3>
-              <p className="mt-1 text-sm text-neutral-500">{selected.category}</p>
-              <p className="mt-4 text-sm text-neutral-600">{selectedPreview}</p>
-              {selected.why_sells ? (
-                <p className="mt-3 text-sm text-neutral-600">Why it sells: {selected.why_sells}</p>
-              ) : null}
-              {selected.regulatory_note ? (
-                <p className="mt-3 text-sm text-neutral-600">
-                  Regulatory note: {selected.regulatory_note}
-                </p>
-              ) : null}
-              <div className="mt-5 text-sm font-semibold text-neutral-900">
-                {formatNaira(selected.landed_ngn_per_unit_low)}–{formatNaira(selected.landed_ngn_per_unit_high)} per unit
-              </div>
-              <div className="mt-1 text-xs text-neutral-500">
-                {formatNaira(selected.landed_ngn_total_1000_low)}–{formatNaira(selected.landed_ngn_total_1000_high)} for
-                1,000 units
-              </div>
-              <div className="mt-6 flex items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="text-sm font-semibold text-neutral-500"
-                >
-                  Close
-                </button>
-                <Link
-                  href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(selected.id))}&product_name=${encodeURIComponent(selected.product_name)}&product_category=${encodeURIComponent(selected.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(selected.landed_ngn_per_unit_low, selected.landed_ngn_per_unit_high))}`}
-                  className="rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-sm font-semibold text-white"
-                >
-                  Start sourcing
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

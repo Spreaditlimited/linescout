@@ -1,4 +1,6 @@
 import type { PoolConnection } from "mysql2/promise";
+import fs from "fs";
+import path from "path";
 
 export type WhiteLabelProductSeed = {
   product_name: string;
@@ -8,6 +10,12 @@ export type WhiteLabelProductSeed = {
   regulatory_note: string | null;
   mockup_prompt: string | null;
   image_url: string | null;
+  slug?: string | null;
+  seo_title?: string | null;
+  seo_description?: string | null;
+  business_summary?: string | null;
+  market_notes?: string | null;
+  white_label_angle?: string | null;
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
@@ -1425,6 +1433,19 @@ export const WHITE_LABEL_PRODUCT_SEED: WhiteLabelProductSeed[] = [
   },
 ]
 
+function loadWhiteLabelSeed(): WhiteLabelProductSeed[] {
+  const jsonPath = path.join(process.cwd(), "data", "white-label-products.json");
+  try {
+    if (!fs.existsSync(jsonPath)) return WHITE_LABEL_PRODUCT_SEED;
+    const raw = fs.readFileSync(jsonPath, "utf8").trim();
+    if (!raw) return WHITE_LABEL_PRODUCT_SEED;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as WhiteLabelProductSeed[];
+  } catch {
+    return WHITE_LABEL_PRODUCT_SEED;
+  }
+  return WHITE_LABEL_PRODUCT_SEED;
+}
 
 
 function toNumber(val: any) {
@@ -1432,6 +1453,19 @@ function toNumber(val: any) {
   const n = Number(val);
   return Number.isFinite(n) ? n : null;
 }
+
+function slugify(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+let didEnsureTable = false;
+let didSeedProducts = false;
+let didEnsureViews = false;
+let didBackfillSlugs = false;
 
 export function computeLandedRange(input: {
   fob_low_usd: number | null | string | undefined;
@@ -1483,6 +1517,12 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       regulatory_note TEXT NULL,
       mockup_prompt TEXT NULL,
       image_url VARCHAR(500) NULL,
+      slug VARCHAR(255) NULL,
+      seo_title VARCHAR(255) NULL,
+      seo_description VARCHAR(500) NULL,
+      business_summary TEXT NULL,
+      market_notes TEXT NULL,
+      white_label_angle TEXT NULL,
       fob_low_usd DECIMAL(10,2) NULL,
       fob_high_usd DECIMAL(10,2) NULL,
       cbm_per_1000 DECIMAL(10,4) NULL,
@@ -1490,6 +1530,70 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )
+  `);
+
+  await ensureColumn(conn, "linescout_white_label_products", "slug", "VARCHAR(255) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "seo_title", "VARCHAR(255) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "seo_description", "VARCHAR(500) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "business_summary", "TEXT NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "market_notes", "TEXT NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "white_label_angle", "TEXT NULL");
+
+  await conn.query(
+    `CREATE INDEX IF NOT EXISTS idx_white_label_slug ON linescout_white_label_products (slug)`
+  ).catch(() => {});
+}
+
+export async function ensureWhiteLabelProductsReady(conn: PoolConnection) {
+  if (!didEnsureTable) {
+    await ensureWhiteLabelProductsTable(conn);
+    didEnsureTable = true;
+  }
+  if (!didEnsureViews) {
+    await ensureWhiteLabelViewsTable(conn);
+    didEnsureViews = true;
+  }
+  if (!didBackfillSlugs) {
+    await backfillWhiteLabelSlugs(conn);
+    didBackfillSlugs = true;
+  }
+
+  if (process.env.AUTO_SEED_WHITE_LABEL === "1" && !didSeedProducts) {
+    await seedWhiteLabelProducts(conn);
+    didSeedProducts = true;
+  }
+}
+
+async function backfillWhiteLabelSlugs(conn: PoolConnection) {
+  const [rows]: any = await conn.query(
+    `
+    SELECT id, product_name
+    FROM linescout_white_label_products
+    WHERE COALESCE(slug, '') = ''
+    LIMIT 5000
+    `
+  );
+  if (!rows?.length) return;
+
+  for (const row of rows) {
+    const slug = slugify(String(row.product_name || ""));
+    if (!slug) continue;
+    await conn.query(
+      `UPDATE linescout_white_label_products SET slug = ? WHERE id = ?`,
+      [slug, row.id]
+    );
+  }
+}
+
+export async function ensureWhiteLabelViewsTable(conn: PoolConnection) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS linescout_white_label_views (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_white_label_views_product (product_id),
+      INDEX idx_white_label_views_time (viewed_at)
     )
   `);
 }
@@ -1503,7 +1607,8 @@ export async function seedWhiteLabelProducts(conn: PoolConnection) {
     (rows || []).map((r: any) => `${String(r.product_name || '').toLowerCase()}||${String(r.category || '').toLowerCase()}`)
   );
 
-  const toInsert = WHITE_LABEL_PRODUCT_SEED.filter((p) => {
+  const seed = loadWhiteLabelSeed();
+  const toInsert = seed.filter((p) => {
     const key = `${p.product_name.toLowerCase()}||${p.category.toLowerCase()}`;
     return !existing.has(key);
   });
@@ -1521,6 +1626,12 @@ export async function seedWhiteLabelProducts(conn: PoolConnection) {
       p.regulatory_note,
       p.mockup_prompt,
       p.image_url,
+      p.slug || slugify(p.product_name),
+      p.seo_title || null,
+      p.seo_description || null,
+      p.business_summary || null,
+      p.market_notes || null,
+      p.white_label_angle || null,
       p.fob_low_usd,
       p.fob_high_usd,
       p.cbm_per_1000,
@@ -1532,10 +1643,25 @@ export async function seedWhiteLabelProducts(conn: PoolConnection) {
       `
       INSERT INTO linescout_white_label_products
         (product_name, category, short_desc, why_sells, regulatory_note, mockup_prompt, image_url,
+         slug, seo_title, seo_description, business_summary, market_notes, white_label_angle,
          fob_low_usd, fob_high_usd, cbm_per_1000, is_active, sort_order)
       VALUES ?
       `,
       [values]
     );
   }
+}
+
+async function ensureColumn(conn: PoolConnection, table: string, column: string, definition: string) {
+  const [rows]: any = await conn.query(
+    `SELECT 1
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [table, column]
+  );
+  if (rows?.length) return;
+  await conn.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }

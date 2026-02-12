@@ -4,14 +4,13 @@ import { ArrowRight, BadgeCheck, Search, ShieldCheck, Sparkles } from "lucide-re
 import { db } from "@/lib/db";
 import {
   computeLandedRange,
-  ensureWhiteLabelProductsTable,
-  seedWhiteLabelProducts,
+  ensureWhiteLabelProductsReady,
 } from "@/lib/white-label-products";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 const PAGE_SIZE = 20;
 
@@ -51,6 +50,14 @@ function buildPageHref(params: {
   return query ? `/white-label?${query}` : "/white-label";
 }
 
+function slugify(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
 export default async function WhiteLabelPage({
   searchParams,
 }: {
@@ -69,9 +76,10 @@ export default async function WhiteLabelPage({
   let items: any[] = [];
   let total = 0;
   let categories: string[] = [];
+  let mostViewed: any[] = [];
+  let categorySpotlights: { category: string; items: any[] }[] = [];
   try {
-    await ensureWhiteLabelProductsTable(conn);
-    await seedWhiteLabelProducts(conn);
+    await ensureWhiteLabelProductsReady(conn);
 
     const clauses = ["is_active = 1"];
     const params: any[] = [];
@@ -176,6 +184,73 @@ export default async function WhiteLabelPage({
     categories = (catRows || [])
       .map((r: any) => String(r.category || "").trim())
       .filter(Boolean);
+
+    const [viewRows]: any = await conn.query(
+      `
+      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      FROM linescout_white_label_products p
+      LEFT JOIN (
+        SELECT product_id, COUNT(*) AS views
+        FROM linescout_white_label_views
+        GROUP BY product_id
+      ) v ON v.product_id = p.id
+      WHERE p.is_active = 1
+      ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+      LIMIT 8
+      `
+    );
+    mostViewed = (viewRows || []).map((r: any) => ({
+      ...r,
+      ...computeLandedRange({
+        fob_low_usd: r.fob_low_usd,
+        fob_high_usd: r.fob_high_usd,
+        cbm_per_1000: r.cbm_per_1000,
+      }),
+    }));
+
+    const [topCategoryRows]: any = await conn.query(
+      `
+      SELECT category, COUNT(*) AS total
+      FROM linescout_white_label_products
+      WHERE is_active = 1
+      GROUP BY category
+      ORDER BY total DESC, category ASC
+      LIMIT 6
+      `
+    );
+
+    for (const row of topCategoryRows || []) {
+      const cat = String(row.category || "").trim();
+      if (!cat) continue;
+      const [catRowsItems]: any = await conn.query(
+        `
+        SELECT p.*, COALESCE(v.views, 0) AS view_count
+        FROM linescout_white_label_products p
+        LEFT JOIN (
+          SELECT product_id, COUNT(*) AS views
+          FROM linescout_white_label_views
+          GROUP BY product_id
+        ) v ON v.product_id = p.id
+        WHERE p.is_active = 1 AND p.category = ?
+        ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+        LIMIT 4
+        `,
+        [cat]
+      );
+
+      const mapped = (catRowsItems || []).map((r: any) => ({
+        ...r,
+        ...computeLandedRange({
+          fob_low_usd: r.fob_low_usd,
+          fob_high_usd: r.fob_high_usd,
+          cbm_per_1000: r.cbm_per_1000,
+        }),
+      }));
+
+      if (mapped.length) {
+        categorySpotlights.push({ category: cat, items: mapped });
+      }
+    }
   } finally {
     conn.release();
   }
@@ -189,6 +264,7 @@ export default async function WhiteLabelPage({
 
   return (
     <main
+      id="white-label-top"
       className="relative min-h-screen overflow-hidden bg-[#F5F6FA] text-neutral-900"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
@@ -431,7 +507,7 @@ export default async function WhiteLabelPage({
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-10">
-          <WhiteLabelCatalogClient items={items} />
+          <WhiteLabelCatalogClient items={items} detailBase="/white-label" />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-neutral-500">
@@ -479,6 +555,96 @@ export default async function WhiteLabelPage({
             </div>
           </div>
         </section>
+
+        {mostViewed.length ? (
+          <section className="mx-auto max-w-6xl px-6 pb-6">
+            <div className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Most viewed</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Trending white label ideas</h2>
+                </div>
+                <Link href="/white-label" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
+                  Explore all
+                </Link>
+              </div>
+              <div className="mt-6 grid gap-4 md:grid-cols-4">
+                {mostViewed.slice(0, 4).map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/white-label/${item.slug || slugify(item.product_name)}`}
+                    className="group rounded-[22px] border border-neutral-200 bg-neutral-50 p-4"
+                  >
+                    <div className="flex h-32 items-center justify-center rounded-[18px] border border-neutral-200 bg-[#F2F3F5]">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.product_name} className="h-full w-full object-contain" />
+                      ) : (
+                        <div className="text-xs font-semibold text-neutral-500">YOUR LOGO</div>
+                      )}
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-neutral-900">{item.product_name}</p>
+                    <p className="mt-1 text-xs text-neutral-500">{item.category}</p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {categorySpotlights.length ? (
+          <section className="mx-auto max-w-6xl px-6 pb-6">
+            <div className="space-y-6">
+              {categorySpotlights.map((spot) => (
+                <div
+                  key={spot.category}
+                  className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                        Category spotlight
+                      </p>
+                      <h3 className="mt-2 text-xl font-semibold text-neutral-900">{spot.category}</h3>
+                    </div>
+                    <Link
+                      href={`${buildPageHref({
+                        q: "",
+                        category: spot.category,
+                        page: 1,
+                        price: "",
+                        regulatory: "",
+                        has_image: "",
+                        sort: "",
+                      })}#white-label-top`}
+                      className="text-xs font-semibold text-neutral-500 hover:text-neutral-700"
+                    >
+                      View category
+                    </Link>
+                  </div>
+                  <div className="mt-5 grid gap-4 md:grid-cols-4">
+                    {spot.items.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/white-label/${item.slug || slugify(item.product_name)}`}
+                        className="group rounded-[22px] border border-neutral-200 bg-neutral-50 p-4"
+                      >
+                        <div className="flex h-28 items-center justify-center rounded-[18px] border border-neutral-200 bg-[#F2F3F5]">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.product_name} className="h-full w-full object-contain" />
+                          ) : (
+                            <div className="text-xs font-semibold text-neutral-500">YOUR LOGO</div>
+                          )}
+                        </div>
+                        <p className="mt-3 text-sm font-semibold text-neutral-900">{item.product_name}</p>
+                        <p className="mt-1 text-xs text-neutral-500">{item.category}</p>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );

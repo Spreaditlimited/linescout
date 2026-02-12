@@ -3,13 +3,12 @@ import { Search } from "lucide-react";
 import { db } from "@/lib/db";
 import {
   computeLandedRange,
-  ensureWhiteLabelProductsTable,
-  seedWhiteLabelProducts,
+  ensureWhiteLabelProductsReady,
 } from "@/lib/white-label-products";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 const PAGE_SIZE = 20;
 
@@ -49,6 +48,14 @@ function buildPageHref(params: {
   return query ? `/white-label/ideas?${query}` : "/white-label/ideas";
 }
 
+function slugify(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
 export default async function WhiteLabelIdeasPage({
   searchParams,
 }: {
@@ -67,9 +74,9 @@ export default async function WhiteLabelIdeasPage({
   let items: any[] = [];
   let total = 0;
   let categories: string[] = [];
+  let mostViewed: any[] = [];
   try {
-    await ensureWhiteLabelProductsTable(conn);
-    await seedWhiteLabelProducts(conn);
+    await ensureWhiteLabelProductsReady(conn);
 
     const clauses = ["is_active = 1"];
     const params: any[] = [];
@@ -163,6 +170,30 @@ export default async function WhiteLabelIdeasPage({
     categories = (catRows || [])
       .map((r: any) => String(r.category || "").trim())
       .filter(Boolean);
+
+    const [viewRows]: any = await conn.query(
+      `
+      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      FROM linescout_white_label_products p
+      LEFT JOIN (
+        SELECT product_id, COUNT(*) AS views
+        FROM linescout_white_label_views
+        GROUP BY product_id
+      ) v ON v.product_id = p.id
+      WHERE p.is_active = 1
+      ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+      LIMIT 4
+      `
+    );
+
+    mostViewed = (viewRows || []).map((r: any) => ({
+      ...r,
+      ...computeLandedRange({
+        fob_low_usd: r.fob_low_usd,
+        fob_high_usd: r.fob_high_usd,
+        cbm_per_1000: r.cbm_per_1000,
+      }),
+    }));
   } finally {
     conn.release();
   }
@@ -299,6 +330,39 @@ export default async function WhiteLabelIdeasPage({
         </div>
       </div>
 
+      {mostViewed.length ? (
+        <div className="mt-6 rounded-[24px] border border-neutral-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Most viewed</p>
+              <h2 className="mt-1 text-lg font-semibold text-neutral-900">Trending ideas right now</h2>
+            </div>
+            <Link href="/white-label/ideas" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
+              See all
+            </Link>
+          </div>
+          <div className="mt-4 grid gap-4 md:grid-cols-4">
+            {mostViewed.map((item) => (
+              <Link
+                key={item.id}
+                href={`/white-label/ideas/${item.slug || slugify(item.product_name)}`}
+                className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-3"
+              >
+                <div className="flex h-24 items-center justify-center rounded-[16px] border border-neutral-200 bg-[#F2F3F5]">
+                  {item.image_url ? (
+                    <img src={item.image_url} alt={item.product_name} className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="text-xs font-semibold text-neutral-500">YOUR LOGO</div>
+                  )}
+                </div>
+                <p className="mt-2 text-sm font-semibold text-neutral-900">{item.product_name}</p>
+                <p className="text-xs text-neutral-500">{item.category}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-4">
         <div className="flex flex-wrap gap-2">
           <Link
@@ -344,7 +408,7 @@ export default async function WhiteLabelIdeasPage({
       </div>
 
       <div className="mt-6">
-        <WhiteLabelCatalogClient items={items} />
+        <WhiteLabelCatalogClient items={items} detailBase="/white-label/ideas" />
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-neutral-500">
