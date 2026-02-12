@@ -115,6 +115,36 @@ export default function ProjectsPage() {
   }, [items, query]);
 
   const total = items.length;
+  const [visibleCount, setVisibleCount] = useState(12);
+
+  useEffect(() => {
+    setVisibleCount(Math.min(filtered.length, 12));
+  }, [filtered.length, tab, query]);
+
+  useEffect(() => {
+    if (visibleCount >= filtered.length) return;
+
+    let cancelled = false;
+    const step = 12;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, filtered.length));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, filtered.length]);
 
   return (
     <AgentAppShell title="Projects" subtitle="Track paid handoffs, milestones, and delivery timelines.">
@@ -190,7 +220,7 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <div className="mt-4 grid gap-4">
-          {filtered.map((item) => {
+          {filtered.slice(0, visibleCount).map((item) => {
             const name = getDisplayFirstName(item.customer_name);
             const routeLabel = getRouteLabel(item.route_type);
             const status = statusLabel(item.handoff_status);

@@ -101,6 +101,7 @@ function AgentChatThreadInner() {
 
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [items, setItems] = useState<Msg[]>([]);
+  const [visibleCount, setVisibleCount] = useState(30);
   const [lastId, setLastId] = useState<number>(0);
   const lastIdRef = useRef<number>(0);
   const lastReadRef = useRef<number>(0);
@@ -125,6 +126,35 @@ function AgentChatThreadInner() {
   useEffect(() => {
     lastIdRef.current = lastId;
   }, [lastId]);
+
+  useEffect(() => {
+    setVisibleCount(Math.min(items.length, 30));
+  }, [items.length]);
+
+  useEffect(() => {
+    if (visibleCount >= items.length) return;
+
+    let cancelled = false;
+    const step = 20;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, items.length));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, items.length]);
 
   useEffect(() => {
     const latest = lastIdRef.current;
@@ -455,7 +485,7 @@ function AgentChatThreadInner() {
           <>
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
               <div className="mx-auto w-full max-w-3xl space-y-3">
-                {items.map((m) => {
+                {items.slice(0, visibleCount).map((m) => {
                   const isAgent = m.sender_type === "agent";
                   const bubble = isAgent
                     ? "ml-auto bg-[#2D3461] text-white"

@@ -137,6 +137,36 @@ export default function InboxPage() {
   );
 
   const items = tab === "paid" ? paid : quick;
+  const [visibleCount, setVisibleCount] = useState(12);
+
+  useEffect(() => {
+    setVisibleCount(Math.min(items.length, 12));
+  }, [items.length, tab]);
+
+  useEffect(() => {
+    if (visibleCount >= items.length) return;
+
+    let cancelled = false;
+    const step = 12;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, items.length));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, items.length]);
 
   const emptyState = tab === "paid"
     ? "No paid chats yet. When projects are assigned, they show here."
@@ -199,7 +229,7 @@ export default function InboxPage() {
         </div>
       ) : (
         <div className="mt-4 grid gap-4">
-          {items.map((c) => {
+          {items.slice(0, visibleCount).map((c) => {
             const conversationId = Number(c.conversation_id || c.id || 0);
             const unread = Boolean(c.is_unread);
             const name = getDisplayFirstName(c.customer_name);
