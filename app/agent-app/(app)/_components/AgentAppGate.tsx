@@ -11,6 +11,9 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const CACHE_KEY = "linescout_agent_gate_v1";
+  const CACHE_TTL_MS = 10 * 60 * 1000;
+
   const nextParam = useMemo(() => {
     const safe = pathname || "/agent-app/inbox";
     return encodeURIComponent(safe);
@@ -38,6 +41,21 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
       }
 
       try {
+        if (typeof window !== "undefined") {
+          const raw = window.sessionStorage.getItem(CACHE_KEY);
+          if (raw) {
+            try {
+              const cached = JSON.parse(raw);
+              const fresh = Date.now() - Number(cached?.ts || 0) < CACHE_TTL_MS;
+              if (fresh && cached?.ok && cached?.allow === true) {
+                setLoading(false);
+              }
+            } catch {
+              // ignore cache parse errors
+            }
+          }
+        }
+
         const res = await fetch("/api/internal/auth/me", { cache: "no-store", credentials: "include" });
         const data = await res.json().catch(() => null);
 
@@ -69,6 +87,21 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
         if (role !== "agent") {
           router.replace(`/agent-app/sign-in?next=${nextParam}`);
           return;
+        }
+
+        if (typeof window !== "undefined") {
+          try {
+            window.sessionStorage.setItem(
+              CACHE_KEY,
+              JSON.stringify({
+                ts: Date.now(),
+                ok: true,
+                allow: true,
+              })
+            );
+          } catch {
+            // ignore cache write errors
+          }
         }
       } catch (e: any) {
         if (!live) return;

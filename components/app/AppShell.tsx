@@ -32,6 +32,7 @@ function NavLink({
   return (
     <Link
       href={href}
+      prefetch={false}
       className={`group inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-semibold transition sm:gap-2 sm:px-4 sm:py-3 sm:text-sm ${
         active
           ? "bg-[var(--agent-blue)] text-white shadow-lg shadow-[rgba(45,52,97,0.25)]"
@@ -57,6 +58,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [stickyNotice, setStickyNotice] = useState<{ version: number; title: string; body: string } | null>(null);
   const [dismissingSticky, setDismissingSticky] = useState(false);
   const brandBlue = "#2D3461";
+  const CACHE_KEY = "linescout_user_gate_v1";
+  const CACHE_TTL_MS = 10 * 60 * 1000;
 
   const signOut = async () => {
     await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
@@ -66,6 +69,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let active = true;
     async function checkAuth() {
+      if (typeof window !== "undefined") {
+        const raw = window.sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+          try {
+            const cached = JSON.parse(raw);
+            const fresh = Date.now() - Number(cached?.ts || 0) < CACHE_TTL_MS;
+            if (fresh && cached?.ok && cached?.allow === true) {
+              if (active) setChecking(false);
+            }
+          } catch {
+            // ignore cache parse errors
+          }
+        }
+      }
+
       const res = await authFetch("/api/auth/me");
       if (!res.ok) {
         const qs = searchParams.toString();
@@ -73,6 +91,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         router.replace(`/sign-in?next=${encodeURIComponent(nextPath)}`);
         return;
       }
+
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify({
+              ts: Date.now(),
+              ok: true,
+              allow: true,
+            })
+          );
+        } catch {
+          // ignore cache write errors
+        }
+      }
+
       if (active) setChecking(false);
     }
     checkAuth();
@@ -84,14 +118,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (checking) return;
     let active = true;
-    (async () => {
-      const res = await authFetch("/api/mobile/sticky-notice");
-      const json = await res.json().catch(() => ({}));
-      if (!active) return;
-      if (res.ok && json?.notice) {
-        setStickyNotice(json.notice);
-      }
-    })();
+    const run = () => {
+      (async () => {
+        const res = await authFetch("/api/mobile/sticky-notice");
+        const json = await res.json().catch(() => ({}));
+        if (!active) return;
+        if (res.ok && json?.notice) {
+          setStickyNotice(json.notice);
+        }
+      })();
+    };
+    if (typeof (window as any).requestIdleCallback === "function") {
+      (window as any).requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      setTimeout(run, 1500);
+    }
     return () => {
       active = false;
     };

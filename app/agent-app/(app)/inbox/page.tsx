@@ -55,43 +55,45 @@ export default function InboxPage() {
   const [paid, setPaid] = useState<InboxItem[]>([]);
   const [quick, setQuick] = useState<InboxItem[]>([]);
   const [selfId, setSelfId] = useState<number | null>(null);
+  const [prefetchingOther, setPrefetchingOther] = useState(false);
 
   const load = useCallback(async () => {
     try {
       setErr(null);
 
-      const [paidRes, quickRes, meRes] = await Promise.all([
-        fetch("/api/internal/paid-chat/inbox?limit=80&cursor=0&scope=all&kind=paid", {
-          cache: "no-store",
-          credentials: "include",
-        }),
-        fetch("/api/internal/paid-chat/inbox?limit=80&cursor=0&kind=quick_human", {
-          cache: "no-store",
-          credentials: "include",
-        }),
+      const isPaid = tab === "paid";
+      const [tabRes, meRes] = await Promise.all([
+        fetch(
+          isPaid
+            ? "/api/internal/paid-chat/inbox?limit=80&cursor=0&scope=all&kind=paid"
+            : "/api/internal/paid-chat/inbox?limit=80&cursor=0&kind=quick_human",
+          {
+            cache: "no-store",
+            credentials: "include",
+          }
+        ),
         fetch("/api/internal/agents/profile/me", { cache: "no-store", credentials: "include" }),
       ]);
 
-      const paidJson = await paidRes.json().catch(() => ({}));
-      const quickJson = await quickRes.json().catch(() => ({}));
+      const tabJson = await tabRes.json().catch(() => ({}));
       const meJson = await meRes.json().catch(() => ({}));
 
-      if (paidRes.ok && paidJson?.ok) setPaid(Array.isArray(paidJson.items) ? paidJson.items : []);
-      if (quickRes.ok && quickJson?.ok) setQuick(Array.isArray(quickJson.items) ? quickJson.items : []);
+      if (tabRes.ok && tabJson?.ok) {
+        const nextItems = Array.isArray(tabJson.items) ? tabJson.items : [];
+        if (isPaid) setPaid(nextItems);
+        else setQuick(nextItems);
+      }
+
       if (meRes.ok && meJson?.ok && meJson?.user?.id) setSelfId(Number(meJson.user.id));
 
-      if ((!paidRes.ok || !paidJson?.ok) && (!quickRes.ok || !quickJson?.ok)) {
+      if (!tabRes.ok || !tabJson?.ok) {
         const requiresApproval =
-          paidJson?.approval_required ||
-          quickJson?.approval_required ||
-          String(paidJson?.error || "") === "ACCOUNT_APPROVAL_REQUIRED" ||
-          String(quickJson?.error || "") === "ACCOUNT_APPROVAL_REQUIRED";
+          tabJson?.approval_required ||
+          String(tabJson?.error || "") === "ACCOUNT_APPROVAL_REQUIRED";
         setApprovalRequired(Boolean(requiresApproval));
         setErr(
-          paidJson?.message ||
-            quickJson?.message ||
-            paidJson?.error ||
-            quickJson?.error ||
+          tabJson?.message ||
+            tabJson?.error ||
             "Could not load inbox."
         );
       } else {
@@ -105,9 +107,44 @@ export default function InboxPage() {
     }
   }, []);
 
+  const prefetchOtherTab = useCallback(async () => {
+    if (prefetchingOther) return;
+    const other = tab === "paid" ? "quick_human" : "paid";
+    try {
+      setPrefetchingOther(true);
+      const res = await fetch(
+        other === "paid"
+          ? "/api/internal/paid-chat/inbox?limit=80&cursor=0&scope=all&kind=paid"
+          : "/api/internal/paid-chat/inbox?limit=80&cursor=0&kind=quick_human",
+        { cache: "no-store", credentials: "include" }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) {
+        const nextItems = Array.isArray(json.items) ? json.items : [];
+        if (other === "paid") setPaid(nextItems);
+        else setQuick(nextItems);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPrefetchingOther(false);
+    }
+  }, [prefetchingOther, tab]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const run = () => {
+      prefetchOtherTab();
+    };
+    if (typeof (window as any).requestIdleCallback === "function") {
+      (window as any).requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      setTimeout(run, 1500);
+    }
+  }, [prefetchOtherTab]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
