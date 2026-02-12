@@ -1494,7 +1494,8 @@ export function computeLandedRange(input: {
   }
 
   const freightPerUnit = (cbm * cbmRate) / 1000;
-  const landedLow = (fobLow * fx + freightPerUnit) * (1 + markup);
+  const landedLowRaw = (fobLow * fx + freightPerUnit) * (1 + markup);
+  const landedLow = landedLowRaw * 0.5;
   const landedHigh = (fobHigh * fx + freightPerUnit) * (1 + markup);
 
   return {

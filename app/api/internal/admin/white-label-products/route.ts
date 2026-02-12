@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import {
   computeLandedRange,
   ensureWhiteLabelProductsTable,
-  seedWhiteLabelProducts,
 } from "@/lib/white-label-products";
 
 export const runtime = "nodejs";
@@ -80,7 +79,6 @@ export async function GET(req: Request) {
   const conn = await db.getConnection();
   try {
     await ensureWhiteLabelProductsTable(conn);
-    await seedWhiteLabelProducts(conn);
 
     const clauses: string[] = [];
     const params: any[] = [];
