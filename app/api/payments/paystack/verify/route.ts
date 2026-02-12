@@ -681,7 +681,9 @@ export async function POST(req: Request) {
       }
 
       let whiteLabelBrief = "";
-      if (finalRouteType === "white_label") {
+      const hasSelectedIdea =
+        productName !== "N/A" || productCategory !== "N/A" || productId !== "N/A";
+      if (finalRouteType === "white_label" && !hasSelectedIdea) {
         const [wlRows]: any = await conn.query(
           `
           SELECT

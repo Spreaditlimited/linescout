@@ -56,6 +56,16 @@ export default function PaystackCheckoutClient() {
     () => String(searchParams.get("simple_notes") || "").trim(),
     [searchParams]
   );
+  const productId = useMemo(() => String(searchParams.get("product_id") || "").trim(), [searchParams]);
+  const productName = useMemo(() => String(searchParams.get("product_name") || "").trim(), [searchParams]);
+  const productCategory = useMemo(
+    () => String(searchParams.get("product_category") || "").trim(),
+    [searchParams]
+  );
+  const productLandedPerUnit = useMemo(
+    () => String(searchParams.get("product_landed_ngn_per_unit") || "").trim(),
+    [searchParams]
+  );
 
   const [loading, setLoading] = useState(true);
   const [authUrl, setAuthUrl] = useState("");
@@ -85,6 +95,10 @@ export default function PaystackCheckoutClient() {
           simple_quantity: simpleQuantity || null,
           simple_destination: simpleDestination || null,
           simple_notes: simpleNotes || null,
+          product_id: productId || null,
+          product_name: productName || null,
+          product_category: productCategory || null,
+          product_landed_ngn_per_unit: productLandedPerUnit || null,
           callback_url: callbackUrl,
         }),
       });
@@ -119,6 +133,10 @@ export default function PaystackCheckoutClient() {
     simpleQuantity,
     simpleDestination,
     simpleNotes,
+    productId,
+    productName,
+    productCategory,
+    productLandedPerUnit,
   ]);
 
   return (

@@ -1,13 +1,10 @@
-"use client";
-
-import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import Footer from "@/components/Footer";
-import ComingSoonModal from "@/components/ComingSoonModal";
-import MarketingFrame from "@/components/MarketingFrame";
 import MarketingTopNav from "@/components/MarketingTopNav";
+import HomeHeroCta from "@/components/marketing/HomeHeroCta";
+import HomeAppDownloadButtons from "@/components/marketing/HomeAppDownloadButtons";
 
 const features = [
   {
@@ -104,18 +101,16 @@ const testimonials = [
 
 export default function HomePage() {
   const brandBlue = "#2D3461";
-  const [showAppModal, setShowAppModal] = useState(false);
   return (
-    <MarketingFrame>
-      <div
-        className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900"
-        style={{ ["--agent-blue" as any]: brandBlue }}
-      >
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
-          <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
-          <div className="absolute bottom-[10%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
-        </div>
+    <div
+      className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900"
+      style={{ ["--agent-blue" as any]: brandBlue }}
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
+        <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
+        <div className="absolute bottom-[10%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
+      </div>
 
         <MarketingTopNav
           backgroundClassName="bg-white/95"
@@ -133,7 +128,7 @@ export default function HomePage() {
           disabledNavClassName="text-neutral-400"
         />
 
-        <main className="relative flex-1">
+      <main className="relative flex-1">
           <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 pb-12 pt-10 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
@@ -148,21 +143,7 @@ export default function HomePage() {
                 are ready, our specialists take over and execute with verified manufacturers.
               </p>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAppModal(true)}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)]"
-                >
-                  Get the app <ArrowRight className="h-4 w-4" />
-                </button>
-                <Link
-                  href="/sign-in"
-                  className="inline-flex items-center justify-center rounded-2xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold text-neutral-900 hover:border-[rgba(45,52,97,0.35)]"
-                >
-                  Start on the web
-                </Link>
-              </div>
+              <HomeHeroCta />
 
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {stats.map((s) => (
@@ -315,37 +296,15 @@ export default function HomePage() {
                   Continue on web <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAppModal(true)}
-                  className="rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-xs font-semibold text-white"
-                >
-                  Download on iOS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAppModal(true)}
-                  className="rounded-2xl border border-white/30 bg-white/10 px-5 py-3 text-xs font-semibold text-white"
-                >
-                  Get it on Android
-                </button>
-              </div>
+              <HomeAppDownloadButtons />
             </div>
           </section>
 
           
-        </main>
+      </main>
 
-        <Footer variant="agent" />
-      </div>
-      <ComingSoonModal
-        open={showAppModal}
-        title="LineScout Mobile App"
-        message="We are putting the finishing touches on the app experience. Join the web experience now and you will be first to know when the app ships."
-        onClose={() => setShowAppModal(false)}
-      />
-    </MarketingFrame>
+      <Footer variant="agent" />
+    </div>
   );
 }
 

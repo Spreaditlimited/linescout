@@ -263,6 +263,12 @@ export default function SourcingProjectClient() {
               ask a specialist a quick question first for reassurance. The quick human chat is limited and does not
               create a project.
             </p>
+            {routeType === "white_label" && (productName || productCategory) ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                We will pass the product details you selected to your assigned China agent for faster processing, so you
+                don’t need to repeat yourself.
+              </div>
+            ) : null}
 
             {sourceConversationId ? (
               <div className="mt-5">
