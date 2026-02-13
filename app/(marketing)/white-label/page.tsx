@@ -302,16 +302,16 @@ export default async function WhiteLabelPage({
               Explore white label ideas with pricing signals, categories, and demand notes. When you find a winner,
               start sourcing with verified China partners.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-nowrap gap-3">
               <Link
                 href="/sourcing-project?route_type=white_label"
-                className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)]"
+                className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)] whitespace-nowrap"
               >
                 Start sourcing <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/white-label/start"
-                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-6 py-3 text-sm font-semibold text-[var(--agent-blue)]"
+                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-5 py-3 text-xs font-semibold text-[var(--agent-blue)] whitespace-nowrap"
               >
                 Build a project brief
               </Link>

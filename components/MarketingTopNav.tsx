@@ -42,7 +42,7 @@ export default function MarketingTopNav({
   disabledNavClassName?: string;
 }) {
   return (
-    <header className={`z-40 border-b ${borderClassName} ${backgroundClassName} backdrop-blur`}>
+    <header className={`relative z-40 border-b ${borderClassName} ${backgroundClassName} backdrop-blur`}>
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <div className="flex items-center gap-3">
           <Link href="/" aria-label="LineScout home">
