@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { queryOne, queryRows } from "@/lib/db";
 import { RowDataPacket } from "mysql2/promise";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
+import { sendMetaLeadEvent } from "@/lib/meta-capi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,6 +102,9 @@ export async function PUT(req: Request) {
     const firstName = String(body?.first_name || "").trim();
     const lastName = String(body?.last_name || "").trim();
     const phone = normalizePhone(body?.phone || "");
+    const fbclid = String(body?.fbclid || "").trim();
+    const fbc = String(body?.fbc || "").trim();
+    const fbp = String(body?.fbp || "").trim();
 
     if (!firstName) {
       return NextResponse.json({ ok: false, error: "First name is required" }, { status: 400 });
@@ -137,6 +141,21 @@ export async function PUT(req: Request) {
       meta = {};
     }
 
+    let metaChanged = false;
+    if (fbclid && !meta.fbclid) {
+      meta.fbclid = fbclid;
+      metaChanged = true;
+    }
+    if (fbc && !meta.fbc) {
+      meta.fbc = fbc;
+      metaChanged = true;
+    }
+    if (fbp && !meta.fbp) {
+      meta.fbp = fbp;
+      metaChanged = true;
+    }
+
+    let savedMeta = false;
     if (!meta.flodesk_subscribed_at) {
       const res = await upsertFlodeskSubscriber({
         email: user.email,
@@ -147,6 +166,34 @@ export async function PUT(req: Request) {
       if (res.ok) {
         meta.flodesk_subscribed_at = new Date().toISOString();
         meta.flodesk_segment_id = segmentId;
+
+        const ip =
+          String(req.headers.get("x-forwarded-for") || "")
+            .split(",")[0]
+            .trim() || null;
+        const ua = String(req.headers.get("user-agent") || "").trim() || null;
+        const eventSourceUrl =
+          String(req.headers.get("referer") || "").trim() ||
+          String(req.headers.get("origin") || "").trim() ||
+          null;
+
+        try {
+          await sendMetaLeadEvent({
+            email: user.email,
+            firstName,
+            lastName,
+            fbclid: meta.fbclid || null,
+            fbc: meta.fbc || null,
+            fbp: meta.fbp || null,
+            clientIp: ip,
+            userAgent: ua,
+            eventSourceUrl,
+          });
+        } catch (err) {
+          console.warn("Meta CAPI lead failed:", err);
+        }
+
+        metaChanged = true;
         await queryRows(
           `UPDATE linescout_leads
            SET meta_json = ?, updated_at = NOW()
@@ -154,9 +201,29 @@ export async function PUT(req: Request) {
            LIMIT 1`,
           [JSON.stringify(meta), lead.id]
         );
+        savedMeta = true;
       } else {
         console.warn("Flodesk subscribe failed:", res.error);
       }
+    } else if (metaChanged) {
+      await queryRows(
+        `UPDATE linescout_leads
+         SET meta_json = ?, updated_at = NOW()
+         WHERE id = ?
+         LIMIT 1`,
+        [JSON.stringify(meta), lead.id]
+      );
+      savedMeta = true;
+    }
+
+    if (metaChanged && !savedMeta) {
+      await queryRows(
+        `UPDATE linescout_leads
+         SET meta_json = ?, updated_at = NOW()
+         WHERE id = ?
+         LIMIT 1`,
+        [JSON.stringify(meta), lead.id]
+      );
     }
 
     return NextResponse.json({

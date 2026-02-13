@@ -70,10 +70,26 @@ export default function OnboardingNameClient() {
     setStatus("loading");
     setMessage(null);
 
+    let fbclid = "";
+    let fbc = "";
+    let fbp = "";
+    try {
+      fbclid = window.localStorage.getItem("linescout_fbclid") || "";
+      fbc = window.localStorage.getItem("linescout_fbc") || "";
+      fbp = window.localStorage.getItem("linescout_fbp") || "";
+    } catch {}
+
     const res = await authFetch("/api/mobile/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, phone: "" }),
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        phone: "",
+        fbclid: fbclid || null,
+        fbc: fbc || null,
+        fbp: fbp || null,
+      }),
     });
 
     const json = await res.json().catch(() => ({}));

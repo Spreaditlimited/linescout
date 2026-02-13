@@ -74,6 +74,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pixelId = process.env.META_PIXEL_ID?.trim() || "1221261339913567";
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -93,7 +95,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               t.src=v;s=b.getElementsByTagName(e)[0];
               s.parentNode.insertBefore(t,s)}(window, document,'script',
               'https://connect.facebook.net/en_US/fbevents.js');
-              fbq('init', '1221261339913567');
+              fbq('init', '${pixelId}', {}, { autoConfig: false });
+              fbq('set', 'autoConfig', false, '${pixelId}');
               fbq('track', 'PageView');
             `,
           }}
@@ -101,7 +104,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <noscript
           dangerouslySetInnerHTML={{
-            __html: `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=1221261339913567&ev=PageView&noscript=1" />`,
+            __html: `<img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1" />`,
           }}
         />
 
