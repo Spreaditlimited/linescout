@@ -3,6 +3,10 @@
     {
       "path": "/api/internal/cron/payout-summaries",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/internal/cron/marketing-emails",
+      "schedule": "0 * * * *"
     }
   ]
 }

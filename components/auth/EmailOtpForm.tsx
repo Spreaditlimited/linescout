@@ -85,7 +85,11 @@ export default function EmailOtpForm() {
         const last = String(profileJson?.last_name || "").trim();
 
         if (!first || !last) {
-          router.replace("/onboarding/name");
+          const nextParam = String(searchParams.get("next") || "").trim();
+          const safeNext =
+            nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+          const nextSuffix = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
+          router.replace(`/onboarding/name${nextSuffix}`);
           return;
         }
 
@@ -158,7 +162,11 @@ export default function EmailOtpForm() {
     const last = String(profileJson?.last_name || "").trim();
 
     if (!first || !last) {
-      router.replace("/onboarding/name");
+      const nextParam = String(searchParams.get("next") || "").trim();
+      const safeNext =
+        nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+      const nextSuffix = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
+      router.replace(`/onboarding/name${nextSuffix}`);
       return;
     }
 

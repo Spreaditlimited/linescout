@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { queryOne, queryRows } from "@/lib/db";
 import { RowDataPacket } from "mysql2/promise";
+import { upsertFlodeskSubscriber } from "@/lib/flodesk";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ type LeadRow = RowDataPacket & {
   email: string;
   name: string;
   whatsapp: string;
+  meta_json?: string | null;
 };
 
 function splitName(full: string) {
@@ -30,7 +32,7 @@ function normalizePhone(raw: string) {
 async function getOrCreateLeadByEmail(email: string) {
   // Prefer the most recent lead record for that email
   const lead = await queryOne<LeadRow>(
-    `SELECT id, email, name, whatsapp
+    `SELECT id, email, name, whatsapp, meta_json
      FROM linescout_leads
      WHERE email = ?
      ORDER BY created_at DESC
@@ -59,7 +61,7 @@ async function getOrCreateLeadByEmail(email: string) {
   );
 
   const created = await queryOne<LeadRow>(
-    `SELECT id, email, name, whatsapp
+    `SELECT id, email, name, whatsapp, meta_json
      FROM linescout_leads
      WHERE session_id = ?
      LIMIT 1`,
@@ -125,6 +127,37 @@ export async function PUT(req: Request) {
        LIMIT 1`,
       [fullName, user.id]
     );
+
+    const segmentId =
+      process.env.FLODESK_SEGMENT_ID?.trim() || "698e48199d85ee31d683c0d8";
+    let meta: Record<string, any> = {};
+    try {
+      meta = lead.meta_json ? JSON.parse(String(lead.meta_json)) : {};
+    } catch {
+      meta = {};
+    }
+
+    if (!meta.flodesk_subscribed_at) {
+      const res = await upsertFlodeskSubscriber({
+        email: user.email,
+        firstName,
+        lastName,
+        segmentId,
+      });
+      if (res.ok) {
+        meta.flodesk_subscribed_at = new Date().toISOString();
+        meta.flodesk_segment_id = segmentId;
+        await queryRows(
+          `UPDATE linescout_leads
+           SET meta_json = ?, updated_at = NOW()
+           WHERE id = ?
+           LIMIT 1`,
+          [JSON.stringify(meta), lead.id]
+        );
+      } else {
+        console.warn("Flodesk subscribe failed:", res.error);
+      }
+    }
 
     return NextResponse.json({
       ok: true,

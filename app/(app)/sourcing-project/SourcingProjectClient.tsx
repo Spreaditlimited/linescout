@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, MessageCircle } from "lucide-react";
 import { authFetch } from "@/lib/auth-client";
@@ -122,6 +122,7 @@ export default function SourcingProjectClient() {
   const [activeProjects, setActiveProjects] = useState<ProjectItem[]>([]);
   const mostRecentActive = useMemo(() => pickMostRecent(activeProjects), [activeProjects]);
   const [working, setWorking] = useState<"pay" | "human" | null>(null);
+  const startEventSent = useRef(false);
   const commitmentDue = useMemo(() => {
     const raw = Number(status?.commitment_due_ngn || 0);
     return Number.isFinite(raw) && raw > 0 ? raw : 100000;
@@ -154,6 +155,51 @@ export default function SourcingProjectClient() {
       cancelled = true;
     };
   }, [routeType]);
+
+  useEffect(() => {
+    if (startEventSent.current) return;
+    startEventSent.current = true;
+    (async () => {
+      try {
+        await authFetch("/api/mobile/marketing-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event_type: "start_sourcing_view",
+            related_id: productId || null,
+            meta: {
+              route_type: routeType,
+              source_conversation_id: sourceConversationId,
+              product_name: productName || null,
+              product_category: productCategory || null,
+              product_landed_ngn_per_unit: productLandedPerUnit || null,
+              simple_sourcing_brief: simpleProductName || simpleQuantity || simpleDestination || simpleNotes
+                ? {
+                    product_name: simpleProductName || null,
+                    quantity: simpleQuantity || null,
+                    destination: simpleDestination || null,
+                    notes: simpleNotes || null,
+                  }
+                : null,
+            },
+          }),
+        });
+      } catch {
+        // ignore tracking errors
+      }
+    })();
+  }, [
+    routeType,
+    sourceConversationId,
+    productId,
+    productName,
+    productCategory,
+    productLandedPerUnit,
+    simpleProductName,
+    simpleQuantity,
+    simpleDestination,
+    simpleNotes,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

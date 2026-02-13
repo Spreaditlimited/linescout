@@ -77,6 +77,8 @@ Output ONLY a JSON array (no markdown). Each item must match the schema:
 
 Rules:
 - Non-repetitive, human, concise, high-quality content.
+- Each product must be distinct in use case and not a minor variation of another.
+- Do NOT reuse sentences or phrases across different products. Every short_desc, why_sells, business_summary, market_notes, white_label_angle, and seo_description must be unique.
 - Prefer low-priced, high-repeat-demand items in Nigeria.
 - Heavily favor NON-regulated categories; include some regulated for completeness.
 - Regulatory note must say either "Non-regulated." or "NAFDAC regulated (cosmetics)." or "NAFDAC regulated (medical device)." or "NAFDAC regulated (food)." or "NAFDAC regulated (household chemical)."
@@ -90,6 +92,7 @@ Rules:
 - business_summary should be 2-3 sentences.
 - market_notes should be 2-3 sentences.
 - white_label_angle should be 2-3 sentences describing how to position/brand.
+- Make the content Nigeria-specific (buying habits, channels, common needs).
 - Use categories from this list (exactly):
 ${CATEGORY_GUIDE.map((c) => `- ${c.name} (${c.regulated ? "regulated" : "non-regulated"})`).join("\n")}
 
@@ -99,6 +102,12 @@ Return ONLY JSON.
 async function main() {
   const existing = RESUME ? loadExisting(OUT_PATH) : [];
   const existingKey = new Set(existing.map((p) => keyFor(p.product_name, p.category)));
+  const existingName = new Set(existing.map((p) => normalizeName(p.product_name)));
+  const existingSlug = new Set(existing.map((p) => normalizeName(p.slug || slugify(p.product_name))));
+  const sentenceSet = new Set();
+  for (const p of existing) {
+    trackSentences(sentenceSet, p);
+  }
   const targetTotal = COUNT;
 
   let items = [...existing];
@@ -106,11 +115,19 @@ async function main() {
   while (items.length < targetTotal) {
     const remaining = targetTotal - items.length;
     const take = Math.min(BATCH, remaining);
-    const batch = await generateBatch(take, items.length);
+    const batch = await generateBatch(take, items.length, existing);
     for (const item of batch) {
       const k = keyFor(item.product_name, item.category);
       if (existingKey.has(k)) continue;
+      const nameKey = normalizeName(item.product_name);
+      const slugKey = normalizeName(item.slug || slugify(item.product_name));
+      if (!nameKey || existingName.has(nameKey)) continue;
+      if (slugKey && existingSlug.has(slugKey)) continue;
+      if (!isUniqueContent(sentenceSet, item)) continue;
       existingKey.add(k);
+      existingName.add(nameKey);
+      if (slugKey) existingSlug.add(slugKey);
+      trackSentences(sentenceSet, item);
       items.push(item);
     }
     console.log(`Generated ${items.length}/${targetTotal}`);
@@ -154,6 +171,71 @@ function keyFor(name, category) {
   return `${String(name || "").toLowerCase()}||${String(category || "").toLowerCase()}`;
 }
 
+function normalizeName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitSentences(text) {
+  return String(text || "")
+    .split(/[.!?]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function normalizeSentence(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9 ]+/g, "")
+    .trim();
+}
+
+function shouldTrackSentence(s) {
+  const words = s.split(" ").filter(Boolean);
+  return words.length >= 6;
+}
+
+function trackSentences(set, item) {
+  const fields = [
+    item.short_desc,
+    item.why_sells,
+    item.business_summary,
+    item.market_notes,
+    item.white_label_angle,
+    item.seo_description,
+  ];
+  for (const field of fields) {
+    for (const sentence of splitSentences(field)) {
+      const norm = normalizeSentence(sentence);
+      if (!norm || !shouldTrackSentence(norm)) continue;
+      set.add(norm);
+    }
+  }
+}
+
+function isUniqueContent(set, item) {
+  const fields = [
+    item.short_desc,
+    item.why_sells,
+    item.business_summary,
+    item.market_notes,
+    item.white_label_angle,
+    item.seo_description,
+  ];
+  for (const field of fields) {
+    for (const sentence of splitSentences(field)) {
+      const norm = normalizeSentence(sentence);
+      if (!norm || !shouldTrackSentence(norm)) continue;
+      if (set.has(norm)) return false;
+    }
+  }
+  return true;
+}
+
 function loadExisting(filePath) {
   if (!fs.existsSync(filePath)) return [];
   const raw = fs.readFileSync(filePath, "utf8").trim();
@@ -185,12 +267,21 @@ function saveItems(filePath, items) {
   fs.writeFileSync(filePath, JSON.stringify(items, null, 2));
 }
 
-async function generateBatch(count, offset) {
+function buildExistingNameBlock(existing) {
+  const names = existing
+    .map((p) => String(p.product_name || "").trim())
+    .filter(Boolean);
+  if (!names.length) return "";
+  return `\nAvoid these existing product names:\n- ${names.join("\n- ")}`;
+}
+
+async function generateBatch(count, offset, existing) {
   let attempt = 0;
   let target = count;
   while (attempt < 3) {
     attempt += 1;
-    const prompt = `${PROMPT_BASE}\nReturn a JSON object with shape {\"items\": [ ... ]}.\nGenerate ${target} items. Avoid repeating items already generated. Batch offset: ${offset}.`;
+    const existingBlock = buildExistingNameBlock(existing || []);
+    const prompt = `${PROMPT_BASE}${existingBlock}\nReturn a JSON object with shape {\"items\": [ ... ]}.\nGenerate ${target} items. Avoid repeating items already generated. Batch offset: ${offset}.`;
 
     const res = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",

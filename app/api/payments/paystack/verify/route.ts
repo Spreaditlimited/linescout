@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { ensureMarketingTables, recordMarketingEvent } from "@/lib/marketing-emails";
 import type { Transporter } from "nodemailer";
 
 // Use require to avoid default-import interop issues in some TS setups
@@ -871,6 +872,25 @@ export async function POST(req: Request) {
       }
 
       await conn.commit();
+
+      try {
+        await ensureMarketingTables(conn);
+        await recordMarketingEvent(conn, {
+          userId,
+          eventType: "paystack_verified",
+          relatedId: reference,
+          meta: {
+            purpose,
+            route_type: finalRouteType,
+            amount_ngn: typeof amountNaira === "number" ? amountNaira : null,
+            handoff_id: handoffId,
+            conversation_id: conversationId,
+          },
+          dedupeMinutes: 60,
+        });
+      } catch {
+        // ignore marketing telemetry failures
+      }
 
       // 4) Notify agents about new paid chat (push + optional email)
       try {

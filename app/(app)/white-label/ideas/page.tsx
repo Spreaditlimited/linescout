@@ -6,11 +6,16 @@ import {
   ensureWhiteLabelProductsReady,
 } from "@/lib/white-label-products";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
+import MarketingEventTracker from "@/components/marketing/MarketingEventTracker";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
 
 const PAGE_SIZE = 20;
+const FX_RATE_NGN = 1500;
+const CBM_RATE_NGN = 450000;
+const MARKUP = 0.2;
+const LANDED_LOW_MULTIPLIER = 0.5;
 
 type SearchParams = {
   q?: string;
@@ -18,7 +23,6 @@ type SearchParams = {
   page?: string;
   price?: string;
   regulatory?: string;
-  has_image?: string;
   sort?: string;
 };
 
@@ -33,7 +37,6 @@ function buildPageHref(params: {
   page: number;
   price: string;
   regulatory: string;
-  has_image: string;
   sort: string;
 }) {
   const qs = new URLSearchParams();
@@ -41,7 +44,6 @@ function buildPageHref(params: {
   if (params.category) qs.set("category", params.category);
   if (params.price) qs.set("price", params.price);
   if (params.regulatory) qs.set("regulatory", params.regulatory);
-  if (params.has_image) qs.set("has_image", params.has_image);
   if (params.sort) qs.set("sort", params.sort);
   if (params.page > 1) qs.set("page", String(params.page));
   const query = qs.toString();
@@ -66,7 +68,6 @@ export default async function WhiteLabelIdeasPage({
   const category = String(params?.category || "").trim();
   const price = String(params?.price || "").trim();
   const regulatory = String(params?.regulatory || "").trim();
-  const hasImage = String(params?.has_image || "").trim();
   const sort = String(params?.sort || "").trim();
   const requestedPage = toInt(params?.page, 1);
 
@@ -94,10 +95,6 @@ export default async function WhiteLabelIdeasPage({
       params.push(like, like, like, like);
     }
 
-    if (hasImage === "1") {
-      clauses.push("COALESCE(image_url, '') <> ''");
-    }
-
     if (regulatory === "non_regulated") {
       clauses.push(
         `(LOWER(COALESCE(regulatory_note,'')) LIKE '%non-regulated%' OR LOWER(COALESCE(regulatory_note,'')) LIKE '%non regulated%')`
@@ -110,25 +107,27 @@ export default async function WhiteLabelIdeasPage({
       clauses.push(`COALESCE(regulatory_note,'') = ''`);
     }
 
+    const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
+
     if (price) {
-      if (price === "lt1") {
-        clauses.push("fob_low_usd IS NOT NULL AND fob_low_usd < 1");
-      } else if (price === "1-3") {
-        clauses.push("fob_low_usd IS NOT NULL AND fob_low_usd >= 1 AND fob_low_usd <= 3");
-      } else if (price === "3-7") {
-        clauses.push("fob_low_usd IS NOT NULL AND fob_low_usd > 3 AND fob_low_usd <= 7");
-      } else if (price === "7-15") {
-        clauses.push("fob_low_usd IS NOT NULL AND fob_low_usd > 7 AND fob_low_usd <= 15");
-      } else if (price === "15plus") {
-        clauses.push("fob_low_usd IS NOT NULL AND fob_low_usd > 15");
+      if (price === "lt1k") {
+        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
+      } else if (price === "1k-3k") {
+        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} >= 1000 AND ${landedLowExpr} <= 3000`);
+      } else if (price === "3k-7k") {
+        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 3000 AND ${landedLowExpr} <= 7000`);
+      } else if (price === "7k-15k") {
+        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 7000 AND ${landedLowExpr} <= 15000`);
+      } else if (price === "15kplus") {
+        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 15000`);
       }
     }
 
     const sortClause =
       sort === "price_low"
-        ? "ORDER BY (fob_low_usd IS NULL) ASC, fob_low_usd ASC, id DESC"
+        ? `ORDER BY (fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, id DESC`
         : sort === "price_high"
-        ? "ORDER BY (fob_low_usd IS NULL) ASC, fob_low_usd DESC, id DESC"
+        ? `ORDER BY (fob_low_usd IS NULL) ASC, ${landedLowExpr} DESC, id DESC`
         : sort === "name"
         ? "ORDER BY product_name ASC, id DESC"
         : sort === "newest"
@@ -205,6 +204,7 @@ export default async function WhiteLabelIdeasPage({
 
   return (
     <div className="px-6 py-10">
+      <MarketingEventTracker eventType="white_label_view" />
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
           White Label Ideas
@@ -254,15 +254,15 @@ export default async function WhiteLabelIdeasPage({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-neutral-600">Budget (FOB per unit)</label>
+              <label className="text-xs font-semibold text-neutral-600">Budget (landed per unit in ₦)</label>
               <div className="relative">
                 <select name="price" defaultValue={price} className={selectClass}>
                   <option value="">Any budget</option>
-                  <option value="lt1">Under $1</option>
-                  <option value="1-3">$1 - $3</option>
-                  <option value="3-7">$3 - $7</option>
-                  <option value="7-15">$7 - $15</option>
-                  <option value="15plus">$15+</option>
+                  <option value="lt1k">Under ₦1,000</option>
+                  <option value="1k-3k">₦1,000 - ₦3,000</option>
+                  <option value="3k-7k">₦3,000 - ₦7,000</option>
+                  <option value="7k-15k">₦7,000 - ₦15,000</option>
+                  <option value="15kplus">₦15,000+</option>
                 </select>
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
                   ▾
@@ -302,24 +302,13 @@ export default async function WhiteLabelIdeasPage({
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <label className="text-xs font-semibold text-neutral-600">Images</label>
-            <div className="relative">
-              <select name="has_image" defaultValue={hasImage} className={selectClass}>
-                <option value="">All ideas</option>
-                <option value="1">Only with images</option>
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                ▾
-              </span>
-            </div>
-
-            {(q || category || price || regulatory || hasImage || sort) && (
-              <Link href="/white-label/ideas" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
-                Clear filters
-              </Link>
+            {(q || category || price || regulatory || sort) && (
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Link href="/white-label/ideas" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
+                  Clear filters
+                </Link>
+              </div>
             )}
-          </div>
         </form>
       </div>
 
@@ -372,7 +361,6 @@ export default async function WhiteLabelIdeasPage({
               page: 1,
               price,
               regulatory,
-              has_image: hasImage,
               sort,
             })}
             className={`rounded-full px-4 py-2 text-xs font-semibold ${
@@ -386,15 +374,14 @@ export default async function WhiteLabelIdeasPage({
           {categories.map((c) => (
             <Link
               key={c}
-              href={buildPageHref({
-                q,
-                category: c,
-                page: 1,
-                price,
-                regulatory,
-                has_image: hasImage,
-                sort,
-              })}
+                href={buildPageHref({
+                  q,
+                  category: c,
+                  page: 1,
+                  price,
+                  regulatory,
+                  sort,
+                })}
               className={`rounded-full px-4 py-2 text-xs font-semibold ${
                 category === c
                   ? "bg-[var(--agent-blue)] text-white"
@@ -416,15 +403,14 @@ export default async function WhiteLabelIdeasPage({
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              href={buildPageHref({
-                q,
-                category,
-                page: Math.max(1, page - 1),
-                price,
-                regulatory,
-                has_image: hasImage,
-                sort,
-              })}
+                href={buildPageHref({
+                  q,
+                  category,
+                  page: Math.max(1, page - 1),
+                  price,
+                  regulatory,
+                  sort,
+                })}
               className={`rounded-full px-4 py-2 text-xs font-semibold ${
                 page === 1
                   ? "cursor-not-allowed border border-neutral-200 bg-white text-neutral-300"
@@ -435,15 +421,14 @@ export default async function WhiteLabelIdeasPage({
               Previous
             </Link>
             <Link
-              href={buildPageHref({
-                q,
-                category,
-                page: Math.min(totalPages, page + 1),
-                price,
-                regulatory,
-                has_image: hasImage,
-                sort,
-              })}
+                href={buildPageHref({
+                  q,
+                  category,
+                  page: Math.min(totalPages, page + 1),
+                  price,
+                  regulatory,
+                  sort,
+                })}
               className={`rounded-full px-4 py-2 text-xs font-semibold ${
                 page >= totalPages
                   ? "cursor-not-allowed border border-neutral-200 bg-white text-neutral-300"

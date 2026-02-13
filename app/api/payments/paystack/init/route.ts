@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureMarketingTables, recordMarketingEvent } from "@/lib/marketing-emails";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +211,28 @@ export async function POST(req: Request) {
         j?.data?.message ||
         `Paystack initialize failed (HTTP ${r.status})`;
       return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
+
+    try {
+      const conn = await db.getConnection();
+      try {
+        await ensureMarketingTables(conn);
+        await recordMarketingEvent(conn, {
+          userId,
+          eventType: "paystack_init",
+          relatedId: reference,
+          meta: {
+            purpose,
+            route_type: routeType,
+            amount_kobo: amount,
+          },
+          dedupeMinutes: 10,
+        });
+      } finally {
+        conn.release();
+      }
+    } catch {
+      // Non-fatal: payment init should not fail on marketing telemetry.
     }
 
     return NextResponse.json({
