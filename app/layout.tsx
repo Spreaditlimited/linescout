@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 
 import MetaPixel from "./MetaPixel";
+import CookieNotice from "@/components/CookieNotice";
 import InstallPrompt from "@/components/InstallPrompt";
 import Shell from "@/components/Shell";
 
@@ -112,6 +113,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
 
         <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
+        <CookieNotice />
 
         {/* Global shell: hides Navbar for /internal routes via Shell */}
         <Shell>{children}</Shell>

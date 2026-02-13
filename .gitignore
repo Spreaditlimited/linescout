@@ -50,3 +50,7 @@ linescout-agent.code-workspace
 
 data/white-label-product-links.csv
 data/white-label-product-names.txt
+data/ad-creatives/
+data/catalog_products.csv
+data/catalog_products_upload.csv
+scripts/ads/

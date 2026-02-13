@@ -27,7 +27,6 @@ export default function MarketingTopNavMenu({
   disabledNavClassName: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-
   return (
     <>
       <div className="flex items-center gap-2">
@@ -52,6 +51,13 @@ export default function MarketingTopNavMenu({
             className={`absolute right-4 top-full z-40 mt-2 w-48 overflow-hidden rounded-2xl border text-sm font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] lg:hidden ${menuBorderClassName} ${menuBgClassName} ${menuTextClassName}`}
           >
             <div className="flex flex-col gap-3 px-4 py-3">
+              <Link
+                href="/sign-in"
+                className="rounded-2xl bg-[var(--agent-blue,#2D3461)] px-4 py-2 text-center text-xs font-semibold text-white shadow-[0_10px_28px_rgba(45,52,97,0.3)]"
+                onClick={() => setMenuOpen(false)}
+              >
+                Start Sourcing
+              </Link>
               {navItems.map((item) =>
                 item.label === disabledNavLabel ? (
                   <span key={item.href} className={`cursor-default ${disabledNavClassName}`}>

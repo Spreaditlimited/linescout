@@ -289,6 +289,7 @@ export default async function WhiteLabelPage({
           disabledNavClassName="text-neutral-400"
         />
 
+        {!category && !q && (
         <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-6 pt-10 md:grid-cols-[1.1fr_0.9fr] md:pt-16">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
@@ -344,151 +345,166 @@ export default async function WhiteLabelPage({
             </div>
           </div>
         </section>
+        )}
 
         <section className="mx-auto max-w-6xl px-6 pb-6">
-          <form method="GET" action="/white-label" className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-1 items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                <Search className="h-4 w-4 text-neutral-400" />
-                <input
-                  name="q"
-                  defaultValue={q}
-                  placeholder="Search products, categories, or use cases"
-                  className="w-full bg-transparent text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none"
-                />
+          {!(q || category) ? (
+            <form method="GET" action="/white-label" className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-1 items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
+                  <Search className="h-4 w-4 text-neutral-400" />
+                  <input
+                    name="q"
+                    defaultValue={q}
+                    placeholder="Search products, categories, or use cases"
+                    className="w-full bg-transparent text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white"
+                >
+                  Search
+                </button>
               </div>
-              <button
-                type="submit"
-                className="rounded-xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white"
-              >
-                Search
-              </button>
-            </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-neutral-600">Category</label>
-                <div className="relative">
-                  <select name="category" defaultValue={category} className={selectClass}>
-                    <option value="">All categories</option>
-                    {categories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                    ▾
-                  </span>
+              <div className="mt-4 grid gap-3 md:grid-cols-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-neutral-600">Category</label>
+                  <div className="relative">
+                    <select name="category" defaultValue={category} className={selectClass}>
+                      <option value="">All categories</option>
+                      {categories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                      ▾
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-neutral-600">Budget (landed per unit in ₦)</label>
+                  <div className="relative">
+                    <select name="price" defaultValue={price} className={selectClass}>
+                      <option value="">Any budget</option>
+                      <option value="lt1k">Under ₦1,000</option>
+                      <option value="1k-3k">₦1,000 - ₦3,000</option>
+                      <option value="3k-7k">₦3,000 - ₦7,000</option>
+                      <option value="7k-15k">₦7,000 - ₦15,000</option>
+                      <option value="15kplus">₦15,000+</option>
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                      ▾
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-neutral-600">Regulatory</label>
+                  <div className="relative">
+                    <select name="regulatory" defaultValue={regulatory} className={selectClass}>
+                      <option value="">Any status</option>
+                      <option value="non_regulated">Non-regulated only</option>
+                      <option value="regulated">Regulated only</option>
+                      <option value="unknown">Unknown</option>
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                      ▾
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-neutral-600">Sort by</label>
+                  <div className="relative">
+                    <select name="sort" defaultValue={sort} className={selectClass}>
+                      <option value="">Recommended</option>
+                      <option value="newest">Newest</option>
+                      <option value="price_low">Price: Low to High</option>
+                      <option value="price_high">Price: High to Low</option>
+                      <option value="name">Name (A-Z)</option>
+                    </select>
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
+                      ▾
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-neutral-600">Budget (landed per unit in ₦)</label>
-                <div className="relative">
-                  <select name="price" defaultValue={price} className={selectClass}>
-                    <option value="">Any budget</option>
-                    <option value="lt1k">Under ₦1,000</option>
-                    <option value="1k-3k">₦1,000 - ₦3,000</option>
-                    <option value="3k-7k">₦3,000 - ₦7,000</option>
-                    <option value="7k-15k">₦7,000 - ₦15,000</option>
-                    <option value="15kplus">₦15,000+</option>
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                    ▾
-                  </span>
+              {(q || category || price || regulatory || sort) && (
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Link href="/white-label" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
+                    Clear filters
+                  </Link>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-neutral-600">Regulatory</label>
-                <div className="relative">
-                  <select name="regulatory" defaultValue={regulatory} className={selectClass}>
-                    <option value="">Any status</option>
-                    <option value="non_regulated">Non-regulated only</option>
-                    <option value="regulated">Regulated only</option>
-                    <option value="unknown">Unknown</option>
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                    ▾
-                  </span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-neutral-600">Sort by</label>
-                <div className="relative">
-                  <select name="sort" defaultValue={sort} className={selectClass}>
-                    <option value="">Recommended</option>
-                    <option value="newest">Newest</option>
-                    <option value="price_low">Price: Low to High</option>
-                    <option value="price_high">Price: High to Low</option>
-                    <option value="name">Name (A-Z)</option>
-                  </select>
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                    ▾
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {(q || category || price || regulatory || sort) && (
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <Link href="/white-label" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
-                  Clear filters
-                </Link>
-              </div>
-            )}
-          </form>
+              )}
+            </form>
+          ) : (
+            <div className="pt-6" />
+          )}
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600">
             <div>
               Showing <span className="font-semibold text-neutral-900">{items.length}</span> of{" "}
               <span className="font-semibold text-neutral-900">{total}</span> ideas
             </div>
+            {(q || category) && (
+              <Link
+                href="/white-label"
+                className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-900"
+              >
+                Back to all ideas
+              </Link>
+            )}
           </div>
 
-          <div className="mt-5">
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={buildPageHref({
-                  q,
-                  category: "",
-                  page: 1,
-                  price,
-                  regulatory,
-                  sort,
-                })}
-                className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                  !category
-                    ? "bg-[var(--agent-blue)] text-white"
-                    : "border border-neutral-200 bg-white text-neutral-600"
-                }`}
-              >
-                All
-              </Link>
-              {categories.map((c) => (
+          {!(q || category) && (
+            <div className="mt-5">
+              <div className="flex flex-wrap gap-2">
                 <Link
-                  key={c}
                   href={buildPageHref({
                     q,
-                    category: c,
+                    category: "",
                     page: 1,
                     price,
                     regulatory,
                     sort,
                   })}
                   className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                    category === c
+                    !category
                       ? "bg-[var(--agent-blue)] text-white"
                       : "border border-neutral-200 bg-white text-neutral-600"
                   }`}
                 >
-                  {c}
+                  All
                 </Link>
-              ))}
+                {categories.map((c) => (
+                  <Link
+                    key={c}
+                    href={buildPageHref({
+                      q,
+                      category: c,
+                      page: 1,
+                      price,
+                      regulatory,
+                      sort,
+                    })}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                      category === c
+                        ? "bg-[var(--agent-blue)] text-white"
+                        : "border border-neutral-200 bg-white text-neutral-600"
+                    }`}
+                  >
+                    {c}
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-10">
