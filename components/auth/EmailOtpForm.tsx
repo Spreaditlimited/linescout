@@ -71,7 +71,7 @@ export default function EmailOtpForm() {
       hasActiveProject = false;
     }
 
-    router.replace(hasActiveProject ? "/projects/active" : "/white-label/ideas");
+    router.replace(hasActiveProject ? "/projects/active" : "/machine");
   }
 
   useEffect(() => {

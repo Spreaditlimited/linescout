@@ -133,7 +133,7 @@ export default function HomePage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
                 <Sparkles className="h-4 w-4" />
-                LineScout is better on the app
+                Smart China product sourcing
               </div>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
                 Source smarter from China with Nigeria-first guidance.
