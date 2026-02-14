@@ -21,6 +21,20 @@ export default function EmailOtpForm() {
   const [message, setMessage] = useState<string | null>(null);
   const canSubmitEmail = isValidEmail(email) && status !== "loading";
 
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    const originalHeight = document.body.style.height;
+    const originalOverscroll = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.height = "100dvh";
+    document.body.style.overscrollBehavior = "none";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.height = originalHeight;
+      document.body.style.overscrollBehavior = originalOverscroll;
+    };
+  }, []);
+
   async function routeAfterProfile() {
     const nextParam = String(searchParams.get("next") || "").trim();
     let safeNext =
