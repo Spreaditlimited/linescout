@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { suggestConversationTitle } from "@/lib/conversation-title";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
       const [crows]: any = await conn.query(
         `
         SELECT
-          id, user_id, route_type, conversation_kind, chat_mode, project_status,
+          id, user_id, route_type, conversation_kind, chat_mode, project_status, title,
           human_message_limit, human_message_used, human_access_expires_at
         FROM linescout_conversations
         WHERE id = ?
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
       }
 
       const c: QuickConvRow = crows[0];
+      const existingTitle = String(crows?.[0]?.title || "").trim();
 
       // Must be an active quick-human conversation
       if (
@@ -283,6 +285,22 @@ export async function POST(req: Request) {
       );
 
       await conn.commit();
+
+      // Auto-title if missing and user has not renamed
+      if (!existingTitle) {
+        const suggested = await suggestConversationTitle({
+          userText: messageText,
+          routeType: String(c.route_type || ""),
+        });
+        if (suggested) {
+          await conn.query(
+            `UPDATE linescout_conversations
+             SET title = ?
+             WHERE id = ? AND user_id = ? AND (title IS NULL OR TRIM(title) = '')`,
+            [suggested, conversationId, userId]
+          );
+        }
+      }
 
       const remaining = Math.max(limit - nextUsed, 0);
 

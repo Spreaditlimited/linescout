@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { suggestConversationTitle } from "@/lib/conversation-title";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
 
       // 1) Ensure conversation belongs to user and is active
       const [convRows]: any = await conn.query(
-        `SELECT id, user_id, project_status
+        `SELECT id, user_id, project_status, title, route_type, chat_mode
          FROM linescout_conversations
          WHERE id = ? AND user_id = ?
          LIMIT 1`,
@@ -173,6 +174,24 @@ export async function POST(req: Request) {
       );
 
       await conn.commit();
+
+      // 7) Auto-title if missing and user has not renamed
+      const existingTitle = String(convRows?.[0]?.title || "").trim();
+      if (!existingTitle) {
+        const suggested = await suggestConversationTitle({
+          userText: messageText,
+          aiText,
+          routeType: String(convRows?.[0]?.route_type || ""),
+        });
+        if (suggested) {
+          await conn.query(
+            `UPDATE linescout_conversations
+             SET title = ?
+             WHERE id = ? AND user_id = ? AND (title IS NULL OR TRIM(title) = '')`,
+            [suggested, conversationId, userId]
+          );
+        }
+      }
 
       // Return TEXT so the mobile UI keeps working exactly like before.
       // Expose IDs via headers (optional, but very useful for debugging).

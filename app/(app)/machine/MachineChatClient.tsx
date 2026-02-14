@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
-import { MessageSquarePlus, Sparkles, User, Send, ImagePlus } from "lucide-react";
+import { MessageSquarePlus, Sparkles, User, Send, ImagePlus, Pencil } from "lucide-react";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
@@ -103,6 +103,28 @@ export default function MachineChatClient() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+
+  async function renameConversation(c: ConversationRow) {
+    const currentTitle = convTitle(c);
+    const next = window.prompt("Rename conversation", currentTitle);
+    if (next === null) return;
+    const title = String(next || "").trim();
+    if (!title) return;
+
+    const res = await authFetch("/api/mobile/conversations/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: c.id, title }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      setError(json?.error || "Unable to rename conversation.");
+      return;
+    }
+    setConversations((prev) =>
+      prev.map((item) => (item.id === c.id ? { ...item, title } : item))
+    );
+  }
 
   const aiConversations = useMemo(
     () =>
@@ -370,28 +392,44 @@ export default function MachineChatClient() {
 
           <div className="mt-4 space-y-1.5">
             {aiConversations.map((c) => (
-              <button
+              <div
                 key={c.id}
-                type="button"
-                onClick={() => setActiveId(c.id)}
                 className={`w-full rounded-2xl px-3 py-2 text-left text-sm transition ${
                   activeId === c.id
                     ? "bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                     : "text-neutral-600 hover:bg-neutral-50"
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  {c.chat_mode === "limited_human" ? (
-                    <User className="h-4 w-4 text-[var(--agent-blue)]" />
-                  ) : (
-                    <Sparkles className="h-4 w-4 text-[var(--agent-blue)]" />
-                  )}
-                  <span className="font-semibold">{convTitle(c)}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(c.id)}
+                    className="flex flex-1 items-center gap-2 text-left"
+                  >
+                    {c.chat_mode === "limited_human" ? (
+                      <User className="h-4 w-4 text-[var(--agent-blue)]" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 text-[var(--agent-blue)]" />
+                    )}
+                    <span className="font-semibold">{convTitle(c)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-neutral-400 hover:text-[var(--agent-blue)]"
+                    onClick={() => renameConversation(c)}
+                    aria-label="Rename conversation"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                <p className="mt-1 text-xs text-neutral-500 line-clamp-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveId(c.id)}
+                  className="mt-1 block w-full text-left text-xs text-neutral-500 line-clamp-2"
+                >
                   {c.last_message_text || "No messages yet"}
-                </p>
-              </button>
+                </button>
+              </div>
             ))}
           </div>
         </div>

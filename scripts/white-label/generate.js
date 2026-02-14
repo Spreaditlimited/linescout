@@ -152,10 +152,19 @@ async function main() {
         item.image_url = "https://res.cloudinary.com/demo/image/upload/sample";
         continue;
       }
-      const imageUrl = await generateAndUploadImage(item);
-      item.image_url = imageUrl;
-      console.log(`Image: ${item.product_name} -> ${imageUrl}`);
-      saveItems(OUT_PATH, items);
+      try {
+        const imageUrl = await generateAndUploadImage(item);
+        item.image_url = imageUrl;
+        console.log(`Image: ${item.product_name} -> ${imageUrl}`);
+        saveItems(OUT_PATH, items);
+      } catch (err) {
+        const message = String(err?.message || err || "");
+        if (message.includes("moderation_blocked") || message.includes("safety")) {
+          console.warn(`Skipped image (safety): ${item.product_name}`);
+          continue;
+        }
+        throw err;
+      }
     }
   }
 
@@ -443,7 +452,7 @@ async function generateAndUploadImage(item) {
 
   const buffer = Buffer.from(b64, "base64");
   const publicId = `${slugify(item.product_name)}-${crypto.randomBytes(4).toString("hex")}`;
-  const imageUrl = await streamUpload(publicId, buffer);
+  const imageUrl = await streamUploadWithRetry(publicId, buffer, 3);
   return imageUrl;
 }
 
@@ -463,6 +472,22 @@ function streamUpload(publicId, buffer) {
     );
     stream.end(buffer);
   });
+}
+
+async function streamUploadWithRetry(publicId, buffer, attempts) {
+  let lastErr = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await streamUpload(publicId, buffer);
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err?.message || err || "");
+      const isTimeout = msg.toLowerCase().includes("timeout") || msg.includes("http_code: 499");
+      if (!isTimeout || i === attempts - 1) throw err;
+      await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 function slugify(s) {

@@ -11,6 +11,7 @@ dotenv.config();
 const args = parseArgs(process.argv.slice(2));
 const JSON_PATH = args.file || path.join(process.cwd(), "data", "white-label-products.json");
 const DRY_RUN = Boolean(args.dryRun);
+const APPEND = Boolean(args.append);
 
 function slugify(value) {
   return String(value || "")
@@ -64,17 +65,48 @@ async function main() {
       )
     `);
 
-    if (DRY_RUN) {
+    if (DRY_RUN && !APPEND) {
       console.log(`DRY RUN: would overwrite linescout_white_label_products with ${items.length} rows.`);
       return;
     }
 
+    let existingKey = new Set();
+    let existingCount = 0;
+    let maxSort = 0;
+    if (APPEND) {
+      const [rows] = await conn.query(
+        `SELECT product_name, category, sort_order FROM linescout_white_label_products`
+      );
+      existingCount = rows?.length || 0;
+      for (const r of rows || []) {
+        const key = `${String(r.product_name || "").toLowerCase()}||${String(r.category || "").toLowerCase()}`;
+        existingKey.add(key);
+        const s = Number(r.sort_order || 0);
+        if (Number.isFinite(s) && s > maxSort) maxSort = s;
+      }
+    }
+
+    const filtered = APPEND
+      ? items.filter((p) => {
+          const key = `${String(p.product_name || "").toLowerCase()}||${String(p.category || "").toLowerCase()}`;
+          return !existingKey.has(key);
+        })
+      : items;
+
+    if (DRY_RUN && APPEND) {
+      console.log(`DRY RUN: would insert ${filtered.length} rows.`);
+      console.log(`Already exists ${existingCount} rows.`);
+      return;
+    }
+
     await conn.beginTransaction();
-    await conn.query("TRUNCATE TABLE linescout_white_label_products");
+    if (!APPEND) {
+      await conn.query("TRUNCATE TABLE linescout_white_label_products");
+    }
 
     const chunkSize = 200;
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
+    for (let i = 0; i < filtered.length; i += chunkSize) {
+      const chunk = filtered.slice(i, i + chunkSize);
       const values = chunk.map((p, idx) => [
         p.product_name,
         p.category,
@@ -93,7 +125,7 @@ async function main() {
         p.fob_high_usd ?? null,
         p.cbm_per_1000 ?? null,
         1,
-        p.sort_order ?? i + idx + 1,
+        p.sort_order ?? maxSort + i + idx + 1,
       ]);
 
       await conn.query(
@@ -109,7 +141,7 @@ async function main() {
     }
 
     await conn.commit();
-    console.log(`Seeded ${items.length} products.`);
+    console.log(`Seeded ${filtered.length} products.`);
   } catch (e) {
     try {
       await conn.rollback();
