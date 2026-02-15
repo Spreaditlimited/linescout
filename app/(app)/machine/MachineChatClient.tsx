@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
-import { MessageSquarePlus, Sparkles, User, Send, ImagePlus, Pencil } from "lucide-react";
+import { MessageSquarePlus, Sparkles, User, Send, ImagePlus, Pencil, Trash2 } from "lucide-react";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
@@ -102,28 +102,68 @@ export default function MachineChatClient() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameTarget, setRenameTarget] = useState<ConversationRow | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<ConversationRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
 
-  async function renameConversation(c: ConversationRow) {
-    const currentTitle = convTitle(c);
-    const next = window.prompt("Rename conversation", currentTitle);
-    if (next === null) return;
-    const title = String(next || "").trim();
+  async function submitRename() {
+    if (!renameTarget || renaming) return;
+    const title = String(renameValue || "").trim();
     if (!title) return;
-
+    setRenaming(true);
     const res = await authFetch("/api/mobile/conversations/rename", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: c.id, title }),
+      body: JSON.stringify({ conversation_id: renameTarget.id, title }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) {
       setError(json?.error || "Unable to rename conversation.");
+      setRenaming(false);
       return;
     }
     setConversations((prev) =>
-      prev.map((item) => (item.id === c.id ? { ...item, title } : item))
+      prev.map((item) => (item.id === renameTarget.id ? { ...item, title } : item))
     );
+    setRenaming(false);
+    setRenameOpen(false);
+    setRenameTarget(null);
+    setRenameValue("");
+  }
+
+  async function submitDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setError(null);
+
+    const res = await authFetch("/api/mobile/conversations/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: deleteTarget.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      setError(json?.error || "Unable to delete conversation.");
+      setDeleting(false);
+      return;
+    }
+
+    const remaining = conversations.filter((c) => c.id !== deleteTarget.id);
+    setConversations(remaining);
+
+    if (activeId === deleteTarget.id) {
+      setActiveId(remaining[0]?.id || null);
+      if (!remaining.length) setMessages([WELCOME_MSG]);
+    }
+
+    setDeleting(false);
+    setDeleteOpen(false);
+    setDeleteTarget(null);
   }
 
   const aiConversations = useMemo(
@@ -248,24 +288,44 @@ export default function MachineChatClient() {
   }, [activeId, routeType]);
 
   async function sendAiMessage() {
-    if (!activeId || !input.trim() || sending) return;
+    const text = input.trim();
+    if (!activeId || !text || sending) return;
     setSending(true);
     setError(null);
+
+    const optimisticIdBase = Date.now();
+    const optimisticUser: MessageItem = {
+      id: -optimisticIdBase,
+      sender_type: "user",
+      message_text: text,
+      created_at: new Date().toISOString(),
+    };
+    const thinkingMessage: MessageItem = {
+      id: -(optimisticIdBase + 1),
+      sender_type: "ai",
+      message_text: "Thinking...",
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, optimisticUser, thinkingMessage]);
+    setInput("");
 
     const res = await authFetch("/api/mobile/ai-chat/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversation_id: activeId, message_text: input.trim() }),
+      body: JSON.stringify({ conversation_id: activeId, message_text: text }),
     });
 
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
       setError(json?.error || "Unable to send.");
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== optimisticUser.id && m.id !== thinkingMessage.id)
+      );
       setSending(false);
       return;
     }
 
-    setInput("");
     setSending(false);
 
     const refresh = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
@@ -416,18 +476,45 @@ export default function MachineChatClient() {
                   <button
                     type="button"
                     className="rounded-full p-1 text-neutral-400 hover:text-[var(--agent-blue)]"
-                    onClick={() => renameConversation(c)}
+                    onClick={() => {
+                      setRenameTarget(c);
+                      setRenameValue(String(c.title || ""));
+                      setRenameOpen(true);
+                    }}
                     aria-label="Rename conversation"
                   >
                     <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-full p-1 text-neutral-400 hover:text-red-600"
+                    onClick={() => {
+                      setDeleteTarget(c);
+                      setDeleteOpen(true);
+                    }}
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveId(c.id)}
-                  className="mt-1 block w-full text-left text-xs text-neutral-500 line-clamp-2"
+                  className="mt-1 block w-full text-left"
                 >
-                  {c.last_message_text || "No messages yet"}
+                  <span
+                    className="block text-xs text-neutral-500"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: 2,
+                      overflow: "hidden",
+                      lineHeight: "1.4rem",
+                      maxHeight: "2.8rem",
+                    }}
+                  >
+                    {c.last_message_text || "No messages yet"}
+                  </span>
                 </button>
               </div>
             ))}
@@ -605,7 +692,7 @@ export default function MachineChatClient() {
                 disabled={sending || (isQuick && quickMeta?.ended)}
                 aria-label="Send message"
               >
-                {sending ? "Sending..." : <Send className="h-4 w-4" />}
+                <Send className="h-4 w-4" />
               </button>
             )}
           </form>
@@ -635,6 +722,106 @@ export default function MachineChatClient() {
           ) : null}
         </div>
       </div>
+
+      {renameOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close rename modal"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => {
+              if (renaming) return;
+              setRenameOpen(false);
+              setRenameTarget(null);
+              setRenameValue("");
+            }}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                LineScout
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Rename conversation</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Give this chat a short, clear title.
+              </p>
+              <input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="Conversation title"
+                className="mt-4 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[rgba(45,52,97,0.12)] bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (renaming) return;
+                  setRenameOpen(false);
+                  setRenameTarget(null);
+                  setRenameValue("");
+                }}
+                className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitRename}
+                disabled={renaming || !renameValue.trim()}
+                className="btn btn-primary px-4 py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {renaming ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close delete modal"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => {
+              if (deleting) return;
+              setDeleteOpen(false);
+              setDeleteTarget(null);
+            }}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                LineScout
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Delete conversation?</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                This permanently removes the chat and its messages. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[rgba(45,52,97,0.12)] bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleting) return;
+                  setDeleteOpen(false);
+                  setDeleteTarget(null);
+                }}
+                className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitDelete}
+                disabled={deleting}
+                className="btn btn-primary px-4 py-2 text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

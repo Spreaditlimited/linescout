@@ -149,7 +149,7 @@ export default function ProjectDetailPage() {
           ) : null}
           <Link
             href="/projects"
-            className="rounded-full border border-neutral-200 bg-white px-4 py-2 text-xs font-semibold text-neutral-800 hover:border-[rgba(45,52,97,0.35)]"
+            className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
           >
             Back to projects
           </Link>

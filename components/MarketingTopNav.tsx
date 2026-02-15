@@ -6,6 +6,7 @@ type NavItem = { href: string; label: string };
 
 const navItems: NavItem[] = [
   { href: "/white-label", label: "White Label" },
+  { href: "/white-label-leads", label: "Webinar" },
 ];
 
 export default function MarketingTopNav({
