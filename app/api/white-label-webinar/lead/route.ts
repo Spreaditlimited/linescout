@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sendMetaLeadEvent } from "@/lib/meta-capi";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
 
 export const runtime = "nodejs";
@@ -63,6 +64,35 @@ export async function POST(req: Request) {
     if (!flodeskRes.ok) {
       console.warn("Flodesk webinar subscribe failed:", flodeskRes.error);
       return NextResponse.json({ ok: false, error: "Failed to subscribe lead" }, { status: 502 });
+    }
+
+    // Fire Meta CAPI lead event with webinar-specific metadata
+    const ip =
+      String(req.headers.get("x-forwarded-for") || "")
+        .split(",")[0]
+        .trim() || null;
+    const ua = String(req.headers.get("user-agent") || "").trim() || null;
+    const eventSourceUrl =
+      String(req.headers.get("referer") || "").trim() ||
+      String(req.headers.get("origin") || "").trim() ||
+      "https://linescout.sureimports.com/white-label-leads";
+
+    try {
+      await sendMetaLeadEvent({
+        email,
+        firstName: name.split(" ")[0] || null,
+        lastName: name.split(" ").slice(1).join(" ") || null,
+        clientIp: ip,
+        userAgent: ua,
+        eventSourceUrl,
+        eventName: "Lead",
+        customData: {
+          lead_type: "webinar",
+          content_name: "white_label_webinar",
+        },
+      });
+    } catch (err) {
+      console.warn("Meta CAPI webinar lead failed:", err);
     }
 
     return NextResponse.json({ ok: true });

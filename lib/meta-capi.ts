@@ -10,6 +10,8 @@ type MetaCapiLeadInput = {
   clientIp?: string | null;
   userAgent?: string | null;
   eventSourceUrl?: string | null;
+  eventName?: string | null;
+  customData?: Record<string, any> | null;
 };
 
 function sha256(value: string) {
@@ -51,11 +53,12 @@ export async function sendMetaLeadEvent(input: MetaCapiLeadInput) {
   const payload = {
     data: [
       {
-        event_name: "Lead",
+        event_name: clean(input.eventName) || "Lead",
         event_time: Math.floor(Date.now() / 1000),
         action_source: "website",
         event_source_url: input.eventSourceUrl || undefined,
         user_data: userData,
+        custom_data: input.customData || undefined,
       },
     ],
   };
