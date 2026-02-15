@@ -9,6 +9,7 @@ import MetaPixel from "./MetaPixel";
 import CookieNotice from "@/components/CookieNotice";
 import InstallPrompt from "@/components/InstallPrompt";
 import Shell from "@/components/Shell";
+import GA4 from "@/components/analytics/GA4";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -112,6 +113,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Tracks PageView on route changes */}
         <MetaPixel />
+        <GA4 />
 
         <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
         <CookieNotice />
