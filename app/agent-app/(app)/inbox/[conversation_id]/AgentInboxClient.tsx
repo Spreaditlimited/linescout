@@ -19,6 +19,7 @@ type MsgRes = {
   conversation_id: number;
   assigned_agent_id?: number | null;
   assigned_agent_username?: string | null;
+  agent_name_map?: Record<string, string>;
   meta?: {
     can_send?: boolean;
     send_blocked_reason?: string | null;
@@ -115,6 +116,7 @@ function AgentChatThreadInner() {
   const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
   const [customerName, setCustomerName] = useState<string>("Customer");
   const [agentName, setAgentName] = useState<string>("You");
+  const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -185,6 +187,7 @@ function AgentChatThreadInner() {
     send_blocked_reason: string;
     customer_name: string;
     agent_name: string;
+    agent_name_map: Record<string, string>;
     attachments_by_message_id: Record<string, Attachment[]>;
   }> {
     const endpoint = isQuick ? "/api/agent/quick-human/messages" : "/api/internal/paid-chat/messages";
@@ -217,6 +220,8 @@ function AgentChatThreadInner() {
       typeof data?.attachments_by_message_id === "object" && data.attachments_by_message_id
         ? data.attachments_by_message_id
         : {};
+    const agent_name_map =
+      typeof data?.agent_name_map === "object" && data.agent_name_map ? data.agent_name_map : {};
 
     return {
       rows,
@@ -227,6 +232,7 @@ function AgentChatThreadInner() {
       send_blocked_reason,
       customer_name,
       agent_name,
+      agent_name_map,
       attachments_by_message_id,
     };
   }
@@ -280,6 +286,7 @@ function AgentChatThreadInner() {
         setSendBlockedReason(initial.send_blocked_reason);
         setCustomerName(initial.customer_name);
         setAgentName(initial.agent_name);
+        setAgentNameMap(initial.agent_name_map || {});
         setAttachmentsByMessageId(initial.attachments_by_message_id);
 
         setItems(initial.rows);
@@ -303,6 +310,7 @@ function AgentChatThreadInner() {
           send_blocked_reason,
           customer_name,
           agent_name,
+          agent_name_map,
           attachments_by_message_id,
         } =
           await fetchNew(after);
@@ -313,6 +321,9 @@ function AgentChatThreadInner() {
         setSendBlockedReason(send_blocked_reason);
         setCustomerName(customer_name);
         setAgentName(agent_name);
+        if (agent_name_map && Object.keys(agent_name_map).length) {
+          setAgentNameMap((prev) => ({ ...prev, ...agent_name_map }));
+        }
         if (Object.keys(attachments_by_message_id).length) {
           setAttachmentsByMessageId((prev) => ({ ...prev, ...attachments_by_message_id }));
         }
@@ -492,12 +503,14 @@ function AgentChatThreadInner() {
                     : "mr-auto bg-[#F4F7FB] text-neutral-800 border border-[rgba(45,52,97,0.12)]";
 
                   const metaColor = isAgent ? "text-white/70" : "text-neutral-500";
+                  const senderIdKey = m.sender_id != null ? String(m.sender_id) : "";
+                  const agentLabel = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : agentName || "Agent";
                   const label =
                     m.sender_type === "ai"
                       ? "AI"
                       : m.sender_type === "user"
                       ? customerName || "Customer"
-                      : agentName || "You";
+                      : agentLabel;
 
                   const attachments = attachmentsByMessageId[String(m.id)] || [];
 

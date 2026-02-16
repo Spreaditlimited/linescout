@@ -323,6 +323,31 @@ export async function GET(req: Request) {
       attachmentsByMessageId[mid].push(a);
     }
 
+    const agentIds = Array.from(
+      new Set(
+        (rows || [])
+          .filter((r: any) => r.sender_type === "agent")
+          .map((r: any) => Number(r.sender_id || 0))
+          .filter((n: number) => Number.isFinite(n) && n > 0)
+      )
+    );
+    const agentNameMap: Record<string, string> = {};
+    if (agentIds.length) {
+      const [agentRows]: any = await conn.query(
+        `
+        SELECT id, username
+        FROM internal_users
+        WHERE id IN (?)
+        `,
+        [agentIds]
+      );
+      for (const row of agentRows || []) {
+        const id = Number(row.id || 0);
+        const name = String(row.username || "").trim();
+        if (id && name) agentNameMap[String(id)] = name;
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       conversation_id: conversationId,
@@ -333,6 +358,7 @@ export async function GET(req: Request) {
       has_more: hasMore,
       attachments,
       attachments_by_message_id: attachmentsByMessageId,
+      agent_name_map: agentNameMap,
       meta: {
         project_status: projectStatus || null,
         handoff_id: handoffId,
