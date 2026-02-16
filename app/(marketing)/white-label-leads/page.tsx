@@ -6,7 +6,7 @@ import WhiteLabelLeadForm from "@/components/marketing/WhiteLabelLeadForm";
 export const metadata: Metadata = {
   title: "White Label Webinar | LineScout",
   description:
-    "Free 30–45 minute training on how to start your own brand with white-label products from China.",
+    "Free 35-minute training on how to start your own brand with white-label products from China.",
 };
 
 const highlights = [
@@ -37,6 +37,11 @@ export default function WhiteLabelLeadsPage() {
     >
       <style>{`
         @media (max-width: 767px) {
+          html,
+          body {
+            min-height: 0 !important;
+            height: auto !important;
+          }
           body {
             padding-bottom: 0 !important;
           }
@@ -78,7 +83,7 @@ export default function WhiteLabelLeadsPage() {
               Start Your Own Brand With White‑Label Products From China
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
-              A 45 minute training on how to find winning products, validate demand, and source safely
+              A 35-minute training on how to find winning products, validate demand, and source safely
               for Nigeria. Presented by Tochukwu Nkwocha of Sure Importers Limited (since 2018).
             </p>
 
