@@ -126,6 +126,7 @@ export async function GET(req: Request) {
         c.conversation_kind = 'quick_human'
         AND c.chat_mode = 'limited_human'
         AND c.project_status = 'active'
+        AND (c.human_access_expires_at IS NULL OR c.human_access_expires_at > NOW())
       `;
     } else {
       // Paid chats: original behavior
@@ -175,6 +176,7 @@ export async function GET(req: Request) {
         c.payment_status,
         c.project_status,
         c.conversation_kind,
+        c.human_access_expires_at,
 
         c.assigned_agent_id,
         ia.username AS assigned_agent_username,

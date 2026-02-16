@@ -11,7 +11,7 @@ function isRouteType(x: any): x is RouteType {
 }
 
 const HUMAN_LIMIT = 6; // you can adjust
-const HUMAN_WINDOW_MINUTES = 30; // you can adjust
+const HUMAN_WINDOW_MINUTES = 24 * 60; // 24 hours
 const COOLDOWN_HOURS = 48;
 
 type ExistingQuick = RowDataPacket & {

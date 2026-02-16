@@ -125,7 +125,7 @@ export default function SourcingProjectClient() {
   const startEventSent = useRef(false);
   const commitmentDue = useMemo(() => {
     const raw = Number(status?.commitment_due_ngn || 0);
-    return Number.isFinite(raw) && raw > 0 ? raw : 100000;
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
   }, [status?.commitment_due_ngn]);
 
   useEffect(() => {
@@ -351,7 +351,7 @@ export default function SourcingProjectClient() {
                   order.
                 </p>
                 <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-4 py-3 text-xs font-semibold text-[var(--agent-blue)]">
-                  Commitment fee: ₦{commitmentDue.toLocaleString()}
+                  Commitment fee: {commitmentDue ? formatNgn(commitmentDue) : "—"}
                 </div>
               </div>
 
@@ -444,9 +444,7 @@ export default function SourcingProjectClient() {
               >
                 {working === "pay"
                   ? "Preparing..."
-                  : routeType === "white_label"
-                  ? `Continue to Paystack (${formatNgn(commitmentDue)})`
-                  : `Continue to Paystack (${formatNgn(commitmentDue)})`}
+                  : `Continue to Paystack${commitmentDue ? ` (${formatNgn(commitmentDue)})` : ""}`}
               </button>
               <button
                 type="button"

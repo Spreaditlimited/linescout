@@ -45,6 +45,7 @@ export async function GET(req: Request) {
     let where = `
       c.conversation_kind = 'quick_human'
       AND c.project_status = 'active'
+      AND (c.human_access_expires_at IS NULL OR c.human_access_expires_at > NOW())
     `;
 
     if (cursor > 0) {

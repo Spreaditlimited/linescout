@@ -46,7 +46,7 @@ async function amountForPurpose(purpose: string) {
       "SELECT commitment_due_ngn FROM linescout_settings ORDER BY id DESC LIMIT 1"
     );
     const ngn = Number(rows?.[0]?.commitment_due_ngn || 0);
-    const safeNgn = Number.isFinite(ngn) && ngn > 0 ? ngn : 100000;
+    const safeNgn = Number.isFinite(ngn) && ngn > 0 ? ngn : 0;
     return Math.round(safeNgn * 100);
   } finally {
     conn.release();
@@ -98,6 +98,12 @@ export async function POST(req: Request) {
     }
 
     const amount = await amountForPurpose(purpose);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "Commitment fee is not configured. Please contact support." },
+        { status: 500 }
+      );
+    }
 
     // Unique, traceable reference
     const userId = Number((u as any).id || 0);

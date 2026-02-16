@@ -16,6 +16,7 @@ type InboxItem = {
   last_message_text?: string | null;
   last_message_at?: string | null;
   is_unread?: number | boolean | null;
+  human_access_expires_at?: string | null;
 };
 
 function timeAgoSafe(iso?: string | null) {
@@ -23,6 +24,20 @@ function timeAgoSafe(iso?: string | null) {
   const t = Date.parse(String(iso));
   if (Number.isNaN(t)) return "";
   const diff = Math.max(Date.now() - t, 0);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d`;
+}
+
+function timeUntilSafe(iso?: string | null) {
+  if (!iso) return "";
+  const t = Date.parse(String(iso));
+  if (Number.isNaN(t)) return "";
+  const diff = Math.max(t - Date.now(), 0);
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "now";
   if (mins < 60) return `${mins}m`;
@@ -273,6 +288,8 @@ export default function InboxPage() {
             const routeLabel = getRouteLabel(c.route_type);
             const last = String(c.last_message_text || "").trim();
             const ago = timeAgoSafe(c.last_message_at);
+            const expiresAt = String(c.human_access_expires_at || "").trim() || null;
+            const expiresIn = tab === "quick" ? timeUntilSafe(expiresAt) : "";
             const handoffStatus = String(c.handoff_status || "").trim().toLowerCase();
             const assignedId = Number(c.assigned_agent_id || 0);
             const canClaim =
@@ -298,6 +315,11 @@ export default function InboxPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {tab === "quick" && expiresIn ? (
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                        Expires in {expiresIn}
+                      </span>
+                    ) : null}
                     {conversationId > 0 ? (
                       <Link
                         href={`/agent-app/inbox/${conversationId}?kind=${tab}`}

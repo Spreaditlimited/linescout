@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     }
     const conversation_status = conv?.project_status ?? null;
 
-    let commitmentDueNgn = 100000;
+    let commitmentDueNgn = 0;
     const settingsConn = await db.getConnection();
     try {
       const [rows]: any = await settingsConn.query(

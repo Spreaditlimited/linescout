@@ -82,6 +82,20 @@ function upsertConversation(list: ConversationRow[], incoming: ConversationRow) 
   return [incoming, ...list];
 }
 
+function timeUntilSafe(iso?: string | null) {
+  if (!iso) return "24h";
+  const t = Date.parse(String(iso));
+  if (Number.isNaN(t)) return "24h";
+  const diff = Math.max(t - Date.now(), 0);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d`;
+}
+
 export default function MachineChatClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -95,7 +109,7 @@ export default function MachineChatClient() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [quickMeta, setQuickMeta] = useState<{ limit: number; used: number; ended: boolean } | null>(null);
+  const [quickMeta, setQuickMeta] = useState<{ limit: number; used: number; ended: boolean; expiresAt?: string | null } | null>(null);
   const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
   const [stickyCollapsed, setStickyCollapsed] = useState(false);
   const [chatMeta, setChatMeta] = useState<{ customer_name?: string | null; agent_name?: string | null } | null>(null);
@@ -244,6 +258,7 @@ export default function MachineChatClient() {
             limit: Number(refreshJson.human_message_limit || 0),
             used: Number(refreshJson.human_message_used || 0),
             ended: Boolean(refreshJson.ended),
+            expiresAt: refreshJson.human_access_expires_at || null,
           });
         }
       } else {
@@ -576,7 +591,8 @@ export default function MachineChatClient() {
 
           {quickMeta && !quickMeta.ended ? (
             <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-4 py-3 text-xs text-[var(--agent-blue)]">
-              {quickMeta.used} of {quickMeta.limit} specialist replies used. Expires in 30 minutes.
+              {quickMeta.used} of {quickMeta.limit} specialist replies used.{" "}
+              {quickMeta.expiresAt ? `Expires in ${timeUntilSafe(quickMeta.expiresAt)}.` : "Expires in 24 hours."}
             </div>
           ) : null}
 

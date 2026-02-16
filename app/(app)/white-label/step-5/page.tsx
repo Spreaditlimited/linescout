@@ -18,6 +18,8 @@ export default function WhiteLabelStep5Page() {
   const [prefillLoading, setPrefillLoading] = useState(true);
   const [resetting, setResetting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [commitmentDue, setCommitmentDue] = useState<number | null>(null);
+  const [commitmentErr, setCommitmentErr] = useState<string | null>(null);
 
   const summary = useMemo(() => {
     const p = project || {};
@@ -55,6 +57,33 @@ export default function WhiteLabelStep5Page() {
         if (!cancelled) setErr("We couldn’t load your project file. Please try again.");
       } finally {
         if (!cancelled) setPrefillLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await authFetch("/api/mobile/route-status?route_type=white_label");
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          router.replace("/sign-in");
+          return;
+        }
+        if (!res.ok || !data?.ok) {
+          if (!cancelled) setCommitmentErr(data?.error || "Could not load commitment fee.");
+          return;
+        }
+        const raw = Number(data?.commitment_due_ngn || 0);
+        if (!cancelled) {
+          setCommitmentDue(Number.isFinite(raw) && raw > 0 ? raw : null);
+        }
+      } catch {
+        if (!cancelled) setCommitmentErr("Could not load commitment fee.");
       }
     })();
     return () => {
@@ -150,10 +179,15 @@ export default function WhiteLabelStep5Page() {
 
               <div className="mt-4 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-900">Project Activation Deposit</p>
-                <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">₦100,000</p>
+                <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
+                  {commitmentDue ? formatNgn(commitmentDue) : "—"}
+                </p>
                 <p className="mt-2 text-sm text-neutral-600">
                   This activates the White Label workflow and is fully credited to your first production order.
                 </p>
+                {commitmentErr ? (
+                  <p className="mt-2 text-xs text-red-600">{commitmentErr}</p>
+                ) : null}
               </div>
             </>
           )}
@@ -184,4 +218,8 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="text-sm font-semibold text-neutral-900">{value}</span>
     </div>
   );
+}
+
+function formatNgn(v: number) {
+  return `₦${Number(v || 0).toLocaleString("en-NG")}`;
 }
