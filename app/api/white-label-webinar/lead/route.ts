@@ -83,6 +83,7 @@ export async function POST(req: Request) {
     }
 
     // Fire Meta CAPI lead event with webinar-specific metadata
+    let metaOk = true;
     const ip =
       String(req.headers.get("x-forwarded-for") || "")
         .split(",")[0]
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
         clientIp: ip,
         userAgent: ua,
         eventSourceUrl,
-        eventName: "Lead",
+        eventName: "WebinarSignup",
         customData: {
           lead_type: "webinar",
           content_name: "white_label_webinar",
@@ -109,9 +110,10 @@ export async function POST(req: Request) {
       });
     } catch (err) {
       console.warn("Meta CAPI webinar lead failed:", err);
+      metaOk = false;
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, meta_ok: metaOk });
   } catch (err: any) {
     if (err?.code === "ER_DUP_ENTRY") {
       return NextResponse.json(
