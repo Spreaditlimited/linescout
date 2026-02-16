@@ -25,6 +25,7 @@ type QuoteClientProps = {
   depositEnabled?: boolean;
   depositPercent?: number;
   commitmentDueNgn?: number;
+  provider?: "paystack" | "providus";
 };
 
 type QuotePayment = {
@@ -144,6 +145,7 @@ export default function QuoteClient({
   depositEnabled = false,
   depositPercent = 0,
   commitmentDueNgn = 0,
+  provider = "paystack",
 }: QuoteClientProps) {
   const searchParams = useSearchParams();
   const initialRateId = useMemo(() => {
@@ -266,6 +268,7 @@ export default function QuoteClient({
   }, []);
 
   const canUseWallet = walletBalance != null && !walletLoading && !walletAuthMissing;
+  const isProvidus = provider === "providus";
 
   useEffect(() => {
     if (!canUseWallet && useWallet) {
@@ -670,29 +673,40 @@ export default function QuoteClient({
 
           <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment method</div>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setUseWallet(false)}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  !useWallet
-                    ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
-                    : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
-                }`}
-              >
-                <div className="text-sm font-semibold">Card/bank</div>
-                <div className="mt-1 text-xs text-neutral-600">Pay with debit card or bank transfer.</div>
-                <div className="mt-3 flex items-center gap-2">
-                  {["VISA", "Mastercard", "Verve"].map((brand) => (
-                    <span
-                      key={brand}
-                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-700"
-                    >
-                      {brand}
-                    </span>
-                  ))}
+            <div className={`mt-3 grid gap-3 ${isProvidus ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
+              {!isProvidus ? (
+                <button
+                  type="button"
+                  onClick={() => setUseWallet(false)}
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    !useWallet
+                      ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                      : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Card/bank</div>
+                  <div className="mt-1 text-xs text-neutral-600">Pay with debit card or bank transfer.</div>
+                  <div className="mt-3 flex items-center gap-2">
+                    {["VISA", "Mastercard", "Verve"].map((brand) => (
+                      <span
+                        key={brand}
+                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-700"
+                      >
+                        {brand}
+                      </span>
+                    ))}
+                  </div>
+                </button>
+              ) : null}
+
+              {isProvidus ? (
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-left">
+                  <div className="text-sm font-semibold text-neutral-900">Bank transfer (Providus)</div>
+                  <div className="mt-1 text-xs text-neutral-600">
+                    Click Pay now to generate a dedicated Providus account for this payment.
+                  </div>
                 </div>
-              </button>
+              ) : null}
 
               <button
                 type="button"
@@ -704,9 +718,13 @@ export default function QuoteClient({
                     : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
                 } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
               >
-                <div className="text-sm font-semibold">Wallet + card/bank</div>
+                <div className="text-sm font-semibold">
+                  {isProvidus ? "Wallet" : "Wallet + card/bank"}
+                </div>
                 <div className="mt-1 text-xs text-neutral-600">
-                  Use wallet balance first, then complete the rest.
+                  {isProvidus
+                    ? "Use wallet balance to pay for this quote."
+                    : "Use wallet balance first, then complete the rest."}
                 </div>
                 {walletLoading ? (
                   <div className="mt-3 text-xs text-neutral-500">Loading wallet…</div>
@@ -720,12 +738,14 @@ export default function QuoteClient({
 
             {walletAuthMissing ? (
               <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] px-3 py-2 text-xs text-neutral-600">
-                To use wallet, sign in to your LineScout account in the LineScout mobile app, then reopen this quote link.
+                To use wallet, ensure you are signed into your LineScout account. If you are not signed in, sign in and then refresh this page.
               </div>
             ) : null}
             {walletAccount ? (
               <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-700">
-                <div className="text-[11px] uppercase text-neutral-500">Wallet funding account</div>
+                <div className="text-[11px] uppercase text-neutral-500">
+                  {isProvidus ? "Wallet transfer account" : "Wallet funding account"}
+                </div>
                 <div className="mt-1 font-semibold text-neutral-800">
                   {walletAccount.bank_name || "Bank transfer"}
                 </div>
@@ -740,19 +760,23 @@ export default function QuoteClient({
                     Copy
                   </button>
                 </div>
-                <div className="mt-3 text-[11px] text-neutral-500">Top up wallet</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[50000, 100000, 250000, 500000].map((amt) => (
-                    <button
-                      key={amt}
-                      type="button"
-                      onClick={() => copyText(String(amt))}
-                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
-                    >
-                      NGN {amt.toLocaleString()}
-                    </button>
-                  ))}
-                </div>
+                {!isProvidus ? (
+                  <>
+                    <div className="mt-3 text-[11px] text-neutral-500">Top up wallet</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[50000, 100000, 250000, 500000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => copyText(String(amt))}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                        >
+                          NGN {amt.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
               </div>
             ) : null}
 
@@ -762,7 +786,7 @@ export default function QuoteClient({
             {providusDetails ? (
               <div className="mt-4 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] p-4 text-sm">
                 <div className="text-xs text-neutral-500">Providus transfer details</div>
-                <div className="mt-2 text-base font-semibold text-white">
+                <div className="mt-2 text-base font-semibold text-neutral-900">
                   {providusDetails.bank_name}
                 </div>
                 <div className="mt-2 text-sm text-neutral-700">
@@ -812,7 +836,7 @@ export default function QuoteClient({
               type="button"
               onClick={handlePay}
               disabled={paying || totalDueNgn <= 0}
-              className="mt-4 w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-neutral-900 disabled:opacity-60"
+              className="btn btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm disabled:opacity-60"
             >
               {paying ? "Processing..." : "Pay now"}
             </button>
@@ -836,7 +860,7 @@ export default function QuoteClient({
                     <div className="mt-1 text-[11px] text-neutral-500">
                       {p.paid_at ? `Paid ${fmtDate(p.paid_at)}` : `Created ${fmtDate(p.created_at)}`}
                     </div>
-                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref ? (
+                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref && !isProvidus ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
                         <span>Reference: {p.provider_ref}</span>
                         <button

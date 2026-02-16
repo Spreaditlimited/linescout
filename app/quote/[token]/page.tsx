@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { selectPaymentProvider } from "@/lib/payment-provider";
 import QuoteClient from "./QuoteClient";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
@@ -13,6 +14,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     const [rows]: any = await conn.query(
       `SELECT
          q.*,
+         h.email AS handoff_email,
          COALESCE(
            NULLIF(TRIM(h.customer_name), ''),
            NULLIF(
@@ -101,6 +103,41 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       });
     }
 
+    let providerDefault: "paystack" | "providus" = "paystack";
+    let providerAllowOverrides = true;
+    const [providerRows]: any = await conn.query(
+      `SELECT provider_default, allow_overrides
+       FROM linescout_payment_settings
+       ORDER BY id DESC
+       LIMIT 1`
+    );
+    if (providerRows?.length) {
+      const raw = String(providerRows[0]?.provider_default || "").trim().toLowerCase();
+      if (raw === "paystack" || raw === "providus") providerDefault = raw;
+      if (providerRows[0]?.allow_overrides != null) {
+        providerAllowOverrides = !!providerRows[0]?.allow_overrides;
+      }
+    }
+
+    let provider = providerDefault;
+    if (providerAllowOverrides) {
+      const email = String(quote.handoff_email || quote.email || "").trim().toLowerCase();
+      if (email) {
+        const [userRows]: any = await conn.query(
+          `SELECT id
+           FROM users
+           WHERE email_normalized = ? OR email = ?
+           LIMIT 1`,
+          [email, email]
+        );
+        const userId = Number(userRows?.[0]?.id || 0);
+        if (userId) {
+          const selected = await selectPaymentProvider(conn, "user", userId);
+          if (selected?.provider) provider = selected.provider;
+        }
+      }
+    }
+
     return (
       <Suspense fallback={null}>
         <QuoteClient
@@ -116,6 +153,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           depositEnabled={!!quote.deposit_enabled}
           depositPercent={Number(quote.deposit_percent || 0)}
           commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
+          provider={provider}
         />
       </Suspense>
     );
