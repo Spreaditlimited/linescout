@@ -2,9 +2,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendMetaLeadEvent } from "@/lib/meta-capi";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function fallbackSessionId() {
+  return crypto.randomUUID();
+}
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -25,32 +30,43 @@ export async function POST(req: Request) {
     const name = String(body?.name || "").trim();
     const emailRaw = String(body?.email || "").trim();
     const email = normalizeEmail(emailRaw);
-    const sessionId = String(body?.sessionId || "").trim();
+    const sessionIdRaw = String(body?.sessionId || "").trim();
+    const sessionId = sessionIdRaw || fallbackSessionId();
     const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
 
-    if (!name || !email || !email.includes("@") || !sessionId) {
+    if (!name || !email || !email.includes("@")) {
       return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
 
-    // Store lead record (minimal)
-    await conn.query(
+    // Store webinar lead record (isolated from app users/leads)
+    const [ins]: any = await conn.query(
       `
-      INSERT INTO linescout_leads
-      (session_id, name, whatsapp, email, sourcing_request, meta_json)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO linescout_webinar_leads
+      (session_id, name, email, email_normalized, meta_json)
+      VALUES (?, ?, ?, ?, ?)
       `,
       [
         sessionId,
         name,
-        "unknown",
         emailRaw,
-        "White label webinar lead",
+        email,
         JSON.stringify({
           source: "white-label-webinar",
+          page: "white-label-leads",
           ...meta,
         }),
       ]
     );
+    if (!ins?.insertId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "already-registered",
+          error: "You have already registered. Check your email (including spam) for the webinar link.",
+        },
+        { status: 409 }
+      );
+    }
 
     const segmentId =
       process.env.FLODESK_WEBINAR_SEGMENT_ID?.trim() || "6990c932ec27531072f9bbdf";
@@ -97,6 +113,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
+    if (err?.code === "ER_DUP_ENTRY") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "already-registered",
+          error: "You have already registered. Check your email (including spam) for the webinar link.",
+        },
+        { status: 409 }
+      );
+    }
     console.error("white-label-webinar lead error:", err);
     return NextResponse.json({ ok: false, error: "Failed to save lead" }, { status: 500 });
   } finally {

@@ -24,7 +24,7 @@ export default function WhiteLabelLeadForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [showThankYou, setShowThankYou] = useState(false);
+  const [modal, setModal] = useState<null | "success" | "duplicate">(null);
 
   const canSubmit = useMemo(() => {
     return name.trim().length > 1 && email.includes("@") && status === "idle";
@@ -51,6 +51,12 @@ export default function WhiteLabelLeadForm() {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.ok) {
+      if (json?.code === "already-registered") {
+        setStatus("idle");
+        setError(null);
+        setModal("duplicate");
+        return;
+      }
       setStatus("error");
       setError(json?.error || "Could not save your details. Please try again.");
       return;
@@ -64,7 +70,7 @@ export default function WhiteLabelLeadForm() {
     }
 
     setStatus("success");
-    setShowThankYou(true);
+    setModal("success");
   }
 
   return (
@@ -113,7 +119,7 @@ export default function WhiteLabelLeadForm() {
         </p>
       </form>
 
-      {showThankYou ? (
+      {modal ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4"
           role="dialog"
@@ -125,15 +131,15 @@ export default function WhiteLabelLeadForm() {
               id="white-label-thank-you-title"
               className="text-lg font-semibold text-neutral-900"
             >
-              You are in.
+              {modal === "duplicate" ? "You are already registered." : "You are in."}
             </p>
             <p className="mt-2 text-sm text-neutral-600">
-              Check your email for the webinar link and details.
+              Check your email (including spam) for the webinar link and details.
             </p>
             <button
               type="button"
               className="btn btn-primary mt-5 w-full px-4 py-2 text-sm"
-              onClick={() => setShowThankYou(false)}
+              onClick={() => setModal(null)}
             >
               Close
             </button>

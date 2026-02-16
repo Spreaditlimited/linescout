@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
 import { findReviewerByEmail } from "@/lib/reviewer-accounts";
-import type { PoolConnection, RowDataPacket, ResultSetHeader } from "mysql2/promise";
+import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const nodemailer = require("nodemailer");
@@ -27,6 +27,23 @@ function getClientIp(req: Request) {
 
 async function getDb() {
   return db.getConnection();
+}
+
+async function getOrCreatePendingUser(conn: PoolConnection, emailRaw: string, emailNormalized: string) {
+  const [rows] = await conn.execute<RowDataPacket[]>(
+    "SELECT id FROM pending_users WHERE email_normalized = ? LIMIT 1",
+    [emailNormalized]
+  );
+  if (rows.length) return Number(rows[0].id);
+
+  const [ins]: any = await conn.execute(
+    `
+    INSERT INTO pending_users (email, email_normalized, created_at)
+    VALUES (?, ?, NOW())
+    `,
+    [emailRaw.trim(), emailNormalized]
+  );
+  return Number(ins.insertId);
 }
 
 function getSmtp() {
@@ -73,23 +90,8 @@ export async function POST(req: Request) {
 
     conn = await getDb();
 
-    // 1) Create or fetch user
-    const [existing] = await conn.execute<RowDataPacket[]>(
-      "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
-      [email]
-    );
-
-    let userId: number;
-
-    if (existing.length) {
-      userId = Number(existing[0].id);
-    } else {
-      const [ins] = await conn.execute<ResultSetHeader>(
-        "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
-        [emailRaw.trim(), email]
-      );
-      userId = Number(ins.insertId);
-    }
+    // 1) Create or fetch pending user (avoid creating real users before OTP verification)
+    const pendingUserId = await getOrCreatePendingUser(conn, emailRaw, email);
 
     // Reviewer bypass (no email/OTP send)
     const reviewer = await findReviewerByEmail(conn, "mobile", email);
@@ -114,10 +116,10 @@ export async function POST(req: Request) {
       `
       SELECT COUNT(*) AS cnt
       FROM email_otps
-      WHERE user_id = ?
+      WHERE pending_user_id = ?
         AND created_at >= (NOW() - INTERVAL 15 MINUTE)
       `,
-      [userId]
+      [pendingUserId]
     );
 
     const cnt = Number(recent[0]?.cnt || 0);
@@ -134,10 +136,10 @@ export async function POST(req: Request) {
 
     await conn.execute(
       `
-      INSERT INTO email_otps (user_id, otp_code, expires_at, request_ip, user_agent)
+      INSERT INTO email_otps (pending_user_id, otp_code, expires_at, request_ip, user_agent)
       VALUES (?, ?, (NOW() + INTERVAL 10 MINUTE), ?, ?)
       `,
-      [userId, otpHash, ip, userAgent]
+      [pendingUserId, otpHash, ip, userAgent]
     );
 
     // 4) Send OTP email via SMTP

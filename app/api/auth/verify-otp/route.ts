@@ -104,29 +104,29 @@ export async function POST(req: Request) {
 
     const otpHash = sha256(otpRaw);
 
-    // 1) Find user
-    const [urows] = await conn.execute<RowDataPacket[]>(
-      "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
+    // 1) Find pending user (OTP is tied to pending_users, not users)
+    const [prows] = await conn.execute<RowDataPacket[]>(
+      "SELECT id FROM pending_users WHERE email_normalized = ? LIMIT 1",
       [email]
     );
-    if (!urows.length) {
+    if (!prows.length) {
       return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 401 });
     }
-    const userId = Number(urows[0].id);
+    const pendingUserId = Number(prows[0].id);
 
     // 2) Find latest unconsumed, unexpired OTP matching hash
     const [orows] = await conn.execute<RowDataPacket[]>(
       `
       SELECT id
       FROM email_otps
-      WHERE user_id = ?
+      WHERE pending_user_id = ?
         AND otp_code = ?
         AND consumed_at IS NULL
         AND expires_at > NOW()
       ORDER BY id DESC
       LIMIT 1
       `,
-      [userId, otpHash]
+      [pendingUserId, otpHash]
     );
 
     if (!orows.length) {
@@ -135,10 +135,29 @@ export async function POST(req: Request) {
 
     const otpId = Number(orows[0].id);
 
-    // 3) Consume OTP
-    await conn.execute("UPDATE email_otps SET consumed_at = NOW() WHERE id = ?", [otpId]);
+    // 3) Ensure user exists (create only after OTP is verified)
+    const [urows] = await conn.execute<RowDataPacket[]>(
+      "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
+      [email]
+    );
+    let userId: number;
+    if (urows.length) {
+      userId = Number(urows[0].id);
+    } else {
+      const [ins]: any = await conn.execute(
+        "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
+        [emailRaw.trim(), email]
+      );
+      userId = Number(ins.insertId);
+    }
 
-    // 4) Create session (refresh token stored hashed)
+    // 4) Consume OTP (attach to user for audit)
+    await conn.execute("UPDATE email_otps SET consumed_at = NOW(), user_id = ? WHERE id = ?", [userId, otpId]);
+
+    // Cleanup pending user (optional but keeps table tidy)
+    await conn.execute("DELETE FROM pending_users WHERE id = ? LIMIT 1", [pendingUserId]);
+
+    // 5) Create session (refresh token stored hashed)
     const refreshToken = randomToken(32);
     const refreshHash = sha256(refreshToken);
 
