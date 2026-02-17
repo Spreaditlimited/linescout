@@ -131,10 +131,11 @@ export default function WhiteLabelLeadForm() {
               id="white-label-thank-you-title"
               className="text-lg font-semibold text-neutral-900"
             >
-              {modal === "duplicate" ? "You are already registered." : "You are in."}
+              {modal === "duplicate" ? "You are already registered." : "Congratulations. You are in."}
             </p>
-            <p className="mt-2 text-sm text-neutral-600">
-              Check your email (including spam) for the webinar link and details.
+            <p className="mt-2 text-base font-semibold text-neutral-900">
+              Check your email (including spam) for the webinar link and details. Click the link
+              to join the webinar. <span className="text-red-600">Webinar expires soon.</span>
             </p>
             <button
               type="button"

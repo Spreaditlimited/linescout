@@ -16,6 +16,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const category = String(url.searchParams.get("category") || "").trim();
     const q = String(url.searchParams.get("q") || "").trim().toLowerCase();
+    const slug = String(url.searchParams.get("slug") || "").trim().toLowerCase();
 
     const conn = await db.getConnection();
     try {
@@ -24,12 +25,19 @@ export async function GET(req: Request) {
       const clauses = ["is_active = 1", "COALESCE(image_url, '') <> ''"];
       const params: any[] = [];
 
-      if (category) {
+      if (slug) {
+        clauses.push(
+          "(slug = ? OR REGEXP_REPLACE(LOWER(product_name), '[^a-z0-9]+', '-') = ?)"
+        );
+        params.push(slug, slug);
+      }
+
+      if (!slug && category) {
         clauses.push("category = ?");
         params.push(category);
       }
 
-      if (q) {
+      if (!slug && q) {
         const like = `%${q}%`;
         clauses.push(
           `(LOWER(product_name) LIKE ? OR LOWER(category) LIKE ? OR LOWER(COALESCE(short_desc,'')) LIKE ?)`
@@ -43,7 +51,7 @@ export async function GET(req: Request) {
         FROM linescout_white_label_products
         WHERE ${clauses.join(" AND ")}
         ORDER BY sort_order ASC, id DESC
-        LIMIT 300
+        LIMIT ${slug ? 1 : 300}
         `,
         params
       );
@@ -56,6 +64,14 @@ export async function GET(req: Request) {
           cbm_per_1000: r.cbm_per_1000,
         }),
       }));
+
+      if (slug) {
+        const item = items?.[0] || null;
+        if (!item) {
+          return NextResponse.json({ ok: false, error: "Product not found" }, { status: 404 });
+        }
+        return NextResponse.json({ ok: true, item, items: [item] });
+      }
 
       return NextResponse.json({ ok: true, items });
     } finally {
