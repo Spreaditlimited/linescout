@@ -9,6 +9,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isAgents = pathname.startsWith("/agents");
   const isWhiteLabelLeads = pathname.startsWith("/white-label-leads");
   const isWhiteLabelWebinar = pathname.startsWith("/white-label-webinar");
+  const isMachineSourcingLeads = pathname.startsWith("/machine-sourcing-webinar");
+  const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
   const isLanding =
     pathname === "/" ||
     pathname.startsWith("/account-deletion") ||
@@ -18,7 +20,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
   const isAccountDeletion = pathname.startsWith("/account-deletion");
   const isApp = pathname.startsWith("/dashboard") || pathname.startsWith("/machine") || pathname.startsWith("/conversations") || pathname.startsWith("/projects") || pathname.startsWith("/quotes") || pathname.startsWith("/payments") || pathname.startsWith("/wallet") || pathname.startsWith("/profile") || pathname.startsWith("/paystack") || pathname.startsWith("/white-label") || pathname.startsWith("/sourcing-project");
-  const isNoStretch = isWhiteLabelLeads || isWhiteLabelWebinar;
+  const isNoStretch =
+    isWhiteLabelLeads ||
+    isWhiteLabelWebinar ||
+    isMachineSourcingLeads ||
+    isMachineSourcingWebinar;
 
   const shellClass = isNoStretch
     ? "flex flex-col"
