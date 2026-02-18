@@ -230,7 +230,7 @@ export default async function WhiteLabelIdeasPage({
         ? "ORDER BY product_name ASC, id DESC"
         : sort === "newest"
         ? "ORDER BY id DESC"
-        : "ORDER BY sort_order ASC, id DESC";
+        : "ORDER BY id DESC";
 
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 

@@ -68,7 +68,7 @@ export async function generateMetadata({
         SELECT image_url
         FROM linescout_white_label_products
         WHERE ${clauses.join(" AND ")}
-        ORDER BY sort_order ASC, id DESC
+        ORDER BY id DESC
         LIMIT 1
         `,
         args
@@ -233,7 +233,7 @@ export default async function WhiteLabelPage({
         ? "ORDER BY product_name ASC, id DESC"
         : sortKey === "newest"
         ? "ORDER BY id DESC"
-        : "ORDER BY sort_order ASC, id DESC";
+        : "ORDER BY id DESC";
 
     const [countRows]: any = await conn.query(
       `

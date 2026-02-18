@@ -9,8 +9,6 @@ const dotenv = require("dotenv");
 dotenv.config({ path: path.join(process.cwd(), ".env.local") });
 dotenv.config();
 
-typecheckEnv();
-
 const args = parseArgs(process.argv.slice(2));
 
 const OUT_PATH = args.out || path.join(process.cwd(), "data", "white-label-products.json");
@@ -23,6 +21,7 @@ const IMAGE_SIZE = args.imageSize || "1024x1024";
 const IMAGE_QUALITY = args.imageQuality || "medium";
 const DRY_RUN = Boolean(args.dryRun);
 const RESUME = Boolean(args.resume);
+const NAMES_FILE = args.namesFile || args.names || "";
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
@@ -30,11 +29,15 @@ const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || "";
 const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || "";
 const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || "";
 
-cloudinary.config({
-  cloud_name: CLOUDINARY_CLOUD_NAME,
-  api_key: CLOUDINARY_API_KEY,
-  api_secret: CLOUDINARY_API_SECRET,
-});
+const EXPLAIN = Boolean(args.explain || args.noApi);
+if (!EXPLAIN) {
+  typecheckEnv();
+  cloudinary.config({
+    cloud_name: CLOUDINARY_CLOUD_NAME,
+    api_key: CLOUDINARY_API_KEY,
+    api_secret: CLOUDINARY_API_SECRET,
+  });
+}
 
 const STYLE_PROMPT =
   "Studio product photo on a clean light-gray background, soft shadow, centered product, high clarity, modern ecommerce lighting, no people, no props, minimal packaging, premium white label look. Add subtle brand text 'YOUR BRAND' on product or packaging if appropriate.";
@@ -100,6 +103,27 @@ Return ONLY JSON.
 `;
 
 async function main() {
+  if (EXPLAIN) {
+    const existing = RESUME ? loadExisting(OUT_PATH) : [];
+    const existingCount = existing.length;
+    const names = NAMES_FILE ? loadNamesFile(NAMES_FILE) : [];
+    const existingName = new Set(existing.map((p) => normalizeName(p.product_name)));
+    const filteredNames = names.filter((n) => !existingName.has(normalizeName(n)));
+    const targetTotal = names.length ? existingCount + filteredNames.length : COUNT;
+    const toGenerate = names.length ? filteredNames.length : Math.max(targetTotal - existingCount, 0);
+    console.log("Explain mode: no API calls will be made.");
+    console.log(`Output path: ${OUT_PATH}`);
+    console.log(`Resume: ${RESUME ? "yes" : "no"}`);
+    console.log(`Existing items: ${existingCount}`);
+    console.log(`Target total: ${targetTotal}`);
+    console.log(`Will generate: ${toGenerate}`);
+    console.log(`Batch size: ${BATCH}`);
+    console.log(`Images requested: ${IMAGE_COUNT}`);
+    if (!RESUME) {
+      console.log("Note: without --resume, existing JSON file is ignored.");
+    }
+    return;
+  }
   const existing = RESUME ? loadExisting(OUT_PATH) : [];
   const existingKey = new Set(existing.map((p) => keyFor(p.product_name, p.category)));
   const existingName = new Set(existing.map((p) => normalizeName(p.product_name)));
@@ -108,20 +132,42 @@ async function main() {
   for (const p of existing) {
     trackSentences(sentenceSet, p);
   }
-  const targetTotal = COUNT;
+  const names = NAMES_FILE ? loadNamesFile(NAMES_FILE) : [];
+  const namesToGenerate = names.length
+    ? names.filter((n) => !existingName.has(normalizeName(n)))
+    : [];
+
+  const targetTotal = names.length ? existing.length + namesToGenerate.length : COUNT;
 
   let items = [...existing];
+  let namesQueue = [...namesToGenerate];
+  let stagnantBatches = 0;
 
   while (items.length < targetTotal) {
     const remaining = targetTotal - items.length;
     const take = Math.min(BATCH, remaining);
-    const batch = await generateBatch(take, items.length, existing);
+    let batch;
+    let expectedNames = null;
+
+    if (namesToGenerate.length) {
+      expectedNames = namesQueue.slice(0, take);
+      batch = await generateBatchForNames(expectedNames, items.length, existing);
+    } else {
+      batch = await generateBatch(take, items.length, existing);
+    }
+
+    let added = 0;
+    const addedNameKeys = new Set();
     for (const item of batch) {
       const k = keyFor(item.product_name, item.category);
       if (existingKey.has(k)) continue;
       const nameKey = normalizeName(item.product_name);
       const slugKey = normalizeName(item.slug || slugify(item.product_name));
       if (!nameKey || existingName.has(nameKey)) continue;
+      if (expectedNames) {
+        const expectedSet = new Set(expectedNames.map((n) => normalizeName(n)));
+        if (!expectedSet.has(nameKey)) continue;
+      }
       if (slugKey && existingSlug.has(slugKey)) continue;
       if (!isUniqueContent(sentenceSet, item)) continue;
       existingKey.add(k);
@@ -129,7 +175,21 @@ async function main() {
       if (slugKey) existingSlug.add(slugKey);
       trackSentences(sentenceSet, item);
       items.push(item);
+      addedNameKeys.add(nameKey);
+      added += 1;
     }
+
+    if (expectedNames) {
+      namesQueue = namesQueue.filter((n) => !addedNameKeys.has(normalizeName(n)));
+    }
+
+    if (added === 0) stagnantBatches += 1;
+    else stagnantBatches = 0;
+
+    if (stagnantBatches >= 3) {
+      throw new Error("Model returned no usable items for 3 consecutive batches.");
+    }
+
     console.log(`Generated ${items.length}/${targetTotal}`);
     if (!DRY_RUN) {
       saveItems(OUT_PATH, items);
@@ -146,7 +206,13 @@ async function main() {
   }));
 
   if (IMAGE_COUNT > 0) {
-    const toImage = items.filter((p) => !p.image_url).slice(0, IMAGE_COUNT);
+    const allowNames = new Set(
+      (namesToGenerate.length ? namesToGenerate : []).map((n) => normalizeName(n))
+    );
+    const toImage = items
+      .filter((p) => !p.image_url)
+      .filter((p) => (allowNames.size ? allowNames.has(normalizeName(p.product_name)) : true))
+      .slice(0, IMAGE_COUNT);
     for (const item of toImage) {
       if (DRY_RUN) {
         item.image_url = "https://res.cloudinary.com/demo/image/upload/sample";
@@ -276,12 +342,38 @@ function saveItems(filePath, items) {
   fs.writeFileSync(filePath, JSON.stringify(items, null, 2));
 }
 
+function loadNamesFile(filePath) {
+  if (!filePath) return [];
+  const abs = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+  if (!fs.existsSync(abs)) return [];
+  const raw = fs.readFileSync(abs, "utf8");
+  const names = raw
+    .split(/\r?\n/g)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const name of names) {
+    const key = normalizeName(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
 function buildExistingNameBlock(existing) {
   const names = existing
     .map((p) => String(p.product_name || "").trim())
     .filter(Boolean);
   if (!names.length) return "";
   return `\nAvoid these existing product names:\n- ${names.join("\n- ")}`;
+}
+
+function buildRequestedNameBlock(names) {
+  const list = (names || []).map((n) => String(n || "").trim()).filter(Boolean);
+  if (!list.length) return "";
+  return `\nUse ONLY these product names for this batch:\n- ${list.join("\n- ")}`;
 }
 
 async function generateBatch(count, offset, existing) {
@@ -328,6 +420,55 @@ async function generateBatch(count, offset, existing) {
 
     // back off and try a smaller batch
     target = Math.max(5, Math.floor(target / 2));
+  }
+
+  throw new Error("Failed to parse JSON from model after retries.");
+}
+
+async function generateBatchForNames(names, offset, existing) {
+  let attempt = 0;
+  let target = names.length;
+  while (attempt < 3) {
+    attempt += 1;
+    const existingBlock = buildExistingNameBlock(existing || []);
+    const requestedBlock = buildRequestedNameBlock(names);
+    const prompt = `${PROMPT_BASE}${existingBlock}${requestedBlock}\nReturn a JSON object with shape {\"items\": [ ... ]}.\nGenerate ${target} items. Each item must use EXACTLY one of the provided product names.\nBatch offset: ${offset}.`;
+
+    const res = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: TEXT_MODEL,
+        input: prompt,
+        temperature: 0.5,
+        max_output_tokens: 2000,
+        text: { format: { type: "json_object" } },
+      }),
+    });
+
+    if (!res.ok) {
+      const raw = await res.text().catch(() => "");
+      throw new Error(`OpenAI text error (${res.status}): ${raw}`);
+    }
+
+    const data = await res.json();
+    const text = extractOutputText(data);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = tryParseJsonObject(text);
+    }
+
+    const items = Array.isArray(parsed?.items) ? parsed.items : null;
+    if (items) {
+      return items.map(normalizeItem).filter(Boolean);
+    }
+
+    target = Math.max(1, Math.floor(target / 2));
   }
 
   throw new Error("Failed to parse JSON from model after retries.");

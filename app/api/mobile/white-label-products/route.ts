@@ -50,7 +50,7 @@ export async function GET(req: Request) {
         SELECT *
         FROM linescout_white_label_products
         WHERE ${clauses.join(" AND ")}
-        ORDER BY sort_order ASC, id DESC
+        ORDER BY id DESC
         LIMIT ${slug ? 1 : 300}
         `,
         params

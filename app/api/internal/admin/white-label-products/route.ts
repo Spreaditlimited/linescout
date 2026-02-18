@@ -114,7 +114,7 @@ export async function GET(req: Request) {
       SELECT *
       FROM linescout_white_label_products
       ${where}
-      ORDER BY sort_order ASC, id DESC
+      ORDER BY id DESC
       LIMIT 500
       `,
       params
