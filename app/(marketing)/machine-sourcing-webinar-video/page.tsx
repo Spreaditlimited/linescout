@@ -92,7 +92,8 @@ export default function MachineSourcingWebinarVideoPage() {
           <div className="mt-8 rounded-[28px] border border-neutral-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-neutral-900">Ready to take the next step?</h2>
             <p className="mt-2 text-sm text-neutral-600">
-              Explore machine categories or join the WhatsApp channel for updates and support.
+              Create a free machine sourcing account to start sourcing machines the right way and
+              also join our WhatsApp channel for updates and support.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <a href="https://linescout.sureimports.com/projects" className="btn btn-primary px-4 py-2 text-xs">
