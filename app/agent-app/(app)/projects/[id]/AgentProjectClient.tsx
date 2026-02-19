@@ -1003,6 +1003,7 @@ function ProjectDetailInner() {
         confirmText="Yes, release"
         cancelText="Cancel"
         danger
+        // Intentional: simple confirm modal for release action.
         onCancel={() => setConfirmReleaseOpen(false)}
         onConfirm={async () => {
           setConfirmReleaseOpen(false);
