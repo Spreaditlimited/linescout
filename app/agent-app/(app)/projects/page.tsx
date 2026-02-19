@@ -59,8 +59,6 @@ export default function ProjectsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [approvalRequired, setApprovalRequired] = useState(false);
   const [query, setQuery] = useState("");
-  const [releasingId, setReleasingId] = useState<number | null>(null);
-  const [confirmReleaseId, setConfirmReleaseId] = useState<number | null>(null);
 
   const load = useCallback(
     async (scopeOverride?: "unclaimed" | "mine") => {
@@ -157,17 +155,17 @@ export default function ProjectsPage() {
           <button
             type="button"
             onClick={onRefresh}
-            className="ml-auto rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+            className="btn btn-outline ml-auto px-4 py-2 text-xs"
           >
             {refreshing ? "Refreshing…" : "Refresh"}
           </button>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <div className="flex rounded-full border border-[rgba(45,52,97,0.2)] bg-white p-1">
+          <div className="flex rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white p-1">
             <button
               type="button"
               onClick={() => setTab("unclaimed")}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+              className={`px-4 py-2 text-xs font-semibold transition rounded-2xl ${
                 tab === "unclaimed" ? "bg-[#2D3461] text-white" : "text-[#2D3461]"
               }`}
             >
@@ -176,7 +174,7 @@ export default function ProjectsPage() {
             <button
               type="button"
               onClick={() => setTab("mine")}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+              className={`px-4 py-2 text-xs font-semibold transition rounded-2xl ${
                 tab === "mine" ? "bg-[#2D3461] text-white" : "text-[#2D3461]"
               }`}
             >
@@ -200,7 +198,7 @@ export default function ProjectsPage() {
           {approvalRequired ? (
             <Link
               href="/agent-app/settings"
-              className="mt-3 inline-flex rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+              className="btn btn-outline mt-3 px-3 py-2 text-xs border-red-200 bg-white text-red-700 hover:bg-red-100"
             >
               Go to settings
             </Link>
@@ -226,25 +224,6 @@ export default function ProjectsPage() {
             const status = statusLabel(item.handoff_status);
             const ago = timeAgoSafe(item.last_message_at);
             const canClaim = !item.assigned_agent_id && tab === "unclaimed" && item.conversation_id;
-            const canRelease =
-              tab === "mine" &&
-              !!item.assigned_agent_id &&
-              !!item.conversation_id &&
-              ["pending", "manufacturer_found", ""].includes(
-                String(item.handoff_status || "pending").toLowerCase()
-              );
-            const releaseDisabledReason =
-              tab !== "mine"
-                ? "Only your claimed projects can be released."
-                : !item.assigned_agent_id
-                ? "Only the assigned agent can release this project."
-                : !item.conversation_id
-                ? "Missing conversation details."
-                : ["pending", "manufacturer_found", ""].includes(
-                    String(item.handoff_status || "pending").toLowerCase()
-                  )
-                ? null
-                : "Release is allowed only at Pending or Manufacturer Found.";
             const handoffId = item.handoff_id || 0;
 
             return (
@@ -277,7 +256,7 @@ export default function ProjectsPage() {
                     {handoffId ? (
                       <Link
                         href={`/agent-app/projects/${handoffId}?conversation_id=${item.conversation_id || 0}&mine=${tab === "mine" ? 1 : 0}`}
-                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                        className="btn btn-outline px-4 py-2 text-xs"
                       >
                         Open details
                       </Link>
@@ -299,27 +278,11 @@ export default function ProjectsPage() {
                           }
                           await load(tab);
                         }}
-                        className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                        className="btn btn-primary px-4 py-2 text-xs"
                       >
                         Claim project
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!canRelease) return;
-                        setConfirmReleaseId(item.conversation_id || null);
-                      }}
-                      disabled={!canRelease || releasingId === item.conversation_id}
-                      title={!canRelease ? releaseDisabledReason || "Release not available." : ""}
-                      className={`rounded-full border px-4 py-2 text-xs font-semibold ${
-                        canRelease
-                          ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                          : "border-neutral-200 bg-neutral-50 text-neutral-400 cursor-not-allowed"
-                      }`}
-                    >
-                      {releasingId === item.conversation_id ? "Releasing…" : "Release project"}
-                    </button>
                   </div>
                 </div>
               </div>
@@ -328,35 +291,6 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <ConfirmModal
-        open={confirmReleaseId != null}
-        variant="light"
-        title="Release project?"
-        description="This will return the project to the unclaimed pool so another agent can take it."
-        confirmText="Yes, release"
-        cancelText="Cancel"
-        danger
-        onCancel={() => setConfirmReleaseId(null)}
-        onConfirm={async () => {
-          const convoId = confirmReleaseId || 0;
-          if (!convoId) return;
-          setReleasingId(convoId);
-          setConfirmReleaseId(null);
-          const res = await fetch("/api/internal/paid-chat/unclaim", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ conversation_id: convoId }),
-          });
-          const json = await res.json().catch(() => null);
-          setReleasingId(null);
-          if (!res.ok || !json?.ok) {
-            setErr(String(json?.error || `Failed (${res.status})`));
-            return;
-          }
-          await load(tab);
-        }}
-      />
     </AgentAppShell>
   );
 }

@@ -161,7 +161,7 @@ export default function DashboardPage() {
               </p>
               <Link
                 href="/agent-app/settings"
-                className="mt-3 inline-flex rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                className="btn btn-outline mt-3 px-4 py-2 text-xs border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
               >
                 Go to settings
               </Link>
@@ -193,7 +193,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={load}
-                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                  className="btn btn-outline px-4 py-2 text-xs"
                 >
                   Refresh
                 </button>
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                 </p>
                 <Link
                   href="/agent-app/profile"
-                  className="mt-3 inline-flex rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                  className="btn btn-outline mt-3 px-4 py-2 text-xs"
                 >
                   Update profile
                 </Link>

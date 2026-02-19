@@ -237,10 +237,10 @@ export default function InboxPage() {
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={`rounded-full px-4 py-2 text-xs font-semibold transition ${
+              className={`btn px-4 py-2 text-xs ${
                 active
-                  ? "bg-[#2D3461] text-white"
-                  : "border border-[rgba(45,52,97,0.2)] bg-white text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                  ? "btn-primary"
+                  : "btn-outline hover:bg-[rgba(45,52,97,0.08)] text-[#2D3461]"
               }`}
             >
               {t === "paid" ? "Paid chats" : "Quick human"}
@@ -251,7 +251,7 @@ export default function InboxPage() {
         <button
           type="button"
           onClick={onRefresh}
-          className="ml-auto rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+          className="btn btn-outline ml-auto px-4 py-2 text-xs"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
@@ -263,7 +263,7 @@ export default function InboxPage() {
           {approvalRequired ? (
             <Link
               href="/agent-app/settings"
-              className="mt-3 inline-flex rounded-full border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+              className="btn btn-outline mt-3 px-3 py-2 text-xs border-red-200 bg-white text-red-700 hover:bg-red-100"
             >
               Go to settings
             </Link>
@@ -323,7 +323,7 @@ export default function InboxPage() {
                     {conversationId > 0 ? (
                       <Link
                         href={`/agent-app/inbox/${conversationId}?kind=${tab}`}
-                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                        className="btn btn-outline px-3 py-1 text-xs"
                       >
                         Open chat
                       </Link>
@@ -342,7 +342,7 @@ export default function InboxPage() {
                       <button
                         type="button"
                         onClick={() => claimChat(conversationId)}
-                        className="rounded-full bg-[#2D3461] px-3 py-1 text-xs font-semibold text-white"
+                        className="btn btn-primary px-3 py-1 text-xs"
                       >
                         Claim
                       </button>

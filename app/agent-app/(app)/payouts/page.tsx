@@ -166,7 +166,7 @@ export default function PayoutsPage() {
             <button
               type="button"
               onClick={reload}
-              className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+              className="btn btn-outline px-4 py-2 text-xs"
             >
               Refresh
             </button>
@@ -263,7 +263,7 @@ export default function PayoutsPage() {
               type="button"
               onClick={() => setPayoutAmount(String(Math.max(0, availableEarnings).toFixed(2)))}
               disabled={availableEarnings <= 0 || requesting}
-              className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] transition hover:bg-[rgba(45,52,97,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-outline px-4 py-2 text-xs transition disabled:cursor-not-allowed disabled:opacity-50"
             >
               Withdraw all
             </button>
@@ -271,7 +271,7 @@ export default function PayoutsPage() {
               type="button"
               onClick={requestPayout}
               disabled={!canRequest}
-              className="rounded-full bg-[#2D3461] px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.2em] text-white shadow-[0_15px_30px_rgba(45,52,97,0.35)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(45,52,97,0.35)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn btn-primary px-5 py-2.5 text-xs uppercase tracking-[0.2em] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {requesting ? "Requesting…" : "Request payout"}
             </button>

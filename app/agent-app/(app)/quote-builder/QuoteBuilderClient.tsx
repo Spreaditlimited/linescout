@@ -603,7 +603,7 @@ function QuoteBuilderInner() {
                   setProjectPickerOpen(true);
                   loadProjects();
                 }}
-                className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                className="btn btn-primary px-4 py-2 text-xs"
                 disabled={!approvedToClaim}
               >
                 Pick project
@@ -642,7 +642,7 @@ function QuoteBuilderInner() {
                     setProjectPickerOpen(true);
                     loadProjects();
                   }}
-                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)] disabled:opacity-60"
+                  className="btn btn-outline px-4 py-2 text-xs hover:bg-[rgba(45,52,97,0.08)] disabled:opacity-60"
                   disabled={!approvedToClaim}
                 >
                   Pick project

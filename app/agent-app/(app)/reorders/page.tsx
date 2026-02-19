@@ -129,7 +129,7 @@ export default function AgentReordersPage() {
                     href={`/agent-app/projects/${item.new_handoff_id || item.handoff_id}?conversation_id=${
                       item.new_conversation_id || item.conversation_id
                     }`}
-                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                    className="btn btn-outline px-4 py-2 text-xs"
                   >
                     Open project
                   </Link>
@@ -138,7 +138,7 @@ export default function AgentReordersPage() {
                   type="button"
                   onClick={() => updateStatus(item.id, "start")}
                   disabled={working[item.id] || item.status === "in_progress"}
-                  className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] disabled:opacity-50"
+                  className="btn btn-outline px-4 py-2 text-xs disabled:opacity-50"
                 >
                   Mark in progress
                 </button>
@@ -146,7 +146,7 @@ export default function AgentReordersPage() {
                   type="button"
                   onClick={() => updateStatus(item.id, "close")}
                   disabled={working[item.id] || item.status === "closed"}
-                  className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50"
+                  className="btn btn-outline px-4 py-2 text-xs border-emerald-200 bg-emerald-50 text-emerald-700 disabled:opacity-50"
                 >
                   Close
                 </button>

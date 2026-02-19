@@ -209,3 +209,17 @@ button {
 .btn-ghost:hover {
   background: rgba(45, 52, 97, 0.08);
 }
+
+/* Agent app: normalize button/link shape to match Sign out button */
+.agent-app-shell .rounded-full,
+.agent-app-shell .rounded-3xl,
+.agent-app-shell .rounded-2xl,
+.agent-app-shell .rounded-xl,
+.agent-app-shell .rounded-lg {
+  border-radius: 0.75rem !important;
+}
+
+.agent-app-shell button,
+.agent-app-shell a {
+  border-radius: 0.75rem !important;
+}

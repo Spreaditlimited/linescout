@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentAppShell from "../../_components/AgentAppShell";
+import PremiumSelect from "../../_components/PremiumSelect";
 import ConfirmModal from "@/components/ConfirmModal";
 
 type HandoffDetail = {
@@ -65,6 +66,12 @@ type PaymentInfo = {
   } | null;
 } | null;
 
+type ShippingCompany = {
+  id: number;
+  name: string;
+  is_active: number | boolean;
+};
+
 type QuoteItem = {
   id: number;
   token: string;
@@ -95,6 +102,19 @@ function statusLabel(raw?: string | null) {
   return s.replace(/_/g, " ").replace(/\w/g, (m) => m.toUpperCase());
 }
 
+function normalizePhone(value: string) {
+  return value.replace(/\s+/g, "");
+}
+
+function isValidChinaPhone(value: string) {
+  return /^\+86\d{11}$/.test(value);
+}
+
+function isValidEmail(value: string) {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function ProjectDetailInner() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -112,7 +132,9 @@ function ProjectDetailInner() {
   const [claiming, setClaiming] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [confirmReleaseOpen, setConfirmReleaseOpen] = useState(false);
-  const [shipper, setShipper] = useState("");
+  const [confirmProductPaidOpen, setConfirmProductPaidOpen] = useState(false);
+  const [shippingCompanyId, setShippingCompanyId] = useState<number | null>(null);
+  const [shippingCompanies, setShippingCompanies] = useState<ShippingCompany[]>([]);
   const [trackingNumber, setTrackingNumber] = useState("");
   const [showManufacturerForm, setShowManufacturerForm] = useState(false);
   const [editingManufacturer, setEditingManufacturer] = useState(false);
@@ -122,6 +144,8 @@ function ProjectDetailInner() {
   const [manufacturerContactName, setManufacturerContactName] = useState("");
   const [manufacturerEmail, setManufacturerEmail] = useState("");
   const [manufacturerPhone, setManufacturerPhone] = useState("");
+  const [manufacturerEmailError, setManufacturerEmailError] = useState<string | null>(null);
+  const [manufacturerPhoneError, setManufacturerPhoneError] = useState<string | null>(null);
 
   const loadDetail = useCallback(async () => {
     if (!handoffId) return;
@@ -189,22 +213,42 @@ function ProjectDetailInner() {
     setAttachments(Array.isArray(json.attachments) ? json.attachments : []);
   }, [conversationId]);
 
+  const loadShippingCompanies = useCallback(async () => {
+    try {
+      const res = await fetch("/api/linescout-shipping-companies", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setShippingCompanies([]);
+        return;
+      }
+      setShippingCompanies(Array.isArray(json.items) ? json.items : []);
+    } catch {
+      setShippingCompanies([]);
+    }
+  }, []);
+
   useEffect(() => {
     loadDetail();
     loadPayments();
     loadQuotes();
     loadAttachments();
-  }, [loadDetail, loadPayments, loadQuotes, loadAttachments]);
+    loadShippingCompanies();
+  }, [loadDetail, loadPayments, loadQuotes, loadAttachments, loadShippingCompanies]);
 
   useEffect(() => {
     if (!detail) return;
-    setShipper(detail.shipper || "");
     setTrackingNumber(detail.tracking_number || "");
+    setShippingCompanyId(detail.shipping_company_id ?? null);
     setManufacturerName(detail.manufacturer_name || "");
     setManufacturerAddress(detail.manufacturer_address || "");
     setManufacturerContactName(detail.manufacturer_contact_name || "");
     setManufacturerEmail(detail.manufacturer_contact_email || "");
     setManufacturerPhone(detail.manufacturer_contact_phone || "");
+    setManufacturerEmailError(null);
+    setManufacturerPhoneError(null);
   }, [detail]);
 
   const statusRaw = String(detail?.status || "pending").trim().toLowerCase();
@@ -224,27 +268,38 @@ function ProjectDetailInner() {
   const quoteReadOnly = statusRaw === "delivered";
 
   const productBalance = payments?.quote_summary?.product_balance ?? payments?.balance ?? 0;
-  const productFullyPaid =
-    payments?.quote_summary ? Number(payments.quote_summary.product_balance || 0) <= 0 : false;
+  const productFullyPaid = payments?.quote_summary
+    ? Number(payments.quote_summary.product_balance || 0) <= 0 &&
+      Number(payments.quote_summary.product_paid || 0) > 0
+    : false;
   const shippingFullyPaid =
     payments?.quote_summary ? Number(payments.quote_summary.shipping_balance || 0) <= 0 : false;
   const productPaid = payments?.quote_summary ? Number(payments.quote_summary.product_paid || 0) : 0;
   const shippingPaid = payments?.quote_summary ? Number(payments.quote_summary.shipping_paid || 0) : 0;
   const hasStartedPayment = productPaid > 0 || shippingPaid > 0;
+  const shippingDetailsOk = !!shippingCompanyId;
+  const shippingOptions = useMemo(
+    () =>
+      shippingCompanies.map((company) => ({
+        value: String(company.id),
+        label: company.name,
+      })),
+    [shippingCompanies]
+  );
 
   const canClaim =
     statusRaw === "pending" && !detail?.assigned_agent_id && !!conversationId;
   const canRelease =
     isMine &&
     !!conversationId &&
-    ["pending", "manufacturer_found", ""].includes(statusRaw) &&
+    ["claimed", "manufacturer_found"].includes(statusRaw) &&
     !hasStartedPayment;
   const releaseDisabledReason = !isMine
     ? "Only your claimed projects can be released."
     : !conversationId
     ? "Missing conversation details."
-    : !["pending", "manufacturer_found", ""].includes(statusRaw)
-    ? "Release is allowed only at Pending or Manufacturer Found."
+    : !["claimed", "manufacturer_found"].includes(statusRaw)
+    ? "Release is allowed only at Claimed or Manufacturer Found."
     : hasStartedPayment
     ? "Release is disabled because product or shipping payment has started."
     : null;
@@ -302,6 +357,27 @@ function ProjectDetailInner() {
   const updateStatus = useCallback(
     async (next: "manufacturer_found" | "paid" | "shipped" | "delivered") => {
       if (!detail?.id) return;
+      if (next === "manufacturer_found") {
+        const normalizedPhone = normalizePhone(manufacturerPhone.trim());
+        const missing =
+          !manufacturerName.trim() ||
+          !manufacturerAddress.trim() ||
+          !manufacturerContactName.trim() ||
+          !manufacturerEmail.trim() ||
+          !manufacturerPhone.trim();
+        if (missing) {
+          setErr("Please fill all manufacturer details before confirming.");
+          return;
+        }
+        if (!isValidEmail(manufacturerEmail.trim())) {
+          setErr("Please enter a valid email address.");
+          return;
+        }
+        if (!isValidChinaPhone(normalizedPhone)) {
+          setErr("Phone must start with +86 and have 11 digits after the country code.");
+          return;
+        }
+      }
       setUpdating(true);
       setErr(null);
       try {
@@ -311,10 +387,10 @@ function ProjectDetailInner() {
           body.manufacturer_address = manufacturerAddress.trim();
           body.manufacturer_contact_name = manufacturerContactName.trim();
           body.manufacturer_contact_email = manufacturerEmail.trim();
-          body.manufacturer_contact_phone = manufacturerPhone.trim();
+          body.manufacturer_contact_phone = normalizePhone(manufacturerPhone.trim());
         }
         if (next === "shipped") {
-          body.shipper = shipper.trim();
+          body.shipping_company_id = shippingCompanyId;
           body.tracking_number = trackingNumber.trim();
         }
         const res = await fetch(`/api/linescout-handoffs/update-status`, {
@@ -336,7 +412,18 @@ function ProjectDetailInner() {
         setUpdating(false);
       }
     },
-    [detail?.id, shipper, trackingNumber, loadDetail, loadPayments]
+    [
+      detail?.id,
+      manufacturerName,
+      manufacturerAddress,
+      manufacturerContactName,
+      manufacturerEmail,
+      manufacturerPhone,
+      shippingCompanyId,
+      trackingNumber,
+      loadDetail,
+      loadPayments,
+    ]
   );
 
   const updateManufacturer = useCallback(async () => {
@@ -344,6 +431,19 @@ function ProjectDetailInner() {
     setUpdating(true);
     setErr(null);
     try {
+      const normalizedPhone = normalizePhone(manufacturerPhone.trim());
+      if (!manufacturerName.trim() || !manufacturerAddress.trim() || !manufacturerContactName.trim() || !manufacturerEmail.trim() || !manufacturerPhone.trim()) {
+        setErr("Please fill all manufacturer details before saving.");
+        return;
+      }
+      if (!isValidEmail(manufacturerEmail.trim())) {
+        setErr("Please enter a valid email address.");
+        return;
+      }
+      if (!isValidChinaPhone(normalizedPhone)) {
+        setErr("Phone must start with +86 and have 11 digits after the country code.");
+        return;
+      }
       const res = await fetch(`/api/linescout-handoffs/update-status`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -355,7 +455,7 @@ function ProjectDetailInner() {
           manufacturer_address: manufacturerAddress.trim(),
           manufacturer_contact_name: manufacturerContactName.trim(),
           manufacturer_contact_email: manufacturerEmail.trim(),
-          manufacturer_contact_phone: manufacturerPhone.trim(),
+          manufacturer_contact_phone: normalizedPhone,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -426,7 +526,7 @@ function ProjectDetailInner() {
                   }}
                   disabled={!canRelease || releasing}
                   title={!canRelease ? releaseDisabledReason || "Release not available." : ""}
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold ${
+                  className={`btn btn-outline px-4 py-2 text-xs ${
                     canRelease
                       ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
                       : "border-neutral-200 bg-neutral-50 text-neutral-400 cursor-not-allowed"
@@ -445,7 +545,7 @@ function ProjectDetailInner() {
                       }
                       window.location.href = `/agent-app/inbox/${conversationId}?kind=paid`;
                     }}
-                    className={`rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] ${
+                    className={`btn btn-outline px-4 py-2 text-xs ${
                       quoteReadOnly ? "pointer-events-none opacity-50" : "hover:bg-[rgba(45,52,97,0.08)]"
                     }`}
                   >
@@ -455,13 +555,22 @@ function ProjectDetailInner() {
                 {quoteAllowed ? (
                   <Link
                     href={`/agent-app/quote-builder?handoff_id=${detail.id}${quoteReadOnly ? "&readonly=1" : ""}`}
-                    className="rounded-full bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                    className="btn btn-primary px-4 py-2 text-xs"
                   >
                     {quoteReadOnly ? "View quote" : "Build quote"}
                   </Link>
                 ) : (
-                  <span className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs text-neutral-500">
-                    Quote unlocks after manufacturer found
+                  <span
+                    title="Build quote unlocks after manufacturer is found."
+                    className="inline-flex"
+                  >
+                    <button
+                      type="button"
+                      disabled
+                      className="btn btn-outline px-4 py-2 text-xs text-neutral-400 cursor-not-allowed"
+                    >
+                      Build quote
+                    </button>
                   </span>
                 )}
               </div>
@@ -503,34 +612,48 @@ function ProjectDetailInner() {
                     type="button"
                     onClick={() => setShowManufacturerForm((v) => !v)}
                     disabled={updating}
-                    className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                    className="btn btn-outline px-4 py-2 text-xs"
                   >
                     {showManufacturerForm ? "Cancel manufacturer form" : "Mark manufacturer found"}
                   </button>
                 ) : null}
                 {statusRaw === "manufacturer_found" ? (
-                  <button
-                    type="button"
-                    onClick={() => updateStatus("paid")}
-                    disabled={updating}
-                    className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                  <span
+                    className="inline-flex"
+                    title={
+                      !productFullyPaid
+                        ? "Product payment must be completed before marking paid."
+                        : ""
+                    }
                   >
-                    Mark product paid
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!productFullyPaid) return;
+                        setConfirmProductPaidOpen(true);
+                      }}
+                      disabled={updating || !productFullyPaid}
+                      className={`btn btn-outline px-4 py-2 text-xs ${
+                        !productFullyPaid ? "text-neutral-400 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      Mark product paid
+                    </button>
+                  </span>
                 ) : null}
-              {(statusRaw === "manufacturer_found" || statusRaw === "paid") ? (
+              {statusRaw === "paid" && productFullyPaid ? (
                 <button
                   type="button"
                   onClick={() => updateStatus("shipped")}
-                  disabled={updating || !productFullyPaid}
-                  className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                  disabled={updating || !productFullyPaid || !shippingDetailsOk}
+                  className="btn btn-outline px-4 py-2 text-xs"
                 >
                   Mark shipped
                 </button>
               ) : null}
-              {(statusRaw === "manufacturer_found" || statusRaw === "paid") && !productFullyPaid ? (
+              {statusRaw === "paid" && productFullyPaid && !shippingDetailsOk ? (
                 <p className="text-xs text-neutral-500 sm:col-span-2">
-                  Product balance must be fully paid before marking shipped.
+                  Select a shipping company before marking shipped.
                 </p>
               ) : null}
                 {statusRaw === "shipped" ? (
@@ -538,7 +661,7 @@ function ProjectDetailInner() {
                     type="button"
                     onClick={() => updateStatus("delivered")}
                     disabled={updating || !shippingFullyPaid}
-                    className="rounded-2xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-[rgba(45,52,97,0.08)]"
+                    className="btn btn-outline px-4 py-2 text-xs"
                   >
                     Mark delivered
                   </button>
@@ -583,26 +706,52 @@ function ProjectDetailInner() {
                     <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Email</label>
                     <input
                       value={manufacturerEmail}
-                      onChange={(e) => setManufacturerEmail(e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setManufacturerEmail(next);
+                        if (!next.trim()) {
+                          setManufacturerEmailError(null);
+                        } else {
+                          setManufacturerEmailError(isValidEmail(next.trim()) ? null : "Enter a valid email address.");
+                        }
+                      }}
                       className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
                       placeholder="Contact email"
                     />
+                    {manufacturerEmailError ? (
+                      <p className="mt-2 text-xs text-amber-600">{manufacturerEmailError}</p>
+                    ) : null}
                   </div>
                   <div>
                     <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Phone</label>
                     <input
                       value={manufacturerPhone}
-                      onChange={(e) => setManufacturerPhone(e.target.value)}
+                      onChange={(e) => {
+                        const next = normalizePhone(e.target.value);
+                        setManufacturerPhone(next);
+                        if (!next.trim()) {
+                          setManufacturerPhoneError(null);
+                        } else {
+                          setManufacturerPhoneError(
+                            isValidChinaPhone(next.trim())
+                              ? null
+                              : "Phone must start with +86 and have 11 digits after the country code."
+                          );
+                        }
+                      }}
                       className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
                       placeholder="Contact phone"
                     />
+                    {manufacturerPhoneError ? (
+                      <p className="mt-2 text-xs text-amber-600">{manufacturerPhoneError}</p>
+                    ) : null}
                   </div>
                   <div className="sm:col-span-2">
                     <button
                       type="button"
                       onClick={() => updateStatus("manufacturer_found")}
                       disabled={updating}
-                      className="mt-2 w-full rounded-2xl bg-[#2D3461] px-4 py-2 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)]"
+                      className="btn btn-primary mt-2 w-full px-4 py-2 text-xs"
                     >
                       Confirm manufacturer found
                     </button>
@@ -610,24 +759,27 @@ function ProjectDetailInner() {
                 </div>
               ) : null}
 
-              {(statusRaw === "manufacturer_found" || statusRaw === "paid") ? (
+              {statusRaw === "paid" && productFullyPaid ? (
                 <div className="mt-5 grid gap-3">
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Shipper</label>
-                    <input
-                      value={shipper}
-                      onChange={(e) => setShipper(e.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                      placeholder="DHL, SF Express, etc."
+                    <PremiumSelect
+                      label="Shipper"
+                      value={shippingCompanyId ? String(shippingCompanyId) : ""}
+                      onChange={(value) => setShippingCompanyId(value ? Number(value) : null)}
+                      options={shippingOptions}
+                      placeholder="Select shipping company"
+                      searchable
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Tracking number</label>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                      Tracking number (optional)
+                    </label>
                     <input
                       value={trackingNumber}
                       onChange={(e) => setTrackingNumber(e.target.value)}
                       className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
-                      placeholder="Enter tracking number"
+                      placeholder="Enter tracking number if available"
                     />
                   </div>
                 </div>
@@ -737,8 +889,20 @@ function ProjectDetailInner() {
                     value={manufacturerEmail}
                     readOnly={!editingManufacturer}
                     disabled={!editingManufacturer}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setManufacturerEmail(next);
+                      if (!next.trim()) {
+                        setManufacturerEmailError(null);
+                      } else {
+                        setManufacturerEmailError(isValidEmail(next.trim()) ? null : "Enter a valid email address.");
+                      }
+                    }}
                     className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
                   />
+                  {editingManufacturer && manufacturerEmailError ? (
+                    <p className="mt-2 text-xs text-amber-600">{manufacturerEmailError}</p>
+                  ) : null}
                 </div>
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Phone</label>
@@ -746,8 +910,24 @@ function ProjectDetailInner() {
                     value={manufacturerPhone}
                     readOnly={!editingManufacturer}
                     disabled={!editingManufacturer}
+                    onChange={(e) => {
+                      const next = normalizePhone(e.target.value);
+                      setManufacturerPhone(next);
+                      if (!next.trim()) {
+                        setManufacturerPhoneError(null);
+                      } else {
+                        setManufacturerPhoneError(
+                          isValidChinaPhone(next.trim())
+                            ? null
+                            : "Phone must start with +86 and have 11 digits after the country code."
+                        );
+                      }
+                    }}
                     className="mt-2 w-full rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-4 py-2 text-sm"
                   />
+                  {editingManufacturer && manufacturerPhoneError ? (
+                    <p className="mt-2 text-xs text-amber-600">{manufacturerPhoneError}</p>
+                  ) : null}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Address</label>
@@ -827,6 +1007,19 @@ function ProjectDetailInner() {
         onConfirm={async () => {
           setConfirmReleaseOpen(false);
           await releaseProject();
+        }}
+      />
+      <ConfirmModal
+        open={confirmProductPaidOpen}
+        variant="light"
+        title="Mark product paid?"
+        description="Confirm that the product payment has been completed for this project."
+        confirmText="Yes, mark paid"
+        cancelText="Cancel"
+        onCancel={() => setConfirmProductPaidOpen(false)}
+        onConfirm={async () => {
+          setConfirmProductPaidOpen(false);
+          await updateStatus("paid");
         }}
       />
     </AgentAppShell>

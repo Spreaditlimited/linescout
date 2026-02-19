@@ -218,9 +218,13 @@ export default function SettingsPage() {
     return Math.round((done / steps.length) * 100);
   }, [steps]);
 
-  const awaitingApproval = checklist
-    ? resolvedOtpOk
-      ? checklist?.nin_provided && checklist?.bank_verified && checklist?.address_provided && chinaPhoneValid
+  const approvalStatus = String(profile?.approval_status || "").toLowerCase();
+  const isApproved = approvalStatus === "approved";
+  const awaitingApproval = !isApproved
+    ? checklist
+      ? resolvedOtpOk
+        ? checklist?.nin_provided && checklist?.bank_verified && checklist?.address_provided && chinaPhoneValid
+        : false
       : false
     : false;
 
@@ -986,14 +990,14 @@ export default function SettingsPage() {
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={sendSupportMessage}
-                disabled={supportSending || supportMessage.trim().length < 8}
-                className="btn btn-primary px-4 py-2 text-xs"
-              >
-                {supportSending ? "Sending..." : "Send"}
-              </button>
+                  <button
+                    type="button"
+                    onClick={sendSupportMessage}
+                    disabled={supportSending || supportMessage.trim().length < 8}
+                    className="btn btn-primary px-4 py-2 text-xs"
+                  >
+                    {supportSending ? "Sending..." : "Send"}
+                  </button>
             </div>
           </div>
         </div>

@@ -114,7 +114,7 @@ export default function AgentAppShell({
 
   return (
     <div
-      className="app-theme-blue min-h-screen bg-[#F5F6FA] text-neutral-900"
+      className="agent-app-shell app-theme-blue min-h-screen bg-[#F5F6FA] text-neutral-900"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
       <div className="mx-auto flex w-full max-w-7xl gap-6 px-4 py-6 lg:py-8">

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 const NEXT_ALLOWED: Record<string, string[]> = {
   pending: ["claimed", "cancelled"],
   claimed: ["manufacturer_found", "cancelled"],
-  manufacturer_found: ["paid", "shipped", "cancelled"],
+  manufacturer_found: ["paid", "cancelled"],
   paid: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   delivered: [],
@@ -25,6 +25,19 @@ function normStatus(s: any) {
 
 function nonEmpty(v: any) {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\s+/g, "");
+}
+
+function isValidChinaPhone(value: string) {
+  return /^\+86\d{11}$/.test(value);
+}
+
+function isValidEmail(value: string) {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function toOptionalPositiveInt(v: any): number | null {
@@ -50,6 +63,44 @@ function getSmtpConfig() {
   const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
   if (!host || !port || !user || !pass) return null;
   return { host, port, user, pass, from };
+}
+
+async function getProductPaymentStatus(conn: mysql.Connection, handoffId: number) {
+  const [quoteRows]: any = await conn.execute(
+    `SELECT id, total_product_ngn, total_markup_ngn, commitment_due_ngn
+     FROM linescout_quotes
+     WHERE handoff_id = ?
+     ORDER BY
+       CASE
+         WHEN EXISTS (
+           SELECT 1
+           FROM linescout_quote_payments p
+           WHERE p.quote_id = linescout_quotes.id
+         ) THEN 0
+         ELSE 1
+       END ASC,
+       id DESC
+     LIMIT 1`,
+    [handoffId]
+  );
+  if (!quoteRows?.length) return { ok: false as const, error: "A quote is required." };
+  const latestQuote = quoteRows[0];
+  const productDue = Math.max(
+    0,
+    Math.round(
+      Number(latestQuote.total_product_ngn || 0) +
+        Number(latestQuote.total_markup_ngn || 0) -
+        Number(latestQuote.commitment_due_ngn || 0)
+    )
+  );
+  const [quotePayRows]: any = await conn.execute(
+    `SELECT COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS paid
+     FROM linescout_quote_payments
+     WHERE quote_id = ?`,
+    [Number(latestQuote.id)]
+  );
+  const productPaid = Number(quotePayRows?.[0]?.paid || 0);
+  return { ok: true as const, productDue, productPaid };
 }
 
 async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
@@ -167,7 +218,9 @@ export async function POST(req: Request) {
     const manufacturer_contact_email =
       typeof body.manufacturer_contact_email === "string" ? body.manufacturer_contact_email.trim() : "";
     const manufacturer_contact_phone =
-      typeof body.manufacturer_contact_phone === "string" ? body.manufacturer_contact_phone.trim() : "";
+      typeof body.manufacturer_contact_phone === "string"
+        ? normalizePhone(body.manufacturer_contact_phone.trim())
+        : "";
     const manufacturerUpdateOnly =
       body.manufacturer_update === true || String(body.manufacturer_update || "").toLowerCase() === "true";
     const hasManufacturerPayload =
@@ -336,73 +389,70 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+      if (!isValidEmail(manufacturer_contact_email)) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "Manufacturer email must be valid." },
+          { status: 400 }
+        );
+      }
+      if (!isValidChinaPhone(manufacturer_contact_phone)) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: "Manufacturer phone must start with +86 and have 11 digits after the country code." },
+          { status: 400 }
+        );
+      }
     }
 
     if (!manufacturerUpdateOnly) {
     // Required fields validation for certain statuses
+    if (target === "paid" || target === "shipped") {
+      const statusCheck = await getProductPaymentStatus(conn, id);
+      if (!statusCheck.ok) {
+        await conn.end();
+        return NextResponse.json(
+          { ok: false, error: target === "paid" ? "A quote is required before marking paid." : "A quote is required before marking shipped." },
+          { status: 400 }
+        );
+      }
+      if (statusCheck.productPaid <= 0) {
+        await conn.end();
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              target === "paid"
+                ? "Product payment must be completed before marking paid."
+                : "Product payment must be completed before marking shipped.",
+          },
+          { status: 400 }
+        );
+      }
+      if (statusCheck.productDue > 0 && statusCheck.productPaid < statusCheck.productDue) {
+        await conn.end();
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              target === "paid"
+                ? "Product payment must be completed before marking paid."
+                : "Product payment must be completed before marking shipped.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     if (target === "shipped") {
-      const [quoteRows]: any = await conn.execute(
-        `SELECT id, total_product_ngn, total_markup_ngn, commitment_due_ngn
-         FROM linescout_quotes
-         WHERE handoff_id = ?
-         ORDER BY
-           CASE
-             WHEN EXISTS (
-               SELECT 1
-               FROM linescout_quote_payments p
-               WHERE p.quote_id = linescout_quotes.id
-             ) THEN 0
-             ELSE 1
-           END ASC,
-           id DESC
-         LIMIT 1`,
-        [id]
-      );
-      if (!quoteRows?.length) {
+
+      // Require shipping company selection
+      if (!shipping_company_id) {
         await conn.end();
         return NextResponse.json(
-          { ok: false, error: "A quote is required before marking shipped." },
+          { ok: false, error: "Missing shipping_company_id" },
           { status: 400 }
         );
-      }
-
-      const latestQuote = quoteRows[0];
-      const productDue = Math.max(
-        0,
-        Math.round(
-          Number(latestQuote.total_product_ngn || 0) +
-            Number(latestQuote.total_markup_ngn || 0) -
-            Number(latestQuote.commitment_due_ngn || 0)
-        )
-      );
-      const [quotePayRows]: any = await conn.execute(
-        `SELECT COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS paid
-         FROM linescout_quote_payments
-         WHERE quote_id = ?`,
-        [Number(latestQuote.id)]
-      );
-      const productPaid = Number(quotePayRows?.[0]?.paid || 0);
-      if (productDue > 0 && productPaid < productDue) {
-        await conn.end();
-        return NextResponse.json(
-          { ok: false, error: "Product payment must be completed before marking shipped." },
-          { status: 400 }
-        );
-      }
-
-      // old UI sends shipper (text)
-      // new UI sends shipping_company_id (preferred)
-      if (!shipping_company_id && !nonEmpty(shipper)) {
-        await conn.end();
-        return NextResponse.json(
-          { ok: false, error: "Missing shipping_company_id (preferred) or shipper (legacy)" },
-          { status: 400 }
-        );
-      }
-
-      if (!nonEmpty(tracking_number)) {
-        await conn.end();
-        return NextResponse.json({ ok: false, error: "Missing tracking_number" }, { status: 400 });
       }
 
       // If shipping_company_id is provided, validate it exists (and is_active=1)
@@ -502,35 +552,21 @@ export async function POST(req: Request) {
         }
       }
 
-      if (target === "shipped") {
-        setParts.push("shipped_at = NOW()");
-        setParts.push("tracking_number = ?");
-        params.push(tracking_number);
+    if (target === "shipped") {
+      setParts.push("shipped_at = NOW()");
+      setParts.push("tracking_number = ?");
+      params.push(nonEmpty(tracking_number) ? tracking_number : null);
 
-        if (shipping_company_id) {
-          setParts.push("shipping_company_id = ?");
-          params.push(shipping_company_id);
+        setParts.push("shipping_company_id = ?");
+        params.push(shipping_company_id);
 
-          // Keep shipper text populated for readability / backward compatibility
-          if (!nonEmpty(shipper)) {
-            const [scRows] = await conn.execute<any[]>(
-              `SELECT name FROM linescout_shipping_companies WHERE id = ? LIMIT 1`,
-              [shipping_company_id]
-            );
-            const name = scRows?.[0]?.name ? String(scRows[0].name) : "";
-            if (nonEmpty(name)) {
-              setParts.push("shipper = ?");
-              params.push(name.trim());
-            }
-          } else {
-            setParts.push("shipper = ?");
-            params.push(shipper);
-          }
-        } else {
-          setParts.push("shipper = ?");
-          params.push(shipper);
-          setParts.push("shipping_company_id = NULL");
-        }
+        const [scRows] = await conn.execute<any[]>(
+          `SELECT name FROM linescout_shipping_companies WHERE id = ? LIMIT 1`,
+          [shipping_company_id]
+        );
+        const name = scRows?.[0]?.name ? String(scRows[0].name) : "";
+        setParts.push("shipper = ?");
+        params.push(name.trim());
       }
 
       if (target === "delivered") setParts.push("delivered_at = NOW()");
