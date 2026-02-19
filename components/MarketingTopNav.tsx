@@ -2,11 +2,17 @@ import Image from "next/image";
 import Link from "next/link";
 import MarketingTopNavMenu from "./marketing/MarketingTopNavMenu";
 
-type NavItem = { href: string; label: string };
+type NavItem = { href?: string; label: string; children?: { href: string; label: string }[] };
 
 const navItems: NavItem[] = [
   { href: "/white-label", label: "White Label" },
-  { href: "/white-label-leads", label: "Webinar" },
+  {
+    label: "Webinar",
+    children: [
+      { href: "/white-label-leads", label: "White Label" },
+      { href: "/machine-sourcing-webinar", label: "Machine Sourcing" },
+    ],
+  },
 ];
 
 export default function MarketingTopNav({
@@ -55,11 +61,39 @@ export default function MarketingTopNav({
         </div>
         <div className="ml-auto hidden items-center justify-end gap-6 lg:flex">
           <nav className={`flex items-center gap-6 text-sm font-semibold ${navTextClassName}`}>
-            {navItems.map((item) => (
-              <Link key={item.href} href={item.href} className={navHoverClassName}>
-                {item.label}
-              </Link>
-            ))}
+            {navItems.map((item) =>
+              item.children ? (
+                <div key={item.label} className="relative group">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-2 ${navHoverClassName}`}
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                  >
+                    {item.label}
+                    <span className="text-xs">▾</span>
+                  </button>
+                  <span className="pointer-events-none absolute left-0 top-full h-4 w-full" />
+                  <div
+                    className={`absolute left-0 top-full z-40 mt-3 w-44 rounded-2xl border bg-white/95 p-2 text-sm font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 ${menuBorderClassName} ${menuTextClassName}`}
+                  >
+                    {item.children.map((child) => (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className={`block rounded-xl px-3 py-2 ${menuHoverClassName}`}
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Link key={item.href || item.label} href={item.href || "#"} className={navHoverClassName}>
+                  {item.label}
+                </Link>
+              )
+            )}
           </nav>
           <Link
             href="/sign-in"

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-type NavItem = { href: string; label: string };
+type NavItem = { href?: string; label: string; children?: { href: string; label: string }[] };
 
 export default function MarketingTopNavMenu({
   navItems,
@@ -58,22 +58,44 @@ export default function MarketingTopNavMenu({
               >
                 Start Sourcing
               </Link>
-              {navItems.map((item) =>
-                item.label === disabledNavLabel ? (
-                  <span key={item.href} className={`cursor-default ${disabledNavClassName}`}>
-                    {item.label}
-                  </span>
-                ) : (
+              {navItems.map((item) => {
+                if (item.label === disabledNavLabel) {
+                  return (
+                    <span key={item.label} className={`cursor-default ${disabledNavClassName}`}>
+                      {item.label}
+                    </span>
+                  );
+                }
+                if (item.children) {
+                  return (
+                    <div key={item.label} className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                        {item.label}
+                      </span>
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={menuHoverClassName}
+                          onClick={() => setMenuOpen(false)}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  );
+                }
+                return (
                   <Link
-                    key={item.href}
-                    href={item.href}
+                    key={item.href || item.label}
+                    href={item.href || "#"}
                     className={menuHoverClassName}
                     onClick={() => setMenuOpen(false)}
                   >
                     {item.label}
                   </Link>
-                )
-              )}
+                );
+              })}
             </div>
           </div>
         </>
