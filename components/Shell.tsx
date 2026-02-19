@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import FloatingWhatsAppButton from "@/components/FloatingWhatsAppButton";
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -11,6 +12,13 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isWhiteLabelWebinar = pathname.startsWith("/white-label-webinar");
   const isMachineSourcingLeads = pathname.startsWith("/machine-sourcing-webinar");
   const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
+  const isWhiteLabelMarketing = pathname === "/white-label" || isWhiteLabelLeads || isWhiteLabelWebinar;
+  const isMachineWebinarMarketing = isMachineSourcingLeads || isMachineSourcingWebinar;
+  const isMarketing =
+    pathname.startsWith("/white-label") ||
+    pathname.startsWith("/machines") ||
+    pathname.startsWith("/machine-sourcing-webinar") ||
+    pathname.startsWith("/machine-sourcing-webinar-video");
   const isLanding =
     pathname === "/" ||
     pathname.startsWith("/account-deletion") ||
@@ -19,7 +27,18 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isAgentApp = pathname.startsWith("/agent-app");
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
   const isAccountDeletion = pathname.startsWith("/account-deletion");
-  const isApp = pathname.startsWith("/dashboard") || pathname.startsWith("/machine") || pathname.startsWith("/conversations") || pathname.startsWith("/projects") || pathname.startsWith("/quotes") || pathname.startsWith("/payments") || pathname.startsWith("/wallet") || pathname.startsWith("/profile") || pathname.startsWith("/paystack") || pathname.startsWith("/white-label") || pathname.startsWith("/sourcing-project");
+  const isApp =
+    pathname.startsWith("/dashboard") ||
+    (pathname.startsWith("/machine") && !isMachineWebinarMarketing) ||
+    pathname.startsWith("/conversations") ||
+    pathname.startsWith("/projects") ||
+    pathname.startsWith("/quotes") ||
+    pathname.startsWith("/payments") ||
+    pathname.startsWith("/wallet") ||
+    pathname.startsWith("/profile") ||
+    pathname.startsWith("/paystack") ||
+    (pathname.startsWith("/white-label") && !isWhiteLabelMarketing) ||
+    pathname.startsWith("/sourcing-project");
   const isNoStretch =
     isWhiteLabelLeads ||
     isWhiteLabelWebinar ||
@@ -32,12 +51,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       ? "flex min-h-screen flex-col"
       : "min-h-screen flex flex-col";
 
+  const showFloatingWhatsApp =
+    !isInternal && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote;
+
   return (
     <div className={shellClass}>
-      {!isInternal && !isLanding && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote ? <Navbar /> : null}
+      {!isInternal && !isLanding && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote && !isMarketing ? <Navbar /> : null}
       {isLanding ? children : (
         <main className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</main>
       )}
+      {showFloatingWhatsApp ? <FloatingWhatsAppButton /> : null}
     </div>
   );
 }
