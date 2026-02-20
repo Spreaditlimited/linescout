@@ -280,6 +280,9 @@ export default function HandoffDetailPage() {
 
   // Cancel confirm
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [sendQuoteOpen, setSendQuoteOpen] = useState(false);
+  const [sendQuoteLoading, setSendQuoteLoading] = useState(false);
+  const [sendQuoteMsg, setSendQuoteMsg] = useState<string | null>(null);
 
   const authed = useMemo(() => !!(me && "ok" in me && me.ok), [me]);
   const user = authed ? (me as any).user : null;
@@ -896,7 +899,7 @@ export default function HandoffDetailPage() {
               {quotes.length ? (
                 <div className="mt-3 space-y-2">
                   <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-xs text-neutral-200">
-                    <div className="text-neutral-400">Latest quote summary</div>
+                    <div className="text-neutral-400">Quote summary</div>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-emerald-200">
                         {fmtMoney(Number(quotes[0].total_due_ngn || 0), "NGN")}
@@ -904,46 +907,51 @@ export default function HandoffDetailPage() {
                       <span className="text-neutral-500">· {quotes[0].payment_purpose || "payment"}</span>
                     </div>
                   </div>
-                  {quotes.map((q) => (
-                    <div
-                      key={q.id}
-                      className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-950/50 px-3 py-2 text-xs text-neutral-200 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div>
-                        <div className="font-semibold">Quote #{q.id}</div>
-                        <div className="text-neutral-400">
-                          {q.payment_purpose || "payment"} · {q.created_by_name || "Agent"}
+                  <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-950/50 px-3 py-2 text-xs text-neutral-200 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="font-semibold">Quote #{quotes[0].id}</div>
+                      <div className="text-neutral-400">
+                        {quotes[0].payment_purpose || "payment"} · {quotes[0].created_by_name || "Agent"}
+                      </div>
+                      {String(quotes[0].agent_note || "").trim() ? (
+                        <div className="mt-1 max-w-xl whitespace-pre-line text-neutral-300">
+                          Note: {String(quotes[0].agent_note || "").trim()}
                         </div>
-                        {String(q.agent_note || "").trim() ? (
-                          <div className="mt-1 max-w-xl whitespace-pre-line text-neutral-300">
-                            Note: {String(q.agent_note || "").trim()}
-                          </div>
-                        ) : null}
-                        {q.created_at ? (
-                          <div className="text-neutral-500">{fmt(q.created_at)}</div>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-emerald-200 font-semibold">
-                          {fmtMoney(Number(q.total_due_ngn || 0), "NGN")}
-                        </span>
-                        <Link
-                          href={`/internal/quotes/${q.id}`}
-                          className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
-                        >
-                          Edit
-                        </Link>
-                        <a
-                          href={`/quote/${q.token}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
-                        >
-                          Open link
-                        </a>
-                      </div>
+                      ) : null}
+                      {quotes[0].created_at ? (
+                        <div className="text-neutral-500">{fmt(quotes[0].created_at)}</div>
+                      ) : null}
                     </div>
-                  ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-200 font-semibold">
+                        {fmtMoney(Number(quotes[0].total_due_ngn || 0), "NGN")}
+                      </span>
+                      <Link
+                        href={`/internal/quotes/${quotes[0].id}`}
+                        className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                      >
+                        Edit
+                      </Link>
+                      <a
+                        href={`/quote/${quotes[0].token}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                      >
+                        Open link
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setSendQuoteOpen(true)}
+                        className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                      >
+                        Send quote
+                      </button>
+                    </div>
+                  </div>
+                  {sendQuoteMsg ? (
+                    <div className="text-[11px] text-neutral-400">{sendQuoteMsg}</div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="mt-2 text-xs text-neutral-500">No quotes yet.</div>
@@ -1317,6 +1325,43 @@ export default function HandoffDetailPage() {
         danger
         onCancel={() => setCancelConfirmOpen(false)}
         onConfirm={confirmCancel}
+      />
+
+      <ConfirmModal
+        open={sendQuoteOpen}
+        title="Send quote to customer?"
+        description="This quote will be sent to the customer. You are sure everything is correct?"
+        confirmText={sendQuoteLoading ? "Sending..." : "Send"}
+        cancelText="Cancel"
+        onCancel={() => {
+          if (sendQuoteLoading) return;
+          setSendQuoteOpen(false);
+        }}
+        onConfirm={async () => {
+          if (!quotes.length || sendQuoteLoading) {
+            setSendQuoteOpen(false);
+            return;
+          }
+          setSendQuoteLoading(true);
+          setSendQuoteMsg(null);
+          try {
+            const res = await fetch("/api/internal/quotes/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ quote_id: quotes[0].id }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok) {
+              throw new Error(data?.error || "Failed to send quote.");
+            }
+            setSendQuoteMsg("Quote sent to customer.");
+          } catch (e: any) {
+            setSendQuoteMsg(e?.message || "Failed to send quote.");
+          } finally {
+            setSendQuoteLoading(false);
+            setSendQuoteOpen(false);
+          }
+        }}
       />
     </div>
   );

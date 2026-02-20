@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import AgentAppShell from "../_components/AgentAppShell";
 import PremiumSelect from "../_components/PremiumSelect";
+import ConfirmModal from "@/components/ConfirmModal";
 
 type ShippingRate = {
   id: number;
@@ -126,6 +127,9 @@ function QuoteBuilderInner() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [linkMsg, setLinkMsg] = useState<string | null>(null);
+  const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [locked, setLocked] = useState(queryReadOnly);
   const [lockReason, setLockReason] = useState<string | null>(queryReadOnly ? "Delivered projects are read-only." : null);
@@ -493,6 +497,12 @@ function QuoteBuilderInner() {
     const t = setTimeout(() => setSaveMsg(null), 2400);
     return () => clearTimeout(t);
   }, [saveMsg]);
+
+  useEffect(() => {
+    if (!sendMsg) return;
+    const t = setTimeout(() => setSendMsg(null), 2400);
+    return () => clearTimeout(t);
+  }, [sendMsg]);
 
   const addItem = () => {
     setItems((prev) => [
@@ -1150,8 +1160,16 @@ function QuoteBuilderInner() {
                     >
                       Share
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSendOpen(true)}
+                      className="rounded-full border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-[#2D3461] hover:bg-white"
+                    >
+                      Send quote
+                    </button>
                   </div>
                   {linkMsg ? <p className="mt-2 text-[11px] text-neutral-500">{linkMsg}</p> : null}
+                  {sendMsg ? <p className="mt-2 text-[11px] text-neutral-500">{sendMsg}</p> : null}
                 </div>
               ) : null}
             </div>
@@ -1220,6 +1238,45 @@ function QuoteBuilderInner() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={sendOpen}
+        title="Send quote to customer?"
+        description="This quote will be sent to the customer. You are sure everything is correct?"
+        confirmText={sendLoading ? "Sending..." : "Send"}
+        cancelText="Cancel"
+        variant="light"
+        onCancel={() => {
+          if (sendLoading) return;
+          setSendOpen(false);
+        }}
+        onConfirm={async () => {
+          if (!latestQuoteId || sendLoading) {
+            setSendOpen(false);
+            return;
+          }
+          setSendLoading(true);
+          setSendMsg(null);
+          try {
+            const res = await fetch("/api/internal/quotes/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ quote_id: latestQuoteId }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok) {
+              throw new Error(data?.error || "Failed to send quote.");
+            }
+            setSendMsg("Quote sent to customer.");
+          } catch (e: any) {
+            setSendMsg(e?.message || "Failed to send quote.");
+          } finally {
+            setSendLoading(false);
+            setSendOpen(false);
+          }
+        }}
+      />
     </AgentAppShell>
   );
 }
