@@ -36,6 +36,8 @@ type SettingsItem = {
   exchange_rate_rmb: number;
   payout_summary_email?: string | null;
   agent_otp_mode?: "phone" | "email" | null;
+  test_emails_json?: any;
+  max_active_claims?: number;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -118,6 +120,8 @@ export default function InternalSettingsPage() {
   const [exchangeRmb, setExchangeRmb] = useState("0");
   const [payoutSummaryEmail, setPayoutSummaryEmail] = useState("");
   const [agentOtpMode, setAgentOtpMode] = useState<"phone" | "email">("phone");
+  const [testEmailsText, setTestEmailsText] = useState("");
+  const [maxActiveClaims, setMaxActiveClaims] = useState("3");
 
   // Shipping types & rates
   const [shippingTypes, setShippingTypes] = useState<ShippingTypeItem[]>([]);
@@ -211,6 +215,27 @@ export default function InternalSettingsPage() {
       setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
       setPayoutSummaryEmail(String(item.payout_summary_email || ""));
       setAgentOtpMode(item.agent_otp_mode === "email" ? "email" : "phone");
+      setMaxActiveClaims(String(item.max_active_claims ?? 3));
+      if (item.test_emails_json) {
+        const raw = item.test_emails_json;
+        const parsed =
+          typeof raw === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(raw);
+                } catch {
+                  return null;
+                }
+              })()
+            : raw;
+        if (Array.isArray(parsed)) {
+          setTestEmailsText(parsed.filter(Boolean).join("\n"));
+        } else {
+          setTestEmailsText("");
+        }
+      } else {
+        setTestEmailsText("");
+      }
     } catch (e: any) {
       setSettingsErr(e?.message || "Failed to load settings");
     } finally {
@@ -238,6 +263,11 @@ export default function InternalSettingsPage() {
         exchange_rate_rmb: Number(exchangeRmb),
         payout_summary_email: payoutSummaryEmail.trim(),
         agent_otp_mode: agentOtpMode,
+        test_emails_json: testEmailsText
+          .split(/[\n,]/)
+          .map((v) => v.trim().toLowerCase())
+          .filter(Boolean),
+        max_active_claims: Number(maxActiveClaims),
       };
 
       const res = await fetch("/api/internal/settings", {
@@ -474,6 +504,11 @@ export default function InternalSettingsPage() {
     const rmbRate = Number(exchangeRmb);
     const payoutEmail = payoutSummaryEmail.trim();
     const otpModeOk = agentOtpMode === "phone" || agentOtpMode === "email";
+    const maxClaims = Number(maxActiveClaims);
+    const testEmails = testEmailsText
+      .split(/[\n,]/)
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
     const configOk = (label: string, list: Threshold[]) => {
       if (!Array.isArray(list) || list.length === 0) {
         errors.push(`${label} thresholds are required.`);
@@ -523,6 +558,12 @@ export default function InternalSettingsPage() {
     if (!otpModeOk) {
       errors.push("Agent OTP mode must be phone or email.");
     }
+    if (!Number.isFinite(maxClaims) || maxClaims < 1 || maxClaims > 100) {
+      errors.push("Max active claims must be between 1 and 100.");
+    }
+    if (testEmails.some((email) => !email.includes("@"))) {
+      errors.push("Test emails must be valid email addresses.");
+    }
     configOk("Claim speed (hours)", pointsConfig.claim_hours);
     configOk("Manufacturer found (hours)", pointsConfig.manufacturer_hours);
     configOk("Payment to shipped (days)", pointsConfig.ship_days);
@@ -540,6 +581,8 @@ export default function InternalSettingsPage() {
     exchangeRmb,
     payoutSummaryEmail,
     agentOtpMode,
+    testEmailsText,
+    maxActiveClaims,
   ]);
 
   const rateReady = useMemo(() => {
@@ -938,6 +981,18 @@ export default function InternalSettingsPage() {
             </div>
           </div>
           <div className="sm:col-span-3">
+            <label className="text-sm font-medium text-neutral-300">Test emails to exclude (optional)</label>
+            <textarea
+              value={testEmailsText}
+              onChange={(e) => setTestEmailsText(e.target.value)}
+              className="mt-2 min-h-[90px] w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="test1@example.com&#10;test2@example.com"
+            />
+            <div className="mt-1 text-xs text-neutral-400">
+              One email per line (or comma separated). Used for filtering test data in admin views.
+            </div>
+          </div>
+          <div className="sm:col-span-3">
             <label className="text-sm font-medium text-neutral-300">Agent OTP mode</label>
             <SearchableSelect
               className="mt-2"
@@ -950,6 +1005,19 @@ export default function InternalSettingsPage() {
             />
             <div className="mt-1 text-xs text-neutral-400">
               Controls agent verification during sign in and onboarding.
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-neutral-300">Max active claims (global)</label>
+            <input
+              value={maxActiveClaims}
+              onChange={(e) => setMaxActiveClaims(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="3"
+              inputMode="numeric"
+            />
+            <div className="mt-1 text-xs text-neutral-400">
+              Applies when none of an agent’s projects are shipped. Per-agent overrides can change this.
             </div>
           </div>
 

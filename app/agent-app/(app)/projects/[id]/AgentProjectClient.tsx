@@ -269,8 +269,9 @@ function ProjectDetailInner() {
 
   const productBalance = payments?.quote_summary?.product_balance ?? payments?.balance ?? 0;
   const productFullyPaid = payments?.quote_summary
-    ? Number(payments.quote_summary.product_balance || 0) <= 0 &&
-      Number(payments.quote_summary.product_paid || 0) > 0
+    ? Number(payments.quote_summary.product_due || 0) > 0 &&
+      Number(payments.quote_summary.product_paid || 0) >=
+        Number(payments.quote_summary.product_due || 0)
     : false;
   const shippingFullyPaid =
     payments?.quote_summary ? Number(payments.quote_summary.shipping_balance || 0) <= 0 : false;

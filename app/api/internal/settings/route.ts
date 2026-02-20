@@ -176,13 +176,45 @@ async function ensureRow(conn: mysql.PoolConnection) {
     );
   }
 
+  const [testEmailCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'test_emails_json'
+    LIMIT 1
+    `
+  );
+  if (!testEmailCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN test_emails_json JSON NULL`
+    );
+  }
+
+  const [claimLimitCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'max_active_claims'
+    LIMIT 1
+    `
+  );
+  if (!claimLimitCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN max_active_claims INT NOT NULL DEFAULT 3`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3)`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -227,6 +259,7 @@ export async function POST(req: Request) {
     body?.agent_otp_mode === "email" || body?.agent_otp_mode === "phone"
       ? body.agent_otp_mode
       : "phone";
+  const max_active_claims = num(body.max_active_claims);
   const hasStickyPayload =
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_enabled") ||
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_title") ||
@@ -243,6 +276,8 @@ export async function POST(req: Request) {
       ? body.sticky_notice_target
       : "both";
   const publish_sticky_notice = Boolean(body?.publish_sticky_notice);
+  const test_emails_json =
+    Array.isArray(body?.test_emails_json) ? body.test_emails_json : null;
 
   const values = {
     commitment_due_ngn,
@@ -252,6 +287,7 @@ export async function POST(req: Request) {
     exchange_rate_usd,
     exchange_rate_rmb,
     points_value_ngn,
+    max_active_claims,
   };
 
   const invalid = Object.entries(values).find(([, v]) => v == null || Number.isNaN(v));
@@ -293,11 +329,13 @@ export async function POST(req: Request) {
            points_config_json = ?,
            payout_summary_email = ?,
            agent_otp_mode = ?,
+           max_active_claims = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
            sticky_notice_target = ?,
            sticky_notice_version = ?,
+           test_emails_json = ?,
            updated_at = NOW()
        WHERE id = ?`,
       [
@@ -311,11 +349,13 @@ export async function POST(req: Request) {
         points_config_json ? JSON.stringify(points_config_json) : null,
         payout_summary_email || null,
         agent_otp_mode,
+        max_active_claims,
         effectiveEnabled,
         effectiveTitle || null,
         effectiveBody || null,
         effectiveTarget,
         newStickyVersion,
+        test_emails_json ? JSON.stringify(test_emails_json) : null,
         row.id,
       ]
     );

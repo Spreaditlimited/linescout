@@ -9,6 +9,40 @@ const nodemailer = require("nodemailer");
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+async function ensureClaimLimitColumns(conn: any) {
+  const [settingsCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'max_active_claims'
+    LIMIT 1
+    `
+  );
+  if (!settingsCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN max_active_claims INT NOT NULL DEFAULT 3`
+    );
+  }
+
+  const [permCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'internal_user_permissions'
+      AND column_name = 'claim_limit_override'
+    LIMIT 1
+    `
+  );
+  if (!permCols?.length) {
+    await conn.query(
+      `ALTER TABLE internal_user_permissions ADD COLUMN claim_limit_override INT NULL`
+    );
+  }
+}
+
 function buildClaimedEmail() {
   return buildNoticeEmail({
     subject: "Your LineScout paid chat has been claimed",
@@ -162,6 +196,23 @@ export async function POST(req: Request) {
     await conn.beginTransaction();
 
     if (auth.role !== "admin") {
+      await ensureClaimLimitColumns(conn);
+
+      const [settingsRows]: any = await conn.query(
+        `SELECT max_active_claims FROM linescout_settings ORDER BY id DESC LIMIT 1`
+      );
+      const globalLimit = Number(settingsRows?.[0]?.max_active_claims || 3);
+
+      const [overrideRows]: any = await conn.query(
+        `SELECT claim_limit_override FROM internal_user_permissions WHERE user_id = ? LIMIT 1`,
+        [auth.userId]
+      );
+      const overrideLimit = overrideRows?.[0]?.claim_limit_override;
+      const effectiveLimit =
+        Number.isFinite(Number(overrideLimit)) && Number(overrideLimit) > 0
+          ? Number(overrideLimit)
+          : globalLimit;
+
       const [limitRows]: any = await conn.query(
         `
         SELECT COUNT(*) AS n
@@ -176,10 +227,13 @@ export async function POST(req: Request) {
       );
 
       const ongoing = Number(limitRows?.[0]?.n || 0);
-      if (ongoing >= 3) {
+      if (ongoing >= effectiveLimit) {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "You already have 3 ongoing projects. Complete or ship one before claiming a new project." },
+          {
+            ok: false,
+            error: `You already have ${effectiveLimit} ongoing projects. Complete or ship one before claiming a new project.`,
+          },
           { status: 403 }
         );
       }

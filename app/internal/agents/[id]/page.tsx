@@ -15,6 +15,7 @@ type AgentDetail = {
       can_view_leads: boolean;
       can_view_handoffs: boolean;
       can_view_analytics: boolean;
+      claim_limit_override: number | null;
     };
     profile: {
       first_name: string | null;
@@ -98,6 +99,8 @@ export default function AgentDetailsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmHandoff, setConfirmHandoff] = useState<number | null>(null);
   const [confirmConversation, setConfirmConversation] = useState<number | null>(null);
+  const [claimLimitOverride, setClaimLimitOverride] = useState("");
+  const [savingLimit, setSavingLimit] = useState(false);
 
   const load = async () => {
     if (!agentId) return;
@@ -110,6 +113,8 @@ export default function AgentDetailsPage() {
         throw new Error(json?.error || `Failed (${res.status})`);
       }
       setData(json);
+      const limit = json?.agent?.permissions?.claim_limit_override;
+      setClaimLimitOverride(limit == null ? "" : String(limit));
     } catch (e: any) {
       setErr(e?.message || "Failed to load agent.");
     } finally {
@@ -174,6 +179,55 @@ export default function AgentDetailsPage() {
               <div>NIN: <span className="text-neutral-100">{agent.profile.nin || "—"}</span></div>
               <div>Address: <span className="text-neutral-100">{agent.profile.full_address || "—"}</span></div>
               <div>Approval: <span className="text-neutral-100">{agent.profile.approval_status || "pending"}</span></div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                Claim Limit Override
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  value={claimLimitOverride}
+                  onChange={(e) => setClaimLimitOverride(e.target.value)}
+                  placeholder="Blank = use global"
+                  className="w-44 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  inputMode="numeric"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSavingLimit(true);
+                    setMsg(null);
+                    try {
+                      const raw = claimLimitOverride.trim();
+                      const payload =
+                        raw === "" ? { claim_limit_override: null } : { claim_limit_override: Number(raw) };
+                      const res = await fetch(`/api/internal/admin/agents/${agentId}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                      });
+                      const json = await res.json().catch(() => null);
+                      if (!res.ok || !json?.ok) {
+                        throw new Error(json?.error || "Failed to save override.");
+                      }
+                      setMsg("Claim limit override saved.");
+                      await load();
+                    } catch (e: any) {
+                      setMsg(e?.message || "Failed to save override.");
+                    } finally {
+                      setSavingLimit(false);
+                    }
+                  }}
+                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+                  disabled={savingLimit}
+                >
+                  {savingLimit ? "Saving..." : "Save"}
+                </button>
+                <div className="text-xs text-neutral-400">
+                  Set a numeric limit (1–100) to override the global cap.
+                </div>
+              </div>
             </div>
           </section>
 

@@ -24,6 +24,24 @@ function num(v: any, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+async function ensurePermissionColumns(conn: any) {
+  const [permCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'internal_user_permissions'
+      AND column_name = 'claim_limit_override'
+    LIMIT 1
+    `
+  );
+  if (!permCols?.length) {
+    await conn.query(
+      `ALTER TABLE internal_user_permissions ADD COLUMN claim_limit_override INT NULL`
+    );
+  }
+}
+
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -127,6 +145,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const conn = await db.getConnection();
   try {
+    await ensurePermissionColumns(conn);
     const [agentRows]: any = await conn.query(
       `
       SELECT
@@ -139,6 +158,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         COALESCE(p.can_view_leads, 0) AS can_view_leads,
         COALESCE(p.can_view_handoffs, 0) AS can_view_handoffs,
         COALESCE(p.can_view_analytics, 0) AS can_view_analytics,
+        p.claim_limit_override,
         ap.first_name,
         ap.last_name,
         ap.email AS profile_email,
@@ -200,8 +220,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         h.shipped_at,
         h.delivered_at,
         c.id AS conversation_id,
-        c.project_status,
-        c.last_message_at
+        c.project_status
       FROM linescout_handoffs h
       JOIN linescout_conversations c ON c.handoff_id = h.id
       WHERE c.assigned_agent_id = ?
@@ -293,7 +312,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         whatsapp_number: String(p.whatsapp_number || ""),
         created_at: p.created_at,
         claimed_at: p.claimed_at,
-        last_message_at: p.last_message_at,
         claim_hours: claimHours != null ? Number(claimHours.toFixed(2)) : null,
         quote_count: quotes ? Number(quotes.quote_count || 0) : 0,
         latest_quote_id: quotes ? Number(quotes.latest_quote_id || 0) : null,
@@ -317,6 +335,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
           can_view_leads: !!a.can_view_leads,
           can_view_handoffs: !!a.can_view_handoffs,
           can_view_analytics: !!a.can_view_analytics,
+          claim_limit_override: a.claim_limit_override != null ? Number(a.claim_limit_override) : null,
         },
         profile: {
           first_name: a.first_name ? String(a.first_name) : null,
@@ -353,6 +372,49 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       projects: projectItems,
       points_max: maxPoints,
     });
+  } finally {
+    conn.release();
+  }
+}
+
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdmin();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+  const { id } = await ctx.params;
+  const agentId = Number(id || 0);
+  if (!Number.isFinite(agentId) || agentId <= 0) {
+    return NextResponse.json({ ok: false, error: "Invalid agent id" }, { status: 400 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const raw = body?.claim_limit_override;
+  const value =
+    raw === null || raw === undefined || raw === ""
+      ? null
+      : Number(raw);
+
+  if (value !== null && (!Number.isFinite(value) || value < 1 || value > 100)) {
+    return NextResponse.json(
+      { ok: false, error: "Claim limit override must be between 1 and 100." },
+      { status: 400 }
+    );
+  }
+
+  const conn = await db.getConnection();
+  try {
+    await ensurePermissionColumns(conn);
+
+    await conn.query(
+      `
+      INSERT INTO internal_user_permissions (user_id, claim_limit_override)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE claim_limit_override = VALUES(claim_limit_override)
+      `,
+      [agentId, value]
+    );
+
+    return NextResponse.json({ ok: true, claim_limit_override: value });
   } finally {
     conn.release();
   }
