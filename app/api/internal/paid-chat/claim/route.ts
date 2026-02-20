@@ -41,6 +41,22 @@ async function ensureClaimLimitColumns(conn: any) {
       `ALTER TABLE internal_user_permissions ADD COLUMN claim_limit_override INT NULL`
     );
   }
+
+  const [blockCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_conversations'
+      AND column_name = 'claim_blocked_agent_id'
+    LIMIT 1
+    `
+  );
+  if (!blockCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_conversations ADD COLUMN claim_blocked_agent_id BIGINT UNSIGNED NULL`
+    );
+  }
 }
 
 function buildClaimedEmail() {
@@ -240,7 +256,7 @@ export async function POST(req: Request) {
     }
 
     const [rows]: any = await conn.query(
-      `SELECT id, user_id, assigned_agent_id, chat_mode, payment_status, project_status, handoff_id
+      `SELECT id, user_id, assigned_agent_id, chat_mode, payment_status, project_status, handoff_id, claim_blocked_agent_id
        FROM linescout_conversations
        WHERE id = ?
        LIMIT 1`,
@@ -255,6 +271,8 @@ export async function POST(req: Request) {
     const conv = rows[0];
     const assigned = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
     const customerId = conv.user_id == null ? null : Number(conv.user_id);
+    const blockedAgentId =
+      conv.claim_blocked_agent_id == null ? null : Number(conv.claim_blocked_agent_id);
 
     // Only claim paid chats that are active
     const chatMode = String(conv.chat_mode || "");
@@ -271,13 +289,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "This project is cancelled." }, { status: 403 });
     }
 
+    if (auth.role !== "admin" && blockedAgentId && blockedAgentId === auth.userId) {
+      await conn.rollback();
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "You cannot claim this project because it was returned to the pool by admin. Please claim another project.",
+        },
+        { status: 403 }
+      );
+    }
+
     // If already assigned
     if (assigned) {
       if (auth.role === "admin" && assigned !== auth.userId) {
         // Admin can take over
         await conn.query(
           `UPDATE linescout_conversations
-           SET assigned_agent_id = ?, updated_at = CURRENT_TIMESTAMP
+           SET assigned_agent_id = ?, claim_blocked_agent_id = NULL, updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
           [auth.userId, conversationId]
         );
@@ -318,7 +348,7 @@ export async function POST(req: Request) {
     // Not assigned: claim it
     await conn.query(
       `UPDATE linescout_conversations
-       SET assigned_agent_id = ?, updated_at = CURRENT_TIMESTAMP
+       SET assigned_agent_id = ?, claim_blocked_agent_id = NULL, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?
          AND assigned_agent_id IS NULL`,
       [auth.userId, conversationId]

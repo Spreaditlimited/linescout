@@ -2,10 +2,90 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import type { Transporter } from "nodemailer";
+import { buildNoticeEmail } from "@/lib/otp-email";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const nodemailer = require("nodemailer");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  return { ok: true as const, host, port, user, pass, from };
+}
+
+async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
+  const smtp = getSmtpConfig();
+  if (!smtp.ok) return { ok: false as const, error: smtp.error };
+
+  const transporter: Transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.pass },
+  });
+
+  await transporter.sendMail({
+    from: smtp.from,
+    to: opts.to,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+
+  return { ok: true as const };
+}
+
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
+
+async function ensureClaimBlockColumn(conn: any) {
+  const [blockCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_conversations'
+      AND column_name = 'claim_blocked_agent_id'
+    LIMIT 1
+    `
+  );
+  if (!blockCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_conversations ADD COLUMN claim_blocked_agent_id BIGINT UNSIGNED NULL`
+    );
+  }
+}
 async function requireInternalAccess() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -77,9 +157,10 @@ export async function POST(req: Request) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    await ensureClaimBlockColumn(conn);
 
     const [rows]: any = await conn.query(
-      `SELECT id, assigned_agent_id, handoff_id, project_status
+      `SELECT id, assigned_agent_id, handoff_id, project_status, route_type
        FROM linescout_conversations
        WHERE id = ?
        LIMIT 1`,
@@ -111,10 +192,10 @@ export async function POST(req: Request) {
         [handoffId]
       );
       const status = String(hrows?.[0]?.status || "pending").trim().toLowerCase();
-      if (!["pending", "manufacturer_found", ""].includes(status)) {
+      if (!["claimed", "manufacturer_found", ""].includes(status)) {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "You can only release projects that are pending or manufacturer found." },
+          { ok: false, error: "You can only release projects that are claimed or manufacturer found." },
           { status: 403 }
         );
       }
@@ -165,11 +246,12 @@ export async function POST(req: Request) {
       );
     }
 
+    const blockAgentId = auth.role === "admin" ? assigned : null;
     await conn.query(
       `UPDATE linescout_conversations
-       SET assigned_agent_id = NULL, updated_at = CURRENT_TIMESTAMP
+       SET assigned_agent_id = NULL, claim_blocked_agent_id = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ? AND assigned_agent_id = ?`,
-      [conversationId, assigned]
+      [blockAgentId, conversationId, assigned]
     );
 
     if (handoffId) {
@@ -180,13 +262,83 @@ export async function POST(req: Request) {
             claimed_by = NULL,
             claimed_at = NULL
         WHERE id = ?
-          AND (status = 'pending' OR status = 'manufacturer_found' OR status IS NULL)
+          AND (status = 'claimed' OR status = 'manufacturer_found' OR status IS NULL)
         `,
         [handoffId]
       );
     }
 
     await conn.commit();
+
+    if (auth.role === "admin" && handoffId) {
+      try {
+        const [handoffRows]: any = await conn.query(
+          `SELECT token, handoff_type, customer_name FROM linescout_handoffs WHERE id = ? LIMIT 1`,
+          [handoffId]
+        );
+        const h = handoffRows?.[0] || null;
+        const customerLabel =
+          (h?.customer_name ? String(h.customer_name).trim() : "") || "Customer";
+        const handoffLabel = h?.token ? String(h.token).trim() : `Handoff #${handoffId}`;
+        const routeType = String(h?.handoff_type || conv.route_type || "sourcing").trim();
+
+        const [trows]: any = await conn.query(
+          `
+          SELECT t.token
+          FROM linescout_agent_device_tokens t
+          JOIN internal_users u ON u.id = t.agent_id
+          JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+          WHERE t.is_active = 1
+            AND u.is_active = 1
+            AND ap.approval_status = 'approved'
+          `
+        );
+        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        await sendExpoPush(tokens, {
+          title: "New paid chat available",
+          body: `${customerLabel} has a paid chat ready to claim.`,
+          data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: routeType },
+        });
+
+        const [emailRows]: any = await conn.query(
+          `
+          SELECT ap.email
+          FROM linescout_agent_profiles ap
+          JOIN internal_users u ON u.id = ap.internal_user_id
+          WHERE u.is_active = 1
+            AND ap.approval_status = 'approved'
+            AND COALESCE(ap.email_notifications_enabled, 1) = 1
+            AND ap.email IS NOT NULL
+            AND ap.email <> ''
+          `
+        );
+        const emails = (emailRows || [])
+          .map((r: any) => String(r.email || "").trim())
+          .filter(Boolean);
+
+        for (const email of emails) {
+          const mail = buildNoticeEmail({
+            subject: "New paid chat available",
+            title: "New paid chat",
+            lines: [
+              `${customerLabel} has a paid chat ready to claim.`,
+              `Route: ${routeType}`,
+              `Handoff: ${handoffLabel}`,
+              "Open the LineScout Agent app to claim this project.",
+            ],
+            footerNote:
+              "This email was sent because a paid chat was returned to the pool for LineScout agents.",
+          });
+          await sendEmail({
+            to: email,
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
+          });
+        }
+      } catch {}
+    }
+
     return NextResponse.json({ ok: true, conversation_id: conversationId, released: true });
   } catch (e: any) {
     try {
