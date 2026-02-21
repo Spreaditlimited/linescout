@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import SearchableSelect from "../../internal/_components/SearchableSelect";
 
 type ProfileResponse = {
   ok?: boolean;
@@ -10,6 +11,11 @@ type ProfileResponse = {
   first_name?: string;
   last_name?: string;
   phone?: string;
+  country_id?: number | null;
+  display_currency_code?: string | null;
+  countries?: { id: number; name: string; iso2: string; default_currency_id?: number | null }[];
+  currencies?: { id: number; code: string; symbol?: string | null }[];
+  country_currencies?: { country_id: number; currency_id: number }[];
   error?: string;
 };
 
@@ -19,6 +25,10 @@ export default function ProfilePage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  const [countries, setCountries] = useState<ProfileResponse["countries"]>([]);
+  const [currencies, setCurrencies] = useState<ProfileResponse["currencies"]>([]);
+  const [countryId, setCountryId] = useState<number | "">("");
+  const [displayCurrencyCode, setDisplayCurrencyCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -45,6 +55,10 @@ export default function ProfilePage() {
         setFirstName(String(json?.first_name || ""));
         setLastName(String(json?.last_name || ""));
         setPhone(String(json?.phone || ""));
+        setCountries(Array.isArray(json?.countries) ? json.countries : []);
+        setCurrencies(Array.isArray(json?.currencies) ? json.currencies : []);
+        setCountryId(typeof json?.country_id === "number" ? json.country_id : "");
+        setDisplayCurrencyCode(String(json?.display_currency_code || ""));
         setStatus("idle");
       }
     }
@@ -53,6 +67,14 @@ export default function ProfilePage() {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!countryId) return;
+    if (displayCurrencyCode) return;
+    const next = getCountryDefaultCurrency(countryId);
+    if (next) setDisplayCurrencyCode(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryId, countries, currencies]);
 
   async function handleSignOut() {
     await authFetch("/api/auth/sign-out", { method: "POST" });
@@ -67,7 +89,13 @@ export default function ProfilePage() {
     const res = await authFetch("/api/mobile/profile", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ first_name: firstName, last_name: lastName, phone }),
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        country_id: countryId || null,
+        display_currency_code: null,
+      }),
     });
 
     const json: ProfileResponse = await res.json().catch(() => ({}));
@@ -81,8 +109,26 @@ export default function ProfilePage() {
     setFirstName(String(json?.first_name || firstName));
     setLastName(String(json?.last_name || lastName));
     setPhone(String(json?.phone || phone));
+    setCountryId(typeof json?.country_id === "number" ? json.country_id : countryId);
+    setDisplayCurrencyCode(String(json?.display_currency_code || displayCurrencyCode));
     setStatus("idle");
     setMessage("Profile updated.");
+  }
+
+  const countryOptions = [{ value: "", label: "Select country" }].concat(
+    (countries || []).map((c) => ({
+      value: String(c.id),
+      label: `${c.name} (${c.iso2})`,
+    }))
+  );
+
+  function getCountryDefaultCurrency(nextCountryId: number | "") {
+    if (!nextCountryId) return "";
+    const country = (countries || []).find((c) => Number(c.id) === Number(nextCountryId));
+    const defaultCurrencyId = country?.default_currency_id ? Number(country.default_currency_id) : null;
+    if (!defaultCurrencyId) return "";
+    const currency = (currencies || []).find((c) => Number(c.id) === defaultCurrencyId);
+    return currency?.code ? String(currency.code) : "";
   }
 
   return (
@@ -155,6 +201,31 @@ export default function ProfilePage() {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+234 801 234 5678"
               className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-neutral-600">Country</label>
+            <SearchableSelect
+              value={countryId === "" ? "" : String(countryId)}
+              onChange={(value) => {
+                const next = value ? Number(value) : "";
+                setCountryId(next);
+                setDisplayCurrencyCode(getCountryDefaultCurrency(next));
+              }}
+              options={countryOptions}
+              placeholder="Select country"
+              variant="light"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-neutral-600">Display currency</label>
+            <input
+              type="text"
+              value={displayCurrencyCode}
+              disabled
+              className="w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-700 shadow-sm"
             />
           </div>
 

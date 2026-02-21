@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { ensureCountryConfig, ensureShippingRateCountryColumn } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,12 +91,17 @@ async function ensureSettings(conn: any) {
   return after?.[0] || null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireInternalSession();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
+  const { searchParams } = new URL(req.url);
+  const countryId = Number(searchParams.get("country_id") || 0);
+
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const settings = await ensureSettings(conn);
     const [types]: any = await conn.query(
       `SELECT id, name, is_active
@@ -103,20 +109,40 @@ export async function GET() {
        WHERE is_active = 1
        ORDER BY id DESC`
     );
+    const [countries]: any = await conn.query(
+      `SELECT id, name, iso2, iso3, is_active
+       FROM linescout_countries
+       WHERE is_active = 1
+       ORDER BY name ASC`
+    );
+    const rateParams: any[] = [];
+    const rateWhere = countryId ? "AND r.country_id = ?" : "";
+    if (countryId) rateParams.push(countryId);
     const [rates]: any = await conn.query(
       `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit, r.currency, r.is_active,
+              r.country_id, c.name AS country_name, c.iso2 AS country_iso2,
               t.name AS shipping_type_name
        FROM linescout_shipping_rates r
        JOIN linescout_shipping_types t ON t.id = r.shipping_type_id
+       LEFT JOIN linescout_countries c ON c.id = r.country_id
        WHERE r.is_active = 1
-       ORDER BY r.id DESC`
+       ${rateWhere}
+       ORDER BY r.id DESC`,
+      rateParams
+    );
+    const [fxRates]: any = await conn.query(
+      `SELECT base_currency_code, quote_currency_code, rate, effective_at, created_at
+       FROM linescout_fx_rates
+       ORDER BY effective_at DESC, id DESC`
     );
 
     return NextResponse.json({
       ok: true,
       settings: settings || null,
+      countries: countries || [],
       shipping_types: types || [],
       shipping_rates: rates || [],
+      fx_rates: fxRates || [],
     });
   } finally {
     conn.release();

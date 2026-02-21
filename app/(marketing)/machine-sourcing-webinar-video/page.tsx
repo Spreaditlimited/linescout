@@ -65,7 +65,7 @@ export default function MachineSourcingWebinarVideoPage() {
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-700 sm:text-base">
             This session walks you through machine selection, supplier vetting, shipping, and
-            launch steps for Nigeria. Presented by Tochukwu Nkwocha.
+            launch steps for your market. Presented by Tochukwu Nkwocha.
           </p>
           <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--agent-blue)]">
             Trusted by 40,000+ entrepreneurs

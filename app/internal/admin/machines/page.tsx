@@ -372,7 +372,7 @@ export default function MachinesAdminPage() {
       <div>
         <h1 className="text-2xl font-semibold">Machines Catalog</h1>
         <p className="mt-2 text-sm text-neutral-400">
-          Manage agro-processing machines, view counts, and landed cost estimates for Lagos.
+          Manage agro-processing machines, view counts, and landed cost estimates for your market.
         </p>
       </div>
 
@@ -449,7 +449,7 @@ export default function MachinesAdminPage() {
           />
           <textarea
             className="min-h-[80px] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-            placeholder="Why it sells in Nigeria"
+            placeholder="Why it sells in your market"
             value={form.why_sells}
             onChange={(e) => setForm((s) => ({ ...s, why_sells: e.target.value }))}
           />

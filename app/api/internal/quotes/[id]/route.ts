@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { getFxRate } from "@/lib/fx";
+import {
+  ensureCountryConfig,
+  ensureQuoteCountryColumns,
+  ensureHandoffCountryColumns,
+  backfillQuoteDefaults,
+  backfillHandoffDefaults,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -171,6 +179,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureHandoffCountryColumns(conn);
+    await ensureQuoteCountryColumns(conn);
+    await backfillHandoffDefaults(conn);
+    await backfillQuoteDefaults(conn);
+
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     const [handoffStageRows]: any = await conn.query(
@@ -190,8 +204,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     }
 
     const [rows]: any = await conn.query(
-      `SELECT q.*
+      `SELECT q.*, c.name AS country_name, c.iso2 AS country_iso2
        FROM linescout_quotes q
+       LEFT JOIN linescout_countries c ON c.id = q.country_id
        WHERE q.id = ?
        LIMIT 1`,
       [quoteId]
@@ -220,8 +235,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ ok: false, error: "At least one valid item is required" }, { status: 400 });
   }
 
-  const exchange_rate_rmb = num(body?.exchange_rate_rmb, 0);
-  const exchange_rate_usd = num(body?.exchange_rate_usd, 0);
   const shipping_rate_usd = num(body?.shipping_rate_usd, 0);
   const shipping_rate_unit = String(body?.shipping_rate_unit || "per_kg");
   const shipping_type_id = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
@@ -237,8 +250,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const includeAgentNote = Object.prototype.hasOwnProperty.call(body || {}, "agent_note");
   const agent_note = String(body?.agent_note || "").trim();
 
-  if (exchange_rate_rmb <= 0 || exchange_rate_usd <= 0 || shipping_rate_usd <= 0) {
-    return NextResponse.json({ ok: false, error: "Exchange rates and shipping rate must be greater than 0" }, { status: 400 });
+  if (shipping_rate_usd <= 0) {
+    return NextResponse.json({ ok: false, error: "Shipping rate must be greater than 0" }, { status: 400 });
   }
   if (shipping_rate_unit !== "per_kg" && shipping_rate_unit !== "per_cbm") {
     return NextResponse.json({ ok: false, error: "Invalid shipping_rate_unit" }, { status: 400 });
@@ -247,12 +260,30 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ ok: false, error: "Deposit percent must be between 1 and 100" }, { status: 400 });
   }
 
-  const totals = computeTotals(items, exchange_rate_rmb, exchange_rate_usd, shipping_rate_usd, shipping_rate_unit, markup_percent);
-
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureHandoffCountryColumns(conn);
+    await ensureQuoteCountryColumns(conn);
+    await backfillHandoffDefaults(conn);
+    await backfillQuoteDefaults(conn);
+
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    const exchange_rate_rmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
+    const exchange_rate_usd = (await getFxRate(conn, "USD", "NGN")) || 0;
+    if (!exchange_rate_rmb || !exchange_rate_usd) {
+      return NextResponse.json({ ok: false, error: "FX rates for NGN are not configured." }, { status: 500 });
+    }
+
+    const totals = computeTotals(
+      items,
+      exchange_rate_rmb,
+      exchange_rate_usd,
+      shipping_rate_usd,
+      shipping_rate_unit,
+      markup_percent
+    );
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const updateAgentNote = supportsAgentNote && includeAgentNote;
     const setNoteSql = updateAgentNote ? "agent_note = ?," : "";

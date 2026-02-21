@@ -3,6 +3,11 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { findReviewerByEmail, normalizeEmail } from "@/lib/reviewer-accounts";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
+import {
+  ensureCountryConfig,
+  ensureUserCountryColumns,
+  getNigeriaDefaults,
+} from "@/lib/country-config";
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -42,6 +47,9 @@ export async function POST(req: Request) {
     const userAgent = req.headers.get("user-agent");
 
     conn = await getDb();
+    await ensureCountryConfig(conn);
+    await ensureUserCountryColumns(conn);
+    const defaults = await getNigeriaDefaults(conn);
 
     // Reviewer bypass
     const reviewer = await findReviewerByEmail(conn, "mobile", email);
@@ -64,8 +72,8 @@ export async function POST(req: Request) {
         userId = Number(urows[0].id);
       } else {
         const [ins]: any = await conn.execute(
-          "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
-          [emailRaw.trim(), email]
+          "INSERT INTO users (email, email_normalized, country_id, display_currency_code) VALUES (?, ?, ?, ?)",
+          [emailRaw.trim(), email, defaults.country_id || null, defaults.display_currency_code || null]
         );
         userId = Number(ins.insertId);
       }
@@ -145,8 +153,8 @@ export async function POST(req: Request) {
       userId = Number(urows[0].id);
     } else {
       const [ins]: any = await conn.execute(
-        "INSERT INTO users (email, email_normalized) VALUES (?, ?)",
-        [emailRaw.trim(), email]
+        "INSERT INTO users (email, email_normalized, country_id, display_currency_code) VALUES (?, ?, ?, ?)",
+        [emailRaw.trim(), email, defaults.country_id || null, defaults.display_currency_code || null]
       );
       userId = Number(ins.insertId);
     }

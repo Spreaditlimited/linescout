@@ -5,11 +5,21 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 
-const money = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  maximumFractionDigits: 0,
-});
+function formatMoney(value: number, currency?: string | null) {
+  const code = String(currency || "NGN").toUpperCase();
+  const n = Number(value || 0);
+  const safe = Number.isFinite(n) ? n : 0;
+  try {
+    return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-NG", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: code === "NGN" ? 0 : 2,
+    }).format(safe);
+  } catch {
+    const symbol = code === "GBP" ? "£" : code === "USD" ? "$" : "₦";
+    return `${symbol}${safe.toLocaleString()}`;
+  }
+}
 
 const shortDate = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -21,6 +31,7 @@ type QuoteSummary = {
   product_name: string | null;
   quantity: number;
   due_amount: number;
+  due_amount_display?: number | null;
   shipping_type: string | null;
   product_due: number;
   product_paid: number;
@@ -28,6 +39,13 @@ type QuoteSummary = {
   shipping_due: number;
   shipping_paid: number;
   shipping_balance: number;
+  display_currency_code?: string | null;
+  product_due_display?: number | null;
+  shipping_due_display?: number | null;
+  product_paid_display?: number | null;
+  shipping_paid_display?: number | null;
+  product_balance_display?: number | null;
+  shipping_balance_display?: number | null;
 };
 
 type PaymentItem = {
@@ -204,6 +222,24 @@ export default function ProjectDetailPage() {
             <h2 className="text-lg font-semibold text-neutral-900">Quote snapshot</h2>
             {data.quote_summary ? (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {(() => {
+                  const currency = data.quote_summary.display_currency_code || "NGN";
+                  const dueAmount =
+                    data.quote_summary.due_amount_display ?? data.quote_summary.due_amount ?? 0;
+                  const productDue =
+                    data.quote_summary.product_due_display ?? data.quote_summary.product_due ?? 0;
+                  const productPaid =
+                    data.quote_summary.product_paid_display ?? data.quote_summary.product_paid ?? 0;
+                  const productBalance =
+                    data.quote_summary.product_balance_display ?? data.quote_summary.product_balance ?? 0;
+                  const shippingDue =
+                    data.quote_summary.shipping_due_display ?? data.quote_summary.shipping_due ?? 0;
+                  const shippingPaid =
+                    data.quote_summary.shipping_paid_display ?? data.quote_summary.shipping_paid ?? 0;
+                  const shippingBalance =
+                    data.quote_summary.shipping_balance_display ?? data.quote_summary.shipping_balance ?? 0;
+                  return (
+                    <>
                 <div>
                   <p className="text-xs font-semibold text-neutral-500">Product</p>
                   <p className="mt-1 text-sm font-semibold text-neutral-800">
@@ -216,7 +252,7 @@ export default function ProjectDetailPage() {
                 <div>
                   <p className="text-xs font-semibold text-neutral-500">Outstanding balance</p>
                   <p className="mt-1 text-xl font-semibold text-neutral-900">
-                    {money.format(data.quote_summary.due_amount || 0)}
+                    {formatMoney(dueAmount, currency)}
                   </p>
                   <p className="mt-2 text-xs text-neutral-600">
                     Shipping: {data.quote_summary.shipping_type || "Pending"}
@@ -226,32 +262,35 @@ export default function ProjectDetailPage() {
                   <p className="text-xs font-semibold text-neutral-600">Product payments</p>
                   <div className="mt-2 flex items-center justify-between text-xs text-neutral-600">
                     <span>Due</span>
-                    <span>{money.format(data.quote_summary.product_due || 0)}</span>
+                    <span>{formatMoney(productDue, currency)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-neutral-600">
                     <span>Paid</span>
-                    <span>{money.format(data.quote_summary.product_paid || 0)}</span>
+                    <span>{formatMoney(productPaid, currency)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs font-semibold text-neutral-800">
                     <span>Balance</span>
-                    <span>{money.format(data.quote_summary.product_balance || 0)}</span>
+                    <span>{formatMoney(productBalance, currency)}</span>
                   </div>
                 </div>
                 <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
                   <p className="text-xs font-semibold text-neutral-600">Shipping payments</p>
                   <div className="mt-2 flex items-center justify-between text-xs text-neutral-600">
                     <span>Due</span>
-                    <span>{money.format(data.quote_summary.shipping_due || 0)}</span>
+                    <span>{formatMoney(shippingDue, currency)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs text-neutral-600">
                     <span>Paid</span>
-                    <span>{money.format(data.quote_summary.shipping_paid || 0)}</span>
+                    <span>{formatMoney(shippingPaid, currency)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-xs font-semibold text-neutral-800">
                     <span>Balance</span>
-                    <span>{money.format(data.quote_summary.shipping_balance || 0)}</span>
+                    <span>{formatMoney(shippingBalance, currency)}</span>
                   </div>
                 </div>
+                    </>
+                  );
+                })()}
               </div>
             ) : (
               <p className="mt-3 text-sm text-neutral-600">
@@ -274,7 +313,10 @@ export default function ProjectDetailPage() {
                           {payment.purpose?.replace(/_/g, " ")}
                         </p>
                         <p className="mt-2 text-sm font-semibold text-neutral-900">
-                          {money.format(Number(payment.amount || 0))}
+                          {formatMoney(
+                            Number(payment.amount || 0),
+                            payment.currency || data.quote_summary?.display_currency_code || "NGN"
+                          )}
                         </p>
                         <p className="mt-1 text-xs text-neutral-600">
                           {payment.method} · {payment.status}

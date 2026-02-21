@@ -58,6 +58,16 @@ async function main() {
         fob_low_usd DECIMAL(10,2) NULL,
         fob_high_usd DECIMAL(10,2) NULL,
         cbm_per_1000 DECIMAL(10,4) NULL,
+        size_template VARCHAR(32) NULL,
+        volumetric_kg_per_1000 DECIMAL(10,2) NULL,
+        landed_gbp_sea_per_unit_low DECIMAL(10,4) NULL,
+        landed_gbp_sea_per_unit_high DECIMAL(10,4) NULL,
+        landed_gbp_sea_total_1000_low DECIMAL(12,2) NULL,
+        landed_gbp_sea_total_1000_high DECIMAL(12,2) NULL,
+        landed_cad_sea_per_unit_low DECIMAL(10,4) NULL,
+        landed_cad_sea_per_unit_high DECIMAL(10,4) NULL,
+        landed_cad_sea_total_1000_low DECIMAL(12,2) NULL,
+        landed_cad_sea_total_1000_high DECIMAL(12,2) NULL,
         is_active TINYINT NOT NULL DEFAULT 1,
         sort_order INT NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -124,6 +134,8 @@ async function main() {
         p.fob_low_usd ?? null,
         p.fob_high_usd ?? null,
         p.cbm_per_1000 ?? null,
+        p.size_template ?? null,
+        p.volumetric_kg_per_1000 ?? null,
         1,
         p.sort_order ?? maxSort + i + idx + 1,
       ]);
@@ -133,7 +145,7 @@ async function main() {
         INSERT INTO linescout_white_label_products
           (product_name, category, short_desc, why_sells, regulatory_note, mockup_prompt, image_url,
            slug, seo_title, seo_description, business_summary, market_notes, white_label_angle,
-           fob_low_usd, fob_high_usd, cbm_per_1000, is_active, sort_order)
+           fob_low_usd, fob_high_usd, cbm_per_1000, size_template, volumetric_kg_per_1000, is_active, sort_order)
         VALUES ?
         `,
         [values]

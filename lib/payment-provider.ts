@@ -1,8 +1,8 @@
-export type PaymentProvider = "paystack" | "providus";
+export type PaymentProvider = "paystack" | "providus" | "paypal";
 
 function normalizeProvider(v: any): PaymentProvider | null {
   const s = String(v || "").trim().toLowerCase();
-  if (s === "paystack" || s === "providus") return s;
+  if (s === "paystack" || s === "providus" || s === "paypal") return s;
   return null;
 }
 

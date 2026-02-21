@@ -96,6 +96,9 @@ export async function PATCH(req: Request, ctx: any) {
   if (body?.fob_low_usd !== undefined) setField("fob_low_usd", toNum(body.fob_low_usd));
   if (body?.fob_high_usd !== undefined) setField("fob_high_usd", toNum(body.fob_high_usd));
   if (body?.cbm_per_1000 !== undefined) setField("cbm_per_1000", toNum(body.cbm_per_1000));
+  if (body?.size_template !== undefined) setField("size_template", clean(body.size_template) || null);
+  if (body?.volumetric_kg_per_1000 !== undefined)
+    setField("volumetric_kg_per_1000", toNum(body.volumetric_kg_per_1000));
   if (body?.is_active !== undefined) setField("is_active", body.is_active ? 1 : 0);
   if (body?.sort_order !== undefined) setField("sort_order", toNum(body.sort_order) ?? 0);
 

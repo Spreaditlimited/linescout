@@ -1527,6 +1527,16 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       fob_low_usd DECIMAL(10,2) NULL,
       fob_high_usd DECIMAL(10,2) NULL,
       cbm_per_1000 DECIMAL(10,4) NULL,
+      size_template VARCHAR(32) NULL,
+      volumetric_kg_per_1000 DECIMAL(10,2) NULL,
+      landed_gbp_sea_per_unit_low DECIMAL(10,4) NULL,
+      landed_gbp_sea_per_unit_high DECIMAL(10,4) NULL,
+      landed_gbp_sea_total_1000_low DECIMAL(12,2) NULL,
+      landed_gbp_sea_total_1000_high DECIMAL(12,2) NULL,
+      landed_cad_sea_per_unit_low DECIMAL(10,4) NULL,
+      landed_cad_sea_per_unit_high DECIMAL(10,4) NULL,
+      landed_cad_sea_total_1000_low DECIMAL(12,2) NULL,
+      landed_cad_sea_total_1000_high DECIMAL(12,2) NULL,
       is_active TINYINT NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1540,6 +1550,16 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_white_label_products", "business_summary", "TEXT NULL");
   await ensureColumn(conn, "linescout_white_label_products", "market_notes", "TEXT NULL");
   await ensureColumn(conn, "linescout_white_label_products", "white_label_angle", "TEXT NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "size_template", "VARCHAR(32) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "volumetric_kg_per_1000", "DECIMAL(10,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_gbp_sea_per_unit_low", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_gbp_sea_per_unit_high", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_gbp_sea_total_1000_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_gbp_sea_total_1000_high", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_per_unit_low", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_per_unit_high", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_total_1000_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_total_1000_high", "DECIMAL(12,2) NULL");
 
   await conn.query(
     `CREATE INDEX IF NOT EXISTS idx_white_label_slug ON linescout_white_label_products (slug)`

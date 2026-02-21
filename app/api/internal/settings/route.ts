@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
+import { ensureCountryConfig } from "@/lib/country-config";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -221,14 +222,50 @@ async function ensureRow(conn: mysql.PoolConnection) {
   return after?.[0] || null;
 }
 
+
 export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const conn = await pool.getConnection();
   try {
+    await ensureCountryConfig(conn);
     const row = await ensureRow(conn);
-    return NextResponse.json({ ok: true, item: row });
+    const [currencies]: any = await conn.query(
+      `SELECT id, code, symbol, decimal_places, display_format, is_active
+       FROM linescout_currencies
+       ORDER BY code ASC`
+    );
+    const [countries]: any = await conn.query(
+      `SELECT c.id, c.name, c.iso2, c.iso3, c.default_currency_id, c.settlement_currency_code, c.payment_provider, c.is_active,
+              cur.code AS default_currency_code
+       FROM linescout_countries c
+       LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+       ORDER BY c.name ASC`
+    );
+    const [countryCurrencies]: any = await conn.query(
+      `SELECT cc.country_id, cc.currency_id, cc.is_active,
+              c.name AS country_name, c.iso2 AS country_iso2, cur.code AS currency_code
+       FROM linescout_country_currencies cc
+       JOIN linescout_countries c ON c.id = cc.country_id
+       JOIN linescout_currencies cur ON cur.id = cc.currency_id
+       ORDER BY c.name ASC, cur.code ASC`
+    );
+    const [fxRates]: any = await conn.query(
+      `SELECT id, base_currency_code, quote_currency_code, rate, effective_at, created_at
+       FROM linescout_fx_rates
+       ORDER BY created_at DESC
+       LIMIT 200`
+    );
+
+    return NextResponse.json({
+      ok: true,
+      item: row,
+      currencies: currencies || [],
+      countries: countries || [],
+      country_currencies: countryCurrencies || [],
+      fx_rates: fxRates || [],
+    });
   } finally {
     conn.release();
   }
@@ -239,10 +276,209 @@ export async function POST(req: Request) {
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
+  const action = typeof body?.action === "string" ? body.action.trim() : "";
 
   function num(v: any) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
+  }
+
+  const conn = await pool.getConnection();
+
+  if (action) {
+    try {
+      await ensureCountryConfig(conn);
+
+      if (action === "currency.create") {
+        const code = String(body?.code || "").trim().toUpperCase();
+        const symbol = String(body?.symbol || "").trim() || null;
+        const decimal_places = num(body?.decimal_places) ?? 2;
+        const display_format = String(body?.display_format || "").trim() || null;
+        if (!code || code.length > 8) {
+          return NextResponse.json({ ok: false, error: "Invalid currency code" }, { status: 400 });
+        }
+        if (!Number.isFinite(decimal_places) || decimal_places < 0 || decimal_places > 6) {
+          return NextResponse.json({ ok: false, error: "Invalid decimal places" }, { status: 400 });
+        }
+        await conn.query(
+          `INSERT INTO linescout_currencies (code, symbol, decimal_places, display_format)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             symbol = VALUES(symbol),
+             decimal_places = VALUES(decimal_places),
+             display_format = VALUES(display_format)`,
+          [code, symbol, decimal_places, display_format]
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "currency.update") {
+        const id = num(body?.id);
+        if (!id) return NextResponse.json({ ok: false, error: "Invalid currency id" }, { status: 400 });
+        const symbol = String(body?.symbol || "").trim() || null;
+        const decimal_places = num(body?.decimal_places);
+        const display_format = String(body?.display_format || "").trim() || null;
+        const is_active = body?.is_active === 0 ? 0 : body?.is_active === 1 ? 1 : null;
+        const sets: string[] = [];
+        const params: any[] = [];
+        if (symbol !== null) {
+          sets.push("symbol = ?");
+          params.push(symbol);
+        }
+        if (decimal_places !== null) {
+          if (decimal_places < 0 || decimal_places > 6) {
+            return NextResponse.json({ ok: false, error: "Invalid decimal places" }, { status: 400 });
+          }
+          sets.push("decimal_places = ?");
+          params.push(decimal_places);
+        }
+        if (display_format !== null) {
+          sets.push("display_format = ?");
+          params.push(display_format);
+        }
+        if (is_active !== null) {
+          sets.push("is_active = ?");
+          params.push(is_active);
+        }
+        if (!sets.length) return NextResponse.json({ ok: false, error: "No updates provided" }, { status: 400 });
+        params.push(id);
+        await conn.query(`UPDATE linescout_currencies SET ${sets.join(", ")} WHERE id = ?`, params);
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "country.create") {
+        const name = String(body?.name || "").trim();
+        const iso2 = String(body?.iso2 || "").trim().toUpperCase();
+        const iso3 = String(body?.iso3 || "").trim().toUpperCase() || null;
+        const default_currency_id = num(body?.default_currency_id);
+        const settlement_currency_code = String(body?.settlement_currency_code || "").trim().toUpperCase() || null;
+        const rawProvider = String(body?.payment_provider || "").trim();
+        const payment_provider =
+          rawProvider
+            ? rawProvider
+            : iso2 && iso2 !== "NG"
+              ? "paypal"
+              : null;
+        if (!name || name.length < 2) {
+          return NextResponse.json({ ok: false, error: "Country name is too short" }, { status: 400 });
+        }
+        if (!iso2 || iso2.length !== 2) {
+          return NextResponse.json({ ok: false, error: "Country ISO2 must be 2 letters" }, { status: 400 });
+        }
+        await conn.query(
+          `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             name = VALUES(name),
+             iso3 = VALUES(iso3),
+             default_currency_id = VALUES(default_currency_id),
+             settlement_currency_code = VALUES(settlement_currency_code),
+             payment_provider = VALUES(payment_provider)`,
+          [name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider]
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "country.update") {
+        const id = num(body?.id);
+        if (!id) return NextResponse.json({ ok: false, error: "Invalid country id" }, { status: 400 });
+        const name = String(body?.name || "").trim();
+        const iso2 = String(body?.iso2 || "").trim().toUpperCase();
+        const iso3 = String(body?.iso3 || "").trim().toUpperCase();
+        const default_currency_id = body?.default_currency_id === null ? null : num(body?.default_currency_id);
+        const settlement_currency_code = String(body?.settlement_currency_code || "").trim().toUpperCase();
+        const payment_provider = String(body?.payment_provider || "").trim();
+        const is_active = body?.is_active === 0 ? 0 : body?.is_active === 1 ? 1 : null;
+        const sets: string[] = [];
+        const params: any[] = [];
+        if (name) {
+          sets.push("name = ?");
+          params.push(name);
+        }
+        if (iso2) {
+          if (iso2.length !== 2) {
+            return NextResponse.json({ ok: false, error: "Country ISO2 must be 2 letters" }, { status: 400 });
+          }
+          sets.push("iso2 = ?");
+          params.push(iso2);
+        }
+        if (iso3) {
+          sets.push("iso3 = ?");
+          params.push(iso3);
+        }
+        if (body?.default_currency_id !== undefined) {
+          sets.push("default_currency_id = ?");
+          params.push(default_currency_id);
+        }
+        if (body?.settlement_currency_code !== undefined) {
+          sets.push("settlement_currency_code = ?");
+          params.push(settlement_currency_code || null);
+        }
+        if (body?.payment_provider !== undefined) {
+          sets.push("payment_provider = ?");
+          params.push(payment_provider || null);
+        }
+        if (is_active !== null) {
+          sets.push("is_active = ?");
+          params.push(is_active);
+        }
+        if (!sets.length) return NextResponse.json({ ok: false, error: "No updates provided" }, { status: 400 });
+        params.push(id);
+        await conn.query(`UPDATE linescout_countries SET ${sets.join(", ")} WHERE id = ?`, params);
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "country_currency.create") {
+        const country_id = num(body?.country_id);
+        const currency_id = num(body?.currency_id);
+        if (!country_id || !currency_id) {
+          return NextResponse.json({ ok: false, error: "Invalid country or currency" }, { status: 400 });
+        }
+        await conn.query(
+          `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
+           VALUES (?, ?, 1)
+           ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+          [country_id, currency_id]
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "country_currency.update") {
+        const country_id = num(body?.country_id);
+        const currency_id = num(body?.currency_id);
+        const is_active = body?.is_active === 0 ? 0 : body?.is_active === 1 ? 1 : null;
+        if (!country_id || !currency_id || is_active === null) {
+          return NextResponse.json({ ok: false, error: "Invalid mapping or status" }, { status: 400 });
+        }
+        await conn.query(
+          `UPDATE linescout_country_currencies
+           SET is_active = ?
+           WHERE country_id = ? AND currency_id = ?`,
+          [is_active, country_id, currency_id]
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "fx_rate.upsert") {
+        const base_currency_code = String(body?.base_currency_code || "").trim().toUpperCase();
+        const quote_currency_code = String(body?.quote_currency_code || "").trim().toUpperCase();
+        const rate = num(body?.rate);
+        const effective_at = String(body?.effective_at || "").trim();
+        if (!base_currency_code || !quote_currency_code || !rate || rate <= 0) {
+          return NextResponse.json({ ok: false, error: "Invalid FX rate data" }, { status: 400 });
+        }
+        await conn.query(
+          `INSERT INTO linescout_fx_rates (base_currency_code, quote_currency_code, rate, effective_at)
+           VALUES (?, ?, ?, ?)`,
+          [base_currency_code, quote_currency_code, rate, effective_at || new Date()]
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
+    } finally {
+      conn.release();
+    }
   }
 
   const commitment_due_ngn = num(body.commitment_due_ngn);
@@ -295,8 +531,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "All fields must be valid numbers" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
   try {
+    await ensureCountryConfig(conn);
     const row = await ensureRow(conn);
     const prevEnabled = Number(row.sticky_notice_enabled || 0);
     const prevTitle = String(row.sticky_notice_title || "");

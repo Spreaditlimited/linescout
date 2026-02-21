@@ -141,13 +141,14 @@ export async function GET(req: Request) {
 
     let commitmentPayment: any | null = null;
     const [handoffRows]: any = await conn.query(
-      `SELECT token
+      `SELECT token, display_currency_code
        FROM linescout_handoffs
        WHERE id = ?
        LIMIT 1`,
       [handoffId]
     );
     const handoffToken = String(handoffRows?.[0]?.token || "").trim();
+    const handoffDisplayCurrency = String(handoffRows?.[0]?.display_currency_code || "").trim();
     if (handoffToken) {
       const [commitRows]: any = await conn.query(
         `SELECT id, amount, currency, created_at
@@ -180,6 +181,9 @@ export async function GET(req: Request) {
          q.total_shipping_ngn,
          q.total_markup_ngn,
          q.commitment_due_ngn,
+         q.total_product_rmb,
+         q.total_shipping_usd,
+         q.display_currency_code,
          q.items_json,
          st.name AS shipping_type_name
        FROM linescout_quotes q
@@ -200,6 +204,51 @@ export async function GET(req: Request) {
     );
 
     const latestQuote = quoteRows?.[0] || null;
+    const displayCurrencyCode =
+      String(latestQuote?.display_currency_code || handoffDisplayCurrency || "NGN").trim().toUpperCase() || "NGN";
+
+    let ngnToDisplay = 1;
+    let rmbToDisplay = 0;
+    let usdToDisplay = 0;
+    let rmbToNgn = 0;
+    if (displayCurrencyCode !== "NGN") {
+      const [fxRows]: any = await conn.query(
+        `SELECT base_currency_code, quote_currency_code, rate
+         FROM linescout_fx_rates
+         WHERE (base_currency_code = 'NGN' AND quote_currency_code = ?)
+            OR (base_currency_code = 'RMB' AND quote_currency_code = ?)
+            OR (base_currency_code = 'USD' AND quote_currency_code = ?)
+            OR (base_currency_code = 'RMB' AND quote_currency_code = 'NGN')
+         ORDER BY effective_at DESC, id DESC`,
+        [displayCurrencyCode, displayCurrencyCode, displayCurrencyCode]
+      );
+      const pick = (base: string, quote: string) => {
+        const row = fxRows.find(
+          (r: any) =>
+            String(r.base_currency_code || "").toUpperCase() === base &&
+            String(r.quote_currency_code || "").toUpperCase() === quote
+        );
+        const rate = Number(row?.rate || 0);
+        return Number.isFinite(rate) && rate > 0 ? rate : 0;
+      };
+      ngnToDisplay = pick("NGN", displayCurrencyCode);
+      rmbToDisplay = pick("RMB", displayCurrencyCode);
+      usdToDisplay = pick("USD", displayCurrencyCode);
+      rmbToNgn = pick("RMB", "NGN");
+    } else {
+      ngnToDisplay = 1;
+      rmbToDisplay = 0;
+      usdToDisplay = 0;
+      const [fxRows]: any = await conn.query(
+        `SELECT rate
+         FROM linescout_fx_rates
+         WHERE base_currency_code = 'RMB' AND quote_currency_code = 'NGN'
+         ORDER BY effective_at DESC, id DESC
+         LIMIT 1`
+      );
+      const rate = Number(fxRows?.[0]?.rate || 0);
+      rmbToNgn = Number.isFinite(rate) && rate > 0 ? rate : 0;
+    }
     let quoteSummary: any = null;
     if (latestQuote) {
       const productDue = Math.max(
@@ -230,6 +279,27 @@ export async function GET(req: Request) {
         return Number.isFinite(q) ? sum + q : sum;
       }, 0);
 
+      let productWithMarkupDisplay = 0;
+      let shippingDisplay = 0;
+      let productDueDisplay = 0;
+      let shippingDueDisplay = 0;
+      if (displayCurrencyCode === "NGN") {
+        productWithMarkupDisplay = Number(latestQuote.total_product_ngn || 0) + Number(latestQuote.total_markup_ngn || 0);
+        shippingDisplay = Number(latestQuote.total_shipping_ngn || 0);
+        productDueDisplay = productDue;
+        shippingDueDisplay = shippingDue;
+      } else if (rmbToDisplay > 0 && usdToDisplay > 0 && rmbToNgn > 0) {
+        const productWithMarkupRmb =
+          Number(latestQuote.total_product_rmb || 0) + Number(latestQuote.total_markup_ngn || 0) / rmbToNgn;
+        productWithMarkupDisplay = productWithMarkupRmb * rmbToDisplay;
+        shippingDisplay = Number(latestQuote.total_shipping_usd || 0) * usdToDisplay;
+        productDueDisplay = Math.max(0, productWithMarkupDisplay - Number(latestQuote.commitment_due_ngn || 0) * ngnToDisplay);
+        shippingDueDisplay = shippingDisplay;
+      }
+
+      const productPaidDisplay = displayCurrencyCode === "NGN" ? productPaid : productPaid * ngnToDisplay;
+      const shippingPaidDisplay = displayCurrencyCode === "NGN" ? shippingPaid : shippingPaid * ngnToDisplay;
+
       quoteSummary = {
         quote_id: Number(latestQuote.id),
         quote_token: String(latestQuote.token || ""),
@@ -242,12 +312,22 @@ export async function GET(req: Request) {
         shipping_due: shippingDue,
         shipping_paid: shippingPaid,
         shipping_balance: Math.max(0, shippingDue - shippingPaid),
+        display_currency_code: displayCurrencyCode,
+        product_due_display: productDueDisplay,
+        shipping_due_display: shippingDueDisplay,
+        product_paid_display: productPaidDisplay,
+        shipping_paid_display: shippingPaidDisplay,
+        product_balance_display: Math.max(0, productDueDisplay - productPaidDisplay),
+        shipping_balance_display: Math.max(0, shippingDueDisplay - shippingPaidDisplay),
       };
     }
 
     const totalPaid = Number(sumRows?.[0]?.total_paid || 0);
     const totalDue = Number(finRows?.[0]?.total_due || 0);
     const currency = finRows?.[0]?.currency || "NGN";
+    const displayTotalDue = displayCurrencyCode === "NGN" ? totalDue : totalDue * ngnToDisplay;
+    const displayTotalPaid = displayCurrencyCode === "NGN" ? totalPaid : totalPaid * ngnToDisplay;
+    const displayBalance = displayTotalDue - displayTotalPaid;
 
     return NextResponse.json({
       ok: true,
@@ -256,6 +336,10 @@ export async function GET(req: Request) {
         total_due: totalDue,
         total_paid: totalPaid,
         balance: totalDue - totalPaid,
+        display_currency_code: displayCurrencyCode,
+        display_total_due: displayTotalDue,
+        display_total_paid: displayTotalPaid,
+        display_balance: displayBalance,
       },
       quote_summary: quoteSummary,
       commitment_payment: commitmentPayment,

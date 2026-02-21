@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import type { RowDataPacket, ResultSetHeader } from "mysql2/promise";
+import {
+  ensureCountryConfig,
+  ensureWhiteLabelCountryColumns,
+  ensureUserCountryColumns,
+  backfillUserDefaults,
+  backfillWhiteLabelDefaults,
+  getNigeriaDefaults,
+} from "@/lib/country-config";
 
 const CATEGORIES = new Set([
   "Electronics",
@@ -61,6 +69,22 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      await ensureCountryConfig(conn);
+      await ensureUserCountryColumns(conn);
+      await ensureWhiteLabelCountryColumns(conn);
+      await backfillUserDefaults(conn);
+      await backfillWhiteLabelDefaults(conn);
+
+      const [userRows]: any = await conn.query(
+        `SELECT country_id, display_currency_code FROM users WHERE id = ? LIMIT 1`,
+        [user.id]
+      );
+      const defaults = await getNigeriaDefaults(conn);
+      const userCountryId = Number(userRows?.[0]?.country_id || defaults.country_id);
+      const userDisplayCurrency = String(
+        userRows?.[0]?.display_currency_code || defaults.display_currency_code
+      );
+
       // Fetch existing draft (latest)
       const [rows] = await conn.query<RowDataPacket[]>(
         `
@@ -78,10 +102,10 @@ export async function POST(req: Request) {
       if (!rows.length) {
         const [ins] = await conn.query<ResultSetHeader>(
           `
-          INSERT INTO linescout_white_label_projects (user_id, step, status, handoff_id)
-          VALUES (?, 1, 'draft', NULL)
+          INSERT INTO linescout_white_label_projects (user_id, step, status, handoff_id, country_id, display_currency_code)
+          VALUES (?, 1, 'draft', NULL, ?, ?)
           `,
-          [user.id]
+          [user.id, userCountryId, userDisplayCurrency]
         );
         projectId = Number(ins.insertId);
       } else {
@@ -106,6 +130,8 @@ export async function POST(req: Request) {
 
       if (step !== undefined) setField("step", step);
       if (status !== undefined) setField("status", status);
+      if (userCountryId) setField("country_id", userCountryId);
+      if (userDisplayCurrency) setField("display_currency_code", userDisplayCurrency);
 
       if (category !== undefined) setField("category", category || null);
       if (productName !== undefined) setField("product_name", productName || null);

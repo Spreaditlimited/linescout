@@ -59,6 +59,26 @@ async function ensureClaimLimitColumns(conn: any) {
   }
 }
 
+async function ensureClaimAuditTable(conn: any) {
+  await conn.query(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_handoff_claim_audits (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      handoff_id INT NOT NULL,
+      conversation_id INT NULL,
+      claimed_by_id INT NULL,
+      claimed_by_name VARCHAR(120) NULL,
+      claimed_by_role VARCHAR(32) NULL,
+      previous_status VARCHAR(32) NULL,
+      new_status VARCHAR(32) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_handoff_claim_handoff (handoff_id),
+      INDEX idx_handoff_claim_created (created_at)
+    )
+    `
+  );
+}
+
 function buildClaimedEmail() {
   return buildNoticeEmail({
     subject: "Your LineScout paid chat has been claimed",
@@ -210,6 +230,7 @@ export async function POST(req: Request) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
+    await ensureClaimAuditTable(conn);
 
     if (auth.role !== "admin") {
       await ensureClaimLimitColumns(conn);
@@ -355,6 +376,14 @@ export async function POST(req: Request) {
     );
 
     if (conv.handoff_id) {
+      const [hrows]: any = await conn.query(
+        `SELECT status
+         FROM linescout_handoffs
+         WHERE id = ?
+         LIMIT 1`,
+        [conv.handoff_id]
+      );
+      const prevStatus = String(hrows?.[0]?.status || "pending").trim().toLowerCase();
       await conn.query(
         `
         UPDATE linescout_handoffs
@@ -365,6 +394,24 @@ export async function POST(req: Request) {
           AND (status = 'pending' OR status IS NULL)
         `,
         [auth.username || String(auth.userId), conv.handoff_id]
+      );
+
+      await conn.query(
+        `
+        INSERT INTO linescout_handoff_claim_audits
+          (handoff_id, conversation_id, claimed_by_id, claimed_by_name, claimed_by_role,
+           previous_status, new_status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        `,
+        [
+          conv.handoff_id,
+          conversationId,
+          auth.userId,
+          auth.username || null,
+          auth.role || null,
+          prevStatus || null,
+          "claimed",
+        ]
       );
     }
 

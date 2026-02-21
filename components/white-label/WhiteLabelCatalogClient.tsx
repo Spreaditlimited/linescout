@@ -2,6 +2,11 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import {
+  currencyForCode,
+  formatCurrency,
+  pickLandedFieldsByCurrency,
+} from "@/lib/white-label-country";
 
 type ProductItem = {
   id: number;
@@ -20,19 +25,64 @@ type ProductItem = {
   landed_ngn_per_unit_high?: number | null;
   landed_ngn_total_1000_low?: number | null;
   landed_ngn_total_1000_high?: number | null;
+  landed_gbp_sea_per_unit_low?: number | null;
+  landed_gbp_sea_per_unit_high?: number | null;
+  landed_gbp_sea_total_1000_low?: number | null;
+  landed_gbp_sea_total_1000_high?: number | null;
+  landed_cad_sea_per_unit_low?: number | null;
+  landed_cad_sea_per_unit_high?: number | null;
+  landed_cad_sea_total_1000_low?: number | null;
+  landed_cad_sea_total_1000_high?: number | null;
 };
 
-function formatNaira(value?: number | null) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  return `₦${Math.round(value).toLocaleString()}`;
-}
-
-function formatPerUnitRange(low?: number | null, high?: number | null) {
-  const lowText = formatNaira(low);
-  const highText = formatNaira(high);
+function formatPerUnitRange(
+  low: number | null | undefined,
+  high: number | null | undefined,
+  currencyCode: string
+) {
+  const currency = currencyForCode(currencyCode);
+  const perUnitDigits = currency.code === "NGN" ? 0 : 2;
+  const lowText = formatCurrency(low, currency, perUnitDigits);
+  const highText = formatCurrency(high, currency, perUnitDigits);
+  const lowNum = low === null || low === undefined ? null : Number(low);
+  const highNum = high === null || high === undefined ? null : Number(high);
+  if (
+    lowText !== "—" &&
+    highText !== "—" &&
+    Number.isFinite(lowNum) &&
+    Number.isFinite(highNum) &&
+    lowNum === highNum
+  ) {
+    return `${lowText} per unit`;
+  }
   if (lowText !== "—" && highText !== "—") return `${lowText}–${highText} per unit`;
   if (lowText !== "—") return `${lowText} per unit`;
   if (highText !== "—") return `${highText} per unit`;
+  return "";
+}
+
+function formatTotalRange(
+  low: number | null | undefined,
+  high: number | null | undefined,
+  currencyCode: string
+) {
+  const currency = currencyForCode(currencyCode);
+  const lowText = formatCurrency(low, currency);
+  const highText = formatCurrency(high, currency);
+  const lowNum = low === null || low === undefined ? null : Number(low);
+  const highNum = high === null || high === undefined ? null : Number(high);
+  if (
+    lowText !== "—" &&
+    highText !== "—" &&
+    Number.isFinite(lowNum) &&
+    Number.isFinite(highNum) &&
+    lowNum === highNum
+  ) {
+    return `${lowText} for 1,000 units`;
+  }
+  if (lowText !== "—" && highText !== "—") return `${lowText}–${highText} for 1,000 units`;
+  if (lowText !== "—") return `${lowText} for 1,000 units`;
+  if (highText !== "—") return `${highText} for 1,000 units`;
   return "";
 }
 
@@ -58,11 +108,14 @@ function slugify(value?: string | null) {
 export default function WhiteLabelCatalogClient({
   items,
   detailBase = "/white-label",
+  currencyCode = "NGN",
 }: {
   items: ProductItem[];
   detailBase?: string;
+  currencyCode?: string;
 }) {
   const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
+  const currency = currencyForCode(currencyCode);
 
   const itemLinks = useMemo(
     () =>
@@ -109,13 +162,25 @@ export default function WhiteLabelCatalogClient({
                 <h2 className="mt-2 text-lg font-semibold text-neutral-900">
                   {item.product_name}
                 </h2>
-                <p className="mt-3 text-sm text-neutral-600">
-                  {formatNaira(item.landed_ngn_per_unit_low)}–{formatNaira(item.landed_ngn_per_unit_high)} per unit
-                </p>
-                <p className="mt-1 text-xs text-neutral-500">
-                  {formatNaira(item.landed_ngn_total_1000_low)}–{formatNaira(item.landed_ngn_total_1000_high)} for
-                  1,000 units
-                </p>
+                {(() => {
+                  const landed = pickLandedFieldsByCurrency(item, currencyCode);
+                  const hasPerUnit = landed.perUnitLow != null || landed.perUnitHigh != null;
+                  const hasTotal = landed.totalLow != null || landed.totalHigh != null;
+                  return (
+                    <>
+                      <p className="mt-3 text-sm text-neutral-600">
+                        {hasPerUnit
+                          ? formatPerUnitRange(landed.perUnitLow, landed.perUnitHigh, currencyCode)
+                          : "Pricing pending"}
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-500">
+                        {hasTotal
+                          ? formatTotalRange(landed.totalLow, landed.totalHigh, currencyCode)
+                          : "Pricing pending"}
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="mt-auto px-5 pb-6">
@@ -125,12 +190,18 @@ export default function WhiteLabelCatalogClient({
                 >
                   View detail
                 </Link>
-                <Link
-                  href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(item.id))}&product_name=${encodeURIComponent(item.product_name)}&product_category=${encodeURIComponent(item.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(item.landed_ngn_per_unit_low, item.landed_ngn_per_unit_high))}`}
-                  className="mt-3 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--agent-blue)] px-4 py-3 text-sm font-semibold text-white"
-                >
-                  Start sourcing
-                </Link>
+                {(() => {
+                  const landed = pickLandedFieldsByCurrency(item, currencyCode);
+                  const perUnitText = formatPerUnitRange(landed.perUnitLow, landed.perUnitHigh, currencyCode);
+                  return (
+                    <Link
+                      href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(item.id))}&product_name=${encodeURIComponent(item.product_name)}&product_category=${encodeURIComponent(item.category)}&product_landed_ngn_per_unit=${encodeURIComponent(perUnitText)}`}
+                      className="mt-3 inline-flex w-full items-center justify-center rounded-2xl bg-[var(--agent-blue)] px-4 py-3 text-sm font-semibold text-white"
+                    >
+                      Start sourcing
+                    </Link>
+                  );
+                })()}
               </div>
             </div>
           ))

@@ -5,6 +5,10 @@ import { selectPaymentProvider } from "@/lib/payment-provider";
 import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/lib/providus";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import { paypalCreateOrder } from "@/lib/paypal";
+import { convertAmount, getFxRate } from "@/lib/fx";
+import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/lib/quote-payment-provider";
+import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults, resolveCountryCurrency } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -214,10 +218,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
-      `SELECT q.*, h.email, h.customer_name, h.status AS handoff_status
+      `SELECT q.*, h.email, h.customer_name, h.status AS handoff_status, c.iso2 AS country_iso2
        FROM linescout_quotes q
        LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
+       LEFT JOIN linescout_countries c ON c.id = q.country_id
        WHERE q.token = ?
        LIMIT 1`,
       [safeToken]
@@ -225,6 +232,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     if (!rows?.length) return NextResponse.json({ ok: false, error: "Quote not found" }, { status: 404 });
 
     const quote = rows[0];
+    const defaults = await getNigeriaDefaults(conn);
+    const quoteCountryId = Number(quote.country_id || defaults.country_id || 0);
+    const resolved = await resolveCountryCurrency(conn, quote.country_id, quote.display_currency_code);
+    const displayCurrencyCode = String(resolved?.display_currency_code || "GBP").toUpperCase();
     const items = pickItems(quote.items_json);
     const handoffId = Number(quote.handoff_id || 0);
     const commitmentDue = Math.max(0, num(quote.commitment_due_ngn, 0));
@@ -232,8 +243,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const depositEnabled = !!quote.deposit_enabled;
     const depositPercent = num(quote.deposit_percent, 0);
 
-    const exchangeRmb = num(quote.exchange_rate_rmb, 0);
-    const exchangeUsd = num(quote.exchange_rate_usd, 0);
+    const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
+    const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
     const markupPercent = num(quote.markup_percent, 0);
 
     const shipType = shippingTypeId || quote.shipping_type_id;
@@ -246,14 +257,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
          FROM linescout_shipping_rates
          WHERE shipping_type_id = ?
            AND is_active = 1
+           AND country_id = ?
          ORDER BY id DESC
          LIMIT 1`,
-        [shipType]
+        [shipType, quoteCountryId]
       );
       if (rateRows?.length) {
         shippingRateUsd = num(rateRows[0].rate_value, shippingRateUsd);
         shippingRateUnit = String(rateRows[0].rate_unit || shippingRateUnit);
       }
+    }
+
+    if (!exchangeRmb || !exchangeUsd) {
+      return NextResponse.json({ ok: false, error: "FX rates for NGN are not configured." }, { status: 500 });
     }
 
     const totals = computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
@@ -424,10 +440,59 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       ownerUserId = await ensureUserIdByEmail(conn, payer, quote.customer_name || null);
     }
 
-    const providerSelection = ownerUserId
-      ? await selectPaymentProvider(conn, "user", ownerUserId)
-      : { provider: "paystack" };
-    const provider = providerSelection.provider;
+    const countryIso2 = String(quote.country_iso2 || "").toUpperCase();
+    let provider: string = "paystack";
+    if (countryIso2 && countryIso2 !== "NG") {
+      await ensureQuotePaymentProviderTable(conn);
+      const mapped = await resolveQuotePaymentProvider(conn, quote.country_id);
+      provider = String(mapped || "paypal").toLowerCase();
+      if (provider === "global") provider = "paypal";
+      if (provider !== "paypal") provider = "paypal";
+    } else {
+      const providerSelection = ownerUserId
+        ? await selectPaymentProvider(conn, "user", ownerUserId)
+        : { provider: "paystack" };
+      provider = providerSelection.provider;
+    }
+
+    if (provider === "paypal") {
+      const paypalCurrency = displayCurrencyCode || "GBP";
+      const converted = await convertAmount(conn, remaining, "NGN", paypalCurrency);
+      if (!converted || !Number.isFinite(converted) || converted <= 0) {
+        return NextResponse.json(
+          { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
+          { status: 500 }
+        );
+      }
+
+      const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
+      const returnUrl = `${baseUrl}/quote/paypal/verify?quote=${encodeURIComponent(String(quote.token || ""))}`;
+      const cancelUrl = `${baseUrl}/quote/${encodeURIComponent(String(quote.token || ""))}`;
+      const order = await paypalCreateOrder({
+        amount: converted.toFixed(2),
+        currency: paypalCurrency,
+        returnUrl,
+        cancelUrl,
+        customId: `LSQ_${quote.id}_${Date.now()}`,
+        description: "LineScout quote payment",
+      });
+
+      await conn.query(
+        `INSERT INTO linescout_quote_payments
+         (quote_id, handoff_id, user_id, purpose, method, status, amount, currency, provider_ref, shipping_type_id, created_at)
+         VALUES (?, ?, ?, ?, 'paypal', 'pending', ?, ?, ?, ?, NOW())`,
+        [quote.id, handoffId || null, ownerUserId, purpose, converted, paypalCurrency, order.id, shipType || null]
+      );
+
+      return NextResponse.json({
+        ok: true,
+        provider: "paypal",
+        approval_url: order.approveUrl,
+        wallet_applied: walletApplied,
+        remaining: converted,
+        currency: paypalCurrency,
+      });
+    }
 
     if (provider !== "paystack") {
       if (!ownerUserId) {

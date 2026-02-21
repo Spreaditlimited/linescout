@@ -49,7 +49,49 @@ type ShippingRateItem = {
   rate_value: number;
   rate_unit: "per_kg" | "per_cbm";
   currency: string;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
   is_active?: number;
+};
+
+type CurrencyItem = {
+  id: number;
+  code: string;
+  symbol?: string | null;
+  decimal_places?: number;
+  display_format?: string | null;
+  is_active?: number;
+};
+
+type CountryItem = {
+  id: number;
+  name: string;
+  iso2: string;
+  iso3?: string | null;
+  default_currency_id?: number | null;
+  default_currency_code?: string | null;
+  settlement_currency_code?: string | null;
+  payment_provider?: string | null;
+  is_active?: number;
+};
+
+type CountryCurrencyItem = {
+  country_id: number;
+  currency_id: number;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  currency_code?: string | null;
+  is_active?: number;
+};
+
+type FxRateItem = {
+  id: number;
+  base_currency_code: string;
+  quote_currency_code: string;
+  rate: number;
+  effective_at?: string | null;
+  created_at?: string | null;
 };
 
 type Threshold = { max: number; points: number };
@@ -123,6 +165,47 @@ export default function InternalSettingsPage() {
   const [testEmailsText, setTestEmailsText] = useState("");
   const [maxActiveClaims, setMaxActiveClaims] = useState("3");
 
+  // Countries & currencies (Phase 1)
+  const [countries, setCountries] = useState<CountryItem[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyItem[]>([]);
+  const [countryCurrencies, setCountryCurrencies] = useState<CountryCurrencyItem[]>([]);
+  const [fxRates, setFxRates] = useState<FxRateItem[]>([]);
+  const [countryErr, setCountryErr] = useState<string | null>(null);
+  const [currencyErr, setCurrencyErr] = useState<string | null>(null);
+  const [fxErr, setFxErr] = useState<string | null>(null);
+
+  const [newCurrencyCode, setNewCurrencyCode] = useState("");
+  const [newCurrencySymbol, setNewCurrencySymbol] = useState("");
+  const [newCurrencyDecimals, setNewCurrencyDecimals] = useState("2");
+  const [newCurrencyFormat, setNewCurrencyFormat] = useState("");
+
+  const [newCountryName, setNewCountryName] = useState("");
+  const [newCountryIso2, setNewCountryIso2] = useState("");
+  const [newCountryIso3, setNewCountryIso3] = useState("");
+  const [newCountryDefaultCurrencyId, setNewCountryDefaultCurrencyId] = useState<number | null>(null);
+  const [newCountrySettlement, setNewCountrySettlement] = useState("");
+  const [newCountryProvider, setNewCountryProvider] = useState("");
+
+  const [editingCountryId, setEditingCountryId] = useState<number | null>(null);
+  const [editCountryName, setEditCountryName] = useState("");
+  const [editCountryIso2, setEditCountryIso2] = useState("");
+  const [editCountryIso3, setEditCountryIso3] = useState("");
+  const [editCountryDefaultCurrencyId, setEditCountryDefaultCurrencyId] = useState<number | null>(null);
+  const [editCountrySettlement, setEditCountrySettlement] = useState("");
+  const [editCountryProvider, setEditCountryProvider] = useState("");
+
+  const [editingCurrencyId, setEditingCurrencyId] = useState<number | null>(null);
+  const [editCurrencySymbol, setEditCurrencySymbol] = useState("");
+  const [editCurrencyDecimals, setEditCurrencyDecimals] = useState("2");
+  const [editCurrencyFormat, setEditCurrencyFormat] = useState("");
+
+  const [newCountryCurrencyCountryId, setNewCountryCurrencyCountryId] = useState<number | null>(null);
+  const [newCountryCurrencyCurrencyId, setNewCountryCurrencyCurrencyId] = useState<number | null>(null);
+
+  const [newFxBase, setNewFxBase] = useState("");
+  const [newFxQuote, setNewFxQuote] = useState("");
+  const [newFxRate, setNewFxRate] = useState("");
+
   // Shipping types & rates
   const [shippingTypes, setShippingTypes] = useState<ShippingTypeItem[]>([]);
   const [shippingRates, setShippingRates] = useState<ShippingRateItem[]>([]);
@@ -132,10 +215,12 @@ export default function InternalSettingsPage() {
   const [creatingShippingType, setCreatingShippingType] = useState(false);
 
   const [newRateTypeId, setNewRateTypeId] = useState<number | null>(null);
+  const [newRateCountryId, setNewRateCountryId] = useState<number | null>(null);
   const [newRateValue, setNewRateValue] = useState("");
   const [newRateUnit, setNewRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [creatingRate, setCreatingRate] = useState(false);
   const [editingRateId, setEditingRateId] = useState<number | null>(null);
+  const [editingRateCountryId, setEditingRateCountryId] = useState<number | null>(null);
   const [editRateValue, setEditRateValue] = useState("");
   const [editRateUnit, setEditRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [savingRate, setSavingRate] = useState(false);
@@ -176,6 +261,9 @@ export default function InternalSettingsPage() {
     setSettingsLoading(true);
     setSettingsErr(null);
     setSettingsMsg(null);
+    setCountryErr(null);
+    setCurrencyErr(null);
+    setFxErr(null);
     try {
       const res = await fetch("/api/internal/settings", { cache: "no-store" });
       const data = await res.json().catch(() => null);
@@ -236,10 +324,214 @@ export default function InternalSettingsPage() {
       } else {
         setTestEmailsText("");
       }
+      setCountries((data.countries || []) as CountryItem[]);
+      setCurrencies((data.currencies || []) as CurrencyItem[]);
+      setCountryCurrencies((data.country_currencies || []) as CountryCurrencyItem[]);
+      setFxRates((data.fx_rates || []) as FxRateItem[]);
+      if (!newCountryDefaultCurrencyId && data?.currencies?.length) {
+        setNewCountryDefaultCurrencyId(data.currencies[0].id);
+      }
+      if (!newCountryCurrencyCountryId && data?.countries?.length) {
+        setNewCountryCurrencyCountryId(data.countries[0].id);
+      }
+      if (!newCountryCurrencyCurrencyId && data?.currencies?.length) {
+        setNewCountryCurrencyCurrencyId(data.currencies[0].id);
+      }
+      if (!newRateCountryId && data?.countries?.length) {
+        setNewRateCountryId(data.countries[0].id);
+      }
     } catch (e: any) {
       setSettingsErr(e?.message || "Failed to load settings");
     } finally {
       setSettingsLoading(false);
+    }
+  }
+
+  async function adminAction(action: string, payload: Record<string, any>) {
+    const res = await fetch("/api/internal/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      throw new Error(data?.error || "Action failed");
+    }
+  }
+
+  async function createCurrency() {
+    setCurrencyErr(null);
+    try {
+      await adminAction("currency.create", {
+        code: newCurrencyCode,
+        symbol: newCurrencySymbol,
+        decimal_places: Number(newCurrencyDecimals || 2),
+        display_format: newCurrencyFormat,
+      });
+      setNewCurrencyCode("");
+      setNewCurrencySymbol("");
+      setNewCurrencyDecimals("2");
+      setNewCurrencyFormat("");
+      await loadSettings();
+    } catch (e: any) {
+      setCurrencyErr(e?.message || "Failed to create currency");
+    }
+  }
+
+  function startEditCurrency(item: CurrencyItem) {
+    setEditingCurrencyId(item.id);
+    setEditCurrencySymbol(String(item.symbol || ""));
+    setEditCurrencyDecimals(String(item.decimal_places ?? 2));
+    setEditCurrencyFormat(String(item.display_format || ""));
+  }
+
+  function cancelEditCurrency() {
+    setEditingCurrencyId(null);
+    setEditCurrencySymbol("");
+    setEditCurrencyDecimals("2");
+    setEditCurrencyFormat("");
+  }
+
+  async function saveCurrencyEdit() {
+    if (!editingCurrencyId) return;
+    setCurrencyErr(null);
+    try {
+      await adminAction("currency.update", {
+        id: editingCurrencyId,
+        symbol: editCurrencySymbol,
+        decimal_places: Number(editCurrencyDecimals || 2),
+        display_format: editCurrencyFormat,
+      });
+      cancelEditCurrency();
+      await loadSettings();
+    } catch (e: any) {
+      setCurrencyErr(e?.message || "Failed to update currency");
+    }
+  }
+
+  async function toggleCurrency(id: number, is_active: number) {
+    setCurrencyErr(null);
+    try {
+      await adminAction("currency.update", { id, is_active });
+      await loadSettings();
+    } catch (e: any) {
+      setCurrencyErr(e?.message || "Failed to update currency");
+    }
+  }
+
+  async function createCountry() {
+    setCountryErr(null);
+    try {
+      await adminAction("country.create", {
+        name: newCountryName,
+        iso2: newCountryIso2,
+        iso3: newCountryIso3,
+        default_currency_id: newCountryDefaultCurrencyId,
+        settlement_currency_code: newCountrySettlement,
+        payment_provider: newCountryProvider,
+      });
+      setNewCountryName("");
+      setNewCountryIso2("");
+      setNewCountryIso3("");
+      setNewCountrySettlement("");
+      setNewCountryProvider("");
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to create country");
+    }
+  }
+
+  function startEditCountry(item: CountryItem) {
+    setEditingCountryId(item.id);
+    setEditCountryName(item.name || "");
+    setEditCountryIso2(item.iso2 || "");
+    setEditCountryIso3(item.iso3 || "");
+    setEditCountryDefaultCurrencyId(item.default_currency_id ?? null);
+    setEditCountrySettlement(item.settlement_currency_code || "");
+    setEditCountryProvider(item.payment_provider || "");
+  }
+
+  function cancelEditCountry() {
+    setEditingCountryId(null);
+    setEditCountryName("");
+    setEditCountryIso2("");
+    setEditCountryIso3("");
+    setEditCountryDefaultCurrencyId(null);
+    setEditCountrySettlement("");
+    setEditCountryProvider("");
+  }
+
+  async function saveCountryEdit() {
+    if (!editingCountryId) return;
+    setCountryErr(null);
+    try {
+      await adminAction("country.update", {
+        id: editingCountryId,
+        name: editCountryName,
+        iso2: editCountryIso2,
+        iso3: editCountryIso3,
+        default_currency_id: editCountryDefaultCurrencyId,
+        settlement_currency_code: editCountrySettlement,
+        payment_provider: editCountryProvider,
+      });
+      cancelEditCountry();
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to update country");
+    }
+  }
+
+  async function toggleCountry(id: number, is_active: number) {
+    setCountryErr(null);
+    try {
+      await adminAction("country.update", { id, is_active });
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to update country");
+    }
+  }
+
+  async function createCountryCurrency() {
+    setCountryErr(null);
+    if (!newCountryCurrencyCountryId || !newCountryCurrencyCurrencyId) {
+      setCountryErr("Select a country and a currency.");
+      return;
+    }
+    try {
+      await adminAction("country_currency.create", {
+        country_id: newCountryCurrencyCountryId,
+        currency_id: newCountryCurrencyCurrencyId,
+      });
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to add country currency");
+    }
+  }
+
+  async function toggleCountryCurrency(country_id: number, currency_id: number, is_active: number) {
+    setCountryErr(null);
+    try {
+      await adminAction("country_currency.update", { country_id, currency_id, is_active });
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to update country currency");
+    }
+  }
+
+  async function createFxRate() {
+    setFxErr(null);
+    try {
+      await adminAction("fx_rate.upsert", {
+        base_currency_code: newFxBase,
+        quote_currency_code: newFxQuote,
+        rate: Number(newFxRate),
+      });
+      setNewFxBase("");
+      setNewFxQuote("");
+      setNewFxRate("");
+      await loadSettings();
+    } catch (e: any) {
+      setFxErr(e?.message || "Failed to add FX rate");
     }
   }
 
@@ -351,6 +643,10 @@ export default function InternalSettingsPage() {
       setShippingErr("Select a shipping type.");
       return;
     }
+    if (!newRateCountryId) {
+      setShippingErr("Select a country.");
+      return;
+    }
     const rate = Number(newRateValue);
     if (!Number.isFinite(rate) || rate <= 0) {
       setShippingErr("Rate must be a positive USD number.");
@@ -372,6 +668,7 @@ export default function InternalSettingsPage() {
           rate_value: rate,
           rate_unit: newRateUnit,
           currency: "USD",
+          country_id: newRateCountryId,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -402,12 +699,14 @@ export default function InternalSettingsPage() {
     setEditingRateId(rate.id);
     setEditRateValue(String(rate.rate_value ?? ""));
     setEditRateUnit(rate.rate_unit);
+    setEditingRateCountryId(rate.country_id ?? null);
   }
 
   function cancelEditRate() {
     setEditingRateId(null);
     setEditRateValue("");
     setEditRateUnit("per_kg");
+    setEditingRateCountryId(null);
   }
 
   async function saveRateEdit() {
@@ -417,12 +716,21 @@ export default function InternalSettingsPage() {
       setShippingErr("Rate must be a positive USD number.");
       return;
     }
+    if (!editingRateCountryId) {
+      setShippingErr("Select a country.");
+      return;
+    }
     setSavingRate(true);
     try {
       const res = await fetch("/api/internal/shipping-rates", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingRateId, rate_value: rateNum, rate_unit: editRateUnit }),
+        body: JSON.stringify({
+          id: editingRateId,
+          rate_value: rateNum,
+          rate_unit: editRateUnit,
+          country_id: editingRateCountryId,
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to update rate");
@@ -587,11 +895,12 @@ export default function InternalSettingsPage() {
 
   const rateReady = useMemo(() => {
     const typeOk = !!newRateTypeId;
+    const countryOk = !!newRateCountryId;
     const rate = Number(newRateValue);
     const rateOk = Number.isFinite(rate) && rate > 0;
     const usdOk = Number.isFinite(Number(exchangeUsd)) && Number(exchangeUsd) > 0;
-    return typeOk && rateOk && usdOk;
-  }, [newRateTypeId, newRateValue, exchangeUsd]);
+    return typeOk && countryOk && rateOk && usdOk;
+  }, [newRateTypeId, newRateCountryId, newRateValue, exchangeUsd]);
 
   const fmtNaira = (value: number) => {
     if (!Number.isFinite(value)) return "NGN 0";
@@ -977,7 +1286,7 @@ export default function InternalSettingsPage() {
               inputMode="email"
             />
             <div className="mt-1 text-xs text-neutral-400">
-              Receives a daily payout summary at 8:00 AM Lagos time.
+              Receives a daily payout summary at 8:00 AM local time.
             </div>
           </div>
           <div className="sm:col-span-3">
@@ -1099,6 +1408,12 @@ export default function InternalSettingsPage() {
                   </div>
                 );
               })()}
+              <SearchableSelect
+                value={newRateCountryId ? String(newRateCountryId) : ""}
+                options={countries.map((c) => ({ value: String(c.id), label: c.name }))}
+                onChange={(next) => setNewRateCountryId(Number(next) || null)}
+                placeholder="Select country"
+              />
               <div className="grid grid-cols-2 gap-2">
                 <SearchableSelect
                   value={newRateUnit}
@@ -1146,6 +1461,14 @@ export default function InternalSettingsPage() {
                             onChange={(next) => setEditRateUnit(next as "per_kg" | "per_cbm")}
                           />
                         </div>
+                        <div className="mt-2">
+                          <SearchableSelect
+                            value={editingRateCountryId ? String(editingRateCountryId) : ""}
+                            options={countries.map((c) => ({ value: String(c.id), label: c.name }))}
+                            onChange={(next) => setEditingRateCountryId(Number(next) || null)}
+                            placeholder="Select country"
+                          />
+                        </div>
                         <div className="mt-2 text-[11px] text-neutral-500">
                           {(() => {
                             const usd = Number(editRateValue || 0);
@@ -1186,6 +1509,9 @@ export default function InternalSettingsPage() {
                             })()}{" "}
                             (NGN equivalent)
                           </div>
+                          <div className="text-neutral-500">
+                            {r.country_name ? `Country: ${r.country_name}` : "Country: —"}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -1217,6 +1543,399 @@ export default function InternalSettingsPage() {
             {shippingErr}
           </div>
         ) : null}
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-100">Countries & currencies</h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Configure supported markets, display currencies, and FX rates. Settlement currency can be any code.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Currencies</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                value={newCurrencyCode}
+                onChange={(e) => setNewCurrencyCode(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Code (e.g. NGN)"
+              />
+              <input
+                value={newCurrencySymbol}
+                onChange={(e) => setNewCurrencySymbol(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Symbol (e.g. ₦)"
+              />
+              <input
+                value={newCurrencyDecimals}
+                onChange={(e) => setNewCurrencyDecimals(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Decimals (e.g. 2)"
+                inputMode="numeric"
+              />
+              <input
+                value={newCurrencyFormat}
+                onChange={(e) => setNewCurrencyFormat(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Format (optional)"
+              />
+              <button
+                onClick={createCurrency}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add currency
+              </button>
+            </div>
+
+            {currencyErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {currencyErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 space-y-2">
+              {currencies.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  {editingCurrencyId === c.id ? (
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-neutral-100">{c.code}</div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <input
+                          value={editCurrencySymbol}
+                          onChange={(e) => setEditCurrencySymbol(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Symbol"
+                        />
+                        <input
+                          value={editCurrencyDecimals}
+                          onChange={(e) => setEditCurrencyDecimals(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Decimals"
+                        />
+                        <input
+                          value={editCurrencyFormat}
+                          onChange={(e) => setEditCurrencyFormat(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Format"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={saveCurrencyEdit}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditCurrency}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="font-semibold text-neutral-100">{c.code}</div>
+                        <div className="text-neutral-400">
+                          {c.symbol || "—"} · {c.decimal_places ?? 2} decimals
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditCurrency(c)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleCurrency(c.id, c.is_active === 0 ? 1 : 0)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          {c.is_active === 0 ? "Activate" : "Deactivate"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Countries</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                value={newCountryName}
+                onChange={(e) => setNewCountryName(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Country name"
+              />
+              <input
+                value={newCountryIso2}
+                onChange={(e) => setNewCountryIso2(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="ISO2 (e.g. NG)"
+              />
+              <input
+                value={newCountryIso3}
+                onChange={(e) => setNewCountryIso3(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="ISO3 (optional)"
+              />
+              <SearchableSelect
+                value={newCountryDefaultCurrencyId ? String(newCountryDefaultCurrencyId) : ""}
+                options={[
+                  { value: "", label: "Default currency (optional)" },
+                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
+                ]}
+                onChange={(next) => setNewCountryDefaultCurrencyId(next ? Number(next) : null)}
+              />
+              <input
+                value={newCountrySettlement}
+                onChange={(e) => setNewCountrySettlement(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Settlement currency (e.g. NGN)"
+              />
+              <input
+                value={newCountryProvider}
+                onChange={(e) => setNewCountryProvider(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Payment provider (optional)"
+              />
+              <button
+                onClick={createCountry}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add country
+              </button>
+            </div>
+
+            {countryErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {countryErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 space-y-2">
+              {countries.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  {editingCountryId === c.id ? (
+                    <div className="flex-1">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input
+                          value={editCountryName}
+                          onChange={(e) => setEditCountryName(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Name"
+                        />
+                        <input
+                          value={editCountryIso2}
+                          onChange={(e) => setEditCountryIso2(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="ISO2"
+                        />
+                        <input
+                          value={editCountryIso3}
+                          onChange={(e) => setEditCountryIso3(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="ISO3"
+                        />
+                        <SearchableSelect
+                          value={editCountryDefaultCurrencyId ? String(editCountryDefaultCurrencyId) : ""}
+                          options={[
+                            { value: "", label: "Default currency (optional)" },
+                            ...currencies.map((cur) => ({ value: String(cur.id), label: cur.code })),
+                          ]}
+                          onChange={(next) => setEditCountryDefaultCurrencyId(next ? Number(next) : null)}
+                        />
+                        <input
+                          value={editCountrySettlement}
+                          onChange={(e) => setEditCountrySettlement(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Settlement currency"
+                        />
+                        <input
+                          value={editCountryProvider}
+                          onChange={(e) => setEditCountryProvider(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Payment provider"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={saveCountryEdit}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditCountry}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="font-semibold text-neutral-100">
+                          {c.name} ({c.iso2})
+                        </div>
+                        <div className="text-neutral-400">
+                          Default: {c.default_currency_code || "—"} · Settlement:{" "}
+                          {c.settlement_currency_code || "—"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditCountry(c)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleCountry(c.id, c.is_active === 0 ? 1 : 0)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          {c.is_active === 0 ? "Activate" : "Deactivate"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Country currencies</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <SearchableSelect
+                value={newCountryCurrencyCountryId ? String(newCountryCurrencyCountryId) : ""}
+                options={[
+                  { value: "", label: "Select country" },
+                  ...countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.iso2})` })),
+                ]}
+                onChange={(next) => setNewCountryCurrencyCountryId(next ? Number(next) : null)}
+              />
+              <SearchableSelect
+                value={newCountryCurrencyCurrencyId ? String(newCountryCurrencyCurrencyId) : ""}
+                options={[
+                  { value: "", label: "Select currency" },
+                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
+                ]}
+                onChange={(next) => setNewCountryCurrencyCurrencyId(next ? Number(next) : null)}
+              />
+              <button
+                onClick={createCountryCurrency}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add mapping
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {countryCurrencies.map((cc) => (
+                <div
+                  key={`${cc.country_id}-${cc.currency_id}`}
+                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  <span>
+                    {cc.country_name || "Country"} → {cc.currency_code || "Currency"}
+                  </span>
+                  <button
+                    onClick={() =>
+                      toggleCountryCurrency(cc.country_id, cc.currency_id, cc.is_active === 0 ? 1 : 0)
+                    }
+                    className="text-xs text-neutral-400 hover:text-neutral-100"
+                  >
+                    {cc.is_active === 0 ? "Activate" : "Deactivate"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">FX rates</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <SearchableSelect
+                value={newFxBase}
+                onChange={(value) => setNewFxBase(value)}
+                options={[
+                  { value: "", label: "Select base" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Base currency"
+                variant="light"
+              />
+              <SearchableSelect
+                value={newFxQuote}
+                onChange={(value) => setNewFxQuote(value)}
+                options={[
+                  { value: "", label: "Select quote" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Quote currency"
+                variant="light"
+              />
+              <input
+                value={newFxRate}
+                onChange={(e) => setNewFxRate(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Rate"
+                inputMode="decimal"
+              />
+              <button
+                onClick={createFxRate}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add FX rate
+              </button>
+            </div>
+
+            {fxErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {fxErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
+              {fxRates.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  <div>
+                    <div className="font-semibold text-neutral-100">
+                      {r.base_currency_code} → {r.quote_currency_code}
+                    </div>
+                    <div className="text-neutral-400">Rate: {Number(r.rate || 0).toLocaleString()}</div>
+                  </div>
+                  <div className="text-[11px] text-neutral-500">
+                    {r.effective_at ? `Effective ${r.effective_at}` : "No effective date"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Manual onboarding card */}

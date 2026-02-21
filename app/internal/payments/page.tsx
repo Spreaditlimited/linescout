@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SearchableSelect from "@/app/internal/_components/SearchableSelect";
 
 type Provider = "paystack" | "providus";
+type QuoteProvider = "global" | "paypal" | "paystack" | "providus";
 type OwnerType = "user" | "agent";
 
 type PaymentSettings = {
@@ -34,6 +36,13 @@ type OverrideRow = {
   display_name?: string | null;
 };
 
+type CountryQuoteProvider = {
+  country_id: number;
+  name: string;
+  iso2: string;
+  provider?: QuoteProvider | null;
+};
+
 export default function PaymentsPage() {
   const [settings, setSettings] = useState<PaymentSettings | null>(null);
   const [settingsErr, setSettingsErr] = useState<string | null>(null);
@@ -50,6 +59,10 @@ export default function PaymentsPage() {
   const [overrides, setOverrides] = useState<OverrideRow[]>([]);
   const [overridesErr, setOverridesErr] = useState<string | null>(null);
   const [overridesLoading, setOverridesLoading] = useState(false);
+
+  const [quoteCountries, setQuoteCountries] = useState<CountryQuoteProvider[]>([]);
+  const [quoteErr, setQuoteErr] = useState<string | null>(null);
+  const [quoteSaving, setQuoteSaving] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 250);
@@ -86,6 +99,18 @@ export default function PaymentsPage() {
     }
   }
 
+  async function loadQuoteProviders() {
+    setQuoteErr(null);
+    try {
+      const res = await fetch("/api/internal/quote-payment-providers", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load quote providers");
+      setQuoteCountries(data.countries || []);
+    } catch (e: any) {
+      setQuoteErr(e?.message || "Failed to load quote providers");
+    }
+  }
+
   async function loadRecipients() {
     if (!debouncedQuery.trim()) {
       setRecipients([]);
@@ -108,6 +133,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     loadSettings();
+    loadQuoteProviders();
   }, []);
 
   useEffect(() => {
@@ -434,6 +460,74 @@ export default function PaymentsPage() {
             </table>
           </div>
         ) : null}
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-base font-semibold text-neutral-100">Quote payment providers by country</h3>
+          <p className="text-xs text-neutral-500">
+            Nigeria uses the global quote provider. Other countries default to PayPal (GBP).
+          </p>
+        </div>
+
+        {quoteErr ? <p className="mt-3 text-sm text-red-300">{quoteErr}</p> : null}
+
+        <div className="mt-4 space-y-3">
+          {quoteCountries.map((c) => {
+            const iso2 = String(c.iso2 || "").toUpperCase();
+            const isNigeria = iso2 === "NG";
+            const effective =
+              c.provider || (isNigeria ? "global" : "paypal");
+
+            const options = isNigeria
+              ? [{ value: "global", label: `Use global (${settings?.provider_default || "paystack"})` }]
+              : [{ value: "paypal", label: "PayPal (GBP)" }];
+
+            return (
+              <div
+                key={c.country_id}
+                className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-200 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="text-neutral-200">
+                  <div className="font-semibold text-neutral-100">{c.name}</div>
+                  <div className="text-xs text-neutral-500">{iso2}</div>
+                </div>
+                <div className="min-w-[220px]">
+                  <SearchableSelect
+                    value={effective}
+                    onChange={async (value) => {
+                      if (isNigeria) return;
+                      setQuoteSaving(c.country_id);
+                      try {
+                        const res = await fetch("/api/internal/quote-payment-providers", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            country_id: c.country_id,
+                            provider: value,
+                          }),
+                        });
+                        const data = await res.json().catch(() => null);
+                        if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to update provider");
+                        await loadQuoteProviders();
+                      } catch (e: any) {
+                        setQuoteErr(e?.message || "Failed to update provider");
+                      } finally {
+                        setQuoteSaving(null);
+                      }
+                    }}
+                    options={options}
+                    variant="light"
+                    disabled={isNigeria || quoteSaving === c.country_id}
+                  />
+                </div>
+              </div>
+            );
+          })}
+          {!quoteCountries.length ? (
+            <p className="text-sm text-neutral-500">No active countries found.</p>
+          ) : null}
+        </div>
       </div>
     </div>
   );

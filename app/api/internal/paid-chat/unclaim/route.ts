@@ -86,6 +86,27 @@ async function ensureClaimBlockColumn(conn: any) {
     );
   }
 }
+
+async function ensureReleaseAuditTable(conn: any) {
+  await conn.query(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_handoff_release_audits (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      handoff_id INT NOT NULL,
+      conversation_id INT NULL,
+      released_by_id INT NULL,
+      released_by_name VARCHAR(120) NULL,
+      released_by_role VARCHAR(32) NULL,
+      previous_status VARCHAR(32) NULL,
+      product_paid DECIMAL(18,2) NULL,
+      shipping_paid DECIMAL(18,2) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_handoff_release_handoff (handoff_id),
+      INDEX idx_handoff_release_created (created_at)
+    )
+    `
+  );
+}
 async function requireInternalAccess() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) {
@@ -158,6 +179,7 @@ export async function POST(req: Request) {
   try {
     await conn.beginTransaction();
     await ensureClaimBlockColumn(conn);
+    await ensureReleaseAuditTable(conn);
 
     const [rows]: any = await conn.query(
       `SELECT id, assigned_agent_id, handoff_id, project_status, route_type
@@ -225,6 +247,12 @@ export async function POST(req: Request) {
         );
       }
 
+      const [quoteRows]: any = await conn.query(
+        `SELECT id FROM linescout_quotes WHERE handoff_id = ?`,
+        [handoffId]
+      );
+      const quoteIds = (quoteRows || []).map((r: any) => Number(r.id)).filter((id: number) => id > 0);
+
       // Record audit before releasing
       await conn.query(
         `
@@ -244,6 +272,17 @@ export async function POST(req: Request) {
           shippingPaid,
         ]
       );
+
+      if (quoteIds.length) {
+        await conn.query(
+          `DELETE FROM linescout_quote_payments WHERE quote_id IN (${quoteIds.map(() => "?").join(", ")})`,
+          quoteIds
+        );
+        await conn.query(
+          `DELETE FROM linescout_quotes WHERE id IN (${quoteIds.map(() => "?").join(", ")})`,
+          quoteIds
+        );
+      }
     }
 
     const blockAgentId = auth.role === "admin" ? assigned : null;

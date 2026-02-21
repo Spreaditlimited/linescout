@@ -13,6 +13,9 @@ type ShippingRate = {
   rate_unit: "per_kg" | "per_cbm" | string;
   currency: string;
   shipping_type_name?: string | null;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
 };
 
 type QuoteItem = {
@@ -30,6 +33,8 @@ type QuoteRecord = {
   handoff_id?: number | null;
   token: string;
   items_json?: any;
+  country_id?: number | null;
+  display_currency_code?: string | null;
   exchange_rate_rmb?: number;
   exchange_rate_usd?: number;
   shipping_rate_usd?: number;
@@ -54,6 +59,28 @@ type ProjectItem = {
   route_type?: string | null;
   handoff_status?: string | null;
   assigned_agent_id?: number | null;
+  handoff_country_id?: number | null;
+  handoff_country_name?: string | null;
+  handoff_country_iso2?: string | null;
+  user_country_id?: number | null;
+  user_country_name?: string | null;
+  user_country_iso2?: string | null;
+  user_display_currency_code?: string | null;
+};
+
+type CountryOption = {
+  id: number;
+  name: string;
+  iso2: string;
+  iso3?: string | null;
+};
+
+type FxRate = {
+  base_currency_code: string;
+  quote_currency_code: string;
+  rate: number | string;
+  effective_at?: string | null;
+  created_at?: string | null;
 };
 
 function num(v: any, fallback = 0) {
@@ -94,16 +121,19 @@ function computeTotals(items: QuoteItem[], exchangeRmb: number, exchangeUsd: num
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
   const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * markupPercent) / 100;
   const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
 
   return {
     totalProductRmb: totalProductRmbWithLocal,
+    totalProductRmbWithLocal,
     totalProductNgn,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,
     totalShippingNgn,
     totalMarkupNgn,
+    totalMarkupRmb,
     totalDueNgn,
   };
 }
@@ -142,6 +172,8 @@ function QuoteBuilderInner() {
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
+  const [displayCurrencyCode, setDisplayCurrencyCode] = useState<string | null>(null);
+  const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const suppressAutoSelectRef = useRef(false);
   const viewingSavedQuoteRef = useRef(false);
   const draftRef = useRef<{
@@ -168,6 +200,8 @@ function QuoteBuilderInner() {
   const restoreDraftRef = useRef(false);
 
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
+  const [activeCountryId, setActiveCountryId] = useState<number | null>(null);
+  const [countries, setCountries] = useState<CountryOption[]>([]);
 
   const [items, setItems] = useState<QuoteItem[]>([
     {
@@ -210,6 +244,89 @@ function QuoteBuilderInner() {
     return computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
   }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent]);
 
+  const displayRates = useMemo(() => {
+    const code = String(displayCurrencyCode || "NGN").toUpperCase();
+    const findRate = (base: string, quote: string) => {
+      const match = fxRates.find(
+        (r) =>
+          String(r.base_currency_code || "").toUpperCase() === base &&
+          String(r.quote_currency_code || "").toUpperCase() === quote
+      );
+      const rate = Number(match?.rate || 0);
+      return Number.isFinite(rate) && rate > 0 ? rate : 0;
+    };
+
+    if (!code || code === "NGN") {
+      return {
+        code: "NGN",
+        ngnToDisplay: 1,
+        usdToDisplay: findRate("USD", "NGN"),
+        rmbToDisplay: findRate("RMB", "NGN"),
+        rmbToUsd: findRate("RMB", "USD"),
+        rmbToNgn: findRate("RMB", "NGN"),
+        usdToNgn: findRate("USD", "NGN"),
+      };
+    }
+
+    return {
+      code,
+      ngnToDisplay: findRate("NGN", code),
+      usdToDisplay: findRate("USD", code),
+      rmbToDisplay: findRate("RMB", code),
+      rmbToUsd: findRate("RMB", "USD"),
+      rmbToNgn: findRate("RMB", "NGN"),
+      usdToNgn: findRate("USD", "NGN"),
+    };
+  }, [displayCurrencyCode, exchangeRmb, exchangeUsd, fxRates]);
+
+  const displayCurrency = displayRates.code || "NGN";
+  const productSubtotalRmb = totals.totalProductRmbWithLocal;
+  const productWithMarkupRmb = productSubtotalRmb + totals.totalMarkupRmb;
+  const shippingUsd = totals.totalShippingUsd;
+
+  const productDisplay =
+    displayCurrency === "USD"
+      ? productWithMarkupRmb * (displayRates.rmbToUsd || 0)
+      : displayCurrency === "NGN"
+      ? productWithMarkupRmb * (displayRates.rmbToNgn || 0)
+      : productWithMarkupRmb * (displayRates.rmbToDisplay || 0);
+
+  const shippingDisplay =
+    displayCurrency === "USD"
+      ? shippingUsd
+      : displayCurrency === "NGN"
+      ? shippingUsd * (displayRates.usdToNgn || 0)
+      : shippingUsd * (displayRates.usdToDisplay || 0);
+
+  const landingCostDisplay = productDisplay + shippingDisplay;
+
+  const usdLineTotal =
+    (displayRates.rmbToUsd || 0) > 0
+      ? productWithMarkupRmb * (displayRates.rmbToUsd || 0) + shippingUsd
+      : 0;
+
+  const missingFxRates = useMemo(() => {
+    const missing: string[] = [];
+    if (displayCurrency === "USD") {
+      if (displayRates.rmbToUsd <= 0) missing.push("RMB→USD");
+    } else if (displayCurrency === "NGN") {
+      if (displayRates.rmbToNgn <= 0) missing.push("RMB→NGN");
+      if (displayRates.usdToNgn <= 0) missing.push("USD→NGN");
+    } else {
+      if (displayRates.rmbToDisplay <= 0) missing.push(`RMB→${displayCurrency}`);
+      if (displayRates.usdToDisplay <= 0) missing.push(`USD→${displayCurrency}`);
+    }
+    if (displayRates.rmbToUsd <= 0) missing.push("RMB→USD");
+    return missing;
+  }, [
+    displayCurrency,
+    displayRates.rmbToDisplay,
+    displayRates.usdToDisplay,
+    displayRates.rmbToUsd,
+    displayRates.rmbToNgn,
+    displayRates.usdToNgn,
+  ]);
+
   const publicLink = useMemo(() => {
     if (!latestQuoteToken) return "";
     if (typeof window !== "undefined" && window.location?.origin) {
@@ -220,10 +337,25 @@ function QuoteBuilderInner() {
     return `${base}/quote/${latestQuoteToken}`;
   }, [latestQuoteToken]);
 
+  const availableShippingRates = useMemo(() => {
+    if (!activeCountryId) return [];
+    return shippingRates.filter((rate) => Number(rate.country_id || 0) === activeCountryId);
+  }, [shippingRates, activeCountryId]);
+
+  const defaultCountryId = useMemo(() => {
+    if (!countries.length) return null;
+    const nigeria = countries.find((c) => String(c.iso2 || "").toUpperCase() === "NG");
+    return Number(nigeria?.id || countries[0]?.id || 0) || null;
+  }, [countries]);
+
   const selectedRate = useMemo(() => {
-    if (!shippingRates.length) return null;
-    return shippingRates.find((rate) => rate.id === shippingRateId) || shippingRates[0] || null;
-  }, [shippingRates, shippingRateId]);
+    if (!availableShippingRates.length) return null;
+    return (
+      availableShippingRates.find((rate) => rate.id === shippingRateId) ||
+      availableShippingRates[0] ||
+      null
+    );
+  }, [availableShippingRates, shippingRateId]);
 
   const isReadOnly = queryReadOnly || locked;
 
@@ -246,24 +378,44 @@ function QuoteBuilderInner() {
     if (!res.ok || !json?.ok) return;
 
     setShippingRates(Array.isArray(json.shipping_rates) ? json.shipping_rates : []);
+    setCountries(Array.isArray(json.countries) ? json.countries : []);
+    const fxRatesList = Array.isArray(json.fx_rates) ? json.fx_rates : [];
+    setFxRates(fxRatesList);
+    const findRate = (base: string, quote: string) => {
+      const match = fxRatesList.find(
+        (r: any) =>
+          String(r.base_currency_code || "").toUpperCase() === base &&
+          String(r.quote_currency_code || "").toUpperCase() === quote
+      );
+      const rate = Number(match?.rate || 0);
+      return Number.isFinite(rate) && rate > 0 ? rate : 0;
+    };
+    const fxRmbNgn = findRate("RMB", "NGN");
+    const fxUsdNgn = findRate("USD", "NGN");
+    if (fxRmbNgn > 0) setExchangeRmb(fxRmbNgn);
+    if (fxUsdNgn > 0) setExchangeUsd(fxUsdNgn);
+    if (!activeCountryId && Array.isArray(json.countries) && json.countries.length) {
+      const nigeria = json.countries.find((c: any) => String(c.iso2 || "").toUpperCase() === "NG");
+      setActiveCountryId(Number(nigeria?.id || json.countries[0]?.id || 0) || null);
+    }
 
     if (json.settings) {
       setMarkupPercent(num(json.settings.markup_percent, 0));
       setAgentPercent(num(json.settings.agent_percent, 0));
       setAgentCommitmentPercent(num(json.settings.agent_commitment_percent, 0));
       setCommitmentDueNgn(num(json.settings.commitment_due_ngn, 0));
-      setExchangeRmb(num(json.settings.exchange_rate_rmb, 0));
-      setExchangeUsd(num(json.settings.exchange_rate_usd, 0));
+      if (fxRmbNgn <= 0) setExchangeRmb(num(json.settings.exchange_rate_rmb, 0));
+      if (fxUsdNgn <= 0) setExchangeUsd(num(json.settings.exchange_rate_usd, 0));
       setDefaultSettings({
-        exchangeRmb: num(json.settings.exchange_rate_rmb, 0),
-        exchangeUsd: num(json.settings.exchange_rate_usd, 0),
+        exchangeRmb: fxRmbNgn > 0 ? fxRmbNgn : num(json.settings.exchange_rate_rmb, 0),
+        exchangeUsd: fxUsdNgn > 0 ? fxUsdNgn : num(json.settings.exchange_rate_usd, 0),
         markupPercent: num(json.settings.markup_percent, 0),
         agentPercent: num(json.settings.agent_percent, 0),
         agentCommitmentPercent: num(json.settings.agent_commitment_percent, 0),
         commitmentDueNgn: num(json.settings.commitment_due_ngn, 0),
       });
     }
-  }, [error]);
+  }, [activeCountryId, error]);
 
   const loadApproval = useCallback(async () => {
     try {
@@ -288,6 +440,9 @@ function QuoteBuilderInner() {
       setActiveHandoffId(Number(quote.handoff_id));
     }
     setItems(ensureItems(quote.items_json));
+    const quoteCountry = quote.country_id ? Number(quote.country_id) : null;
+    setActiveCountryId(activeCountryId || quoteCountry || defaultCountryId);
+    setDisplayCurrencyCode(String(displayCurrencyCode || quote.display_currency_code || ""));
     setExchangeRmb((prev) => num(quote.exchange_rate_rmb, prev));
     setExchangeUsd((prev) => num(quote.exchange_rate_usd, prev));
     setShippingRateUsd((prev) => num(quote.shipping_rate_usd, prev));
@@ -304,7 +459,7 @@ function QuoteBuilderInner() {
     setLatestQuoteToken(quote.token || null);
     setLatestQuoteId(quote.id || null);
     viewingSavedQuoteRef.current = true;
-  }, [activeHandoffId, queryReadOnly]);
+  }, [activeCountryId, activeHandoffId, defaultCountryId, displayCurrencyCode, queryReadOnly]);
 
   const loadQuotes = useCallback(async (hid?: number, scope?: "mine") => {
     setQuotesLoading(true);
@@ -358,6 +513,32 @@ function QuoteBuilderInner() {
       setProjectsLoading(false);
     }
   }, []);
+
+  const loadHandoffCountry = useCallback(async () => {
+    if (!activeHandoffId) return;
+    try {
+      const res = await fetch(`/api/internal/handoffs/${activeHandoffId}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => null);
+      const item = json?.item || null;
+      const preferred =
+        Number(item?.user_country_id || 0) ||
+        Number(item?.country_id || 0) ||
+        0;
+      if (preferred) {
+        setActiveCountryId(preferred);
+      }
+      const resolvedCurrency =
+        String(item?.user_country_currency_code || item?.user_display_currency_code || item?.display_currency_code || "");
+      if (resolvedCurrency) {
+        setDisplayCurrencyCode(resolvedCurrency);
+      }
+    } catch {
+      // ignore
+    }
+  }, [activeHandoffId]);
 
   const loadHandoffStatus = useCallback(async () => {
     if (!activeHandoffId) return;
@@ -471,20 +652,24 @@ function QuoteBuilderInner() {
     draftRef.current = null;
     restoreDraftRef.current = false;
     viewingSavedQuoteRef.current = false;
+    setActiveCountryId(null);
   }, [defaultSettings]);
 
   useEffect(() => {
-    if (!shippingRates.length) return;
+    if (!availableShippingRates.length) return;
     if (!shippingRateId) {
-      setShippingRateId(shippingRates[0].id);
+      setShippingRateId(availableShippingRates[0].id);
       return;
     }
-    const rate = shippingRates.find((r) => r.id === shippingRateId);
-    if (!rate) return;
+    const rate = availableShippingRates.find((r) => r.id === shippingRateId);
+    if (!rate) {
+      setShippingRateId(availableShippingRates[0].id);
+      return;
+    }
     setShippingRateUsd(num(rate.rate_value, 0));
     setShippingRateUnit(rate.rate_unit === "per_cbm" ? "per_cbm" : "per_kg");
     setShippingTypeId(rate.shipping_type_id);
-  }, [shippingRateId, shippingRates]);
+  }, [shippingRateId, availableShippingRates]);
 
   useEffect(() => {
     if (!linkMsg) return;
@@ -503,6 +688,10 @@ function QuoteBuilderInner() {
     const t = setTimeout(() => setSendMsg(null), 2400);
     return () => clearTimeout(t);
   }, [sendMsg]);
+
+  useEffect(() => {
+    loadHandoffCountry();
+  }, [loadHandoffCountry]);
 
   const addItem = () => {
     setItems((prev) => [
@@ -959,21 +1148,34 @@ function QuoteBuilderInner() {
             <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <p className="text-sm font-semibold text-neutral-900">Shipping</p>
               <p className="mt-2 text-xs text-neutral-500">
-                Using admin rates. Select a shipping type to update the estimate.
+                Using admin rates. Destination is set from the customer profile.
               </p>
+              <div className="mt-4">
+                <PremiumSelect
+                  label="Destination"
+                  value={String(activeCountryId || "")}
+                  onChange={() => {}}
+                  options={countries.map((country) => ({
+                    value: String(country.id),
+                    label: country.name,
+                  }))}
+                  placeholder="Select destination"
+                  disabled={true}
+                />
+              </div>
               <div className="mt-4">
                 <PremiumSelect
                   label="Shipping type"
                   value={String(shippingRateId || selectedRate?.id || "")}
                   onChange={(value) => setShippingRateId(Number(value))}
-                  options={shippingRates.map((rate) => ({
+                  options={availableShippingRates.map((rate) => ({
                     value: String(rate.id),
                     label: `${rate.shipping_type_name || "Shipping"} · ${rate.rate_value}/${
                       rate.rate_unit === "per_cbm" ? "CBM" : "KG"
                     }`,
                   }))}
                   placeholder="Select shipping type"
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || !activeCountryId}
                 />
               </div>
               <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-4">
@@ -986,7 +1188,9 @@ function QuoteBuilderInner() {
                     : "Select a shipping type"}
                 </p>
                 <div className="mt-3 grid gap-2 text-xs text-neutral-600 sm:grid-cols-2">
-                  <div>Shipping (NGN): {totals.totalShippingNgn.toLocaleString()}</div>
+                  <div>
+                    Shipping ({displayCurrency}): {Math.round(shippingDisplay).toLocaleString()}
+                  </div>
                   <div>Shipping (USD): {totals.totalShippingUsd.toLocaleString()}</div>
                 </div>
               </div>
@@ -1008,13 +1212,19 @@ function QuoteBuilderInner() {
                   <span className="font-semibold text-neutral-900">{totals.totalCbm.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between border-t border-[rgba(45,52,97,0.14)] pt-3">
-                  <span>Estimated landing cost (NGN)</span>
-                  <span className="text-lg font-semibold text-[#2D3461]">{totals.totalDueNgn.toLocaleString()}</span>
+                  <span>Estimated landing cost ({displayCurrency})</span>
+                  <span className="text-lg font-semibold text-[#2D3461]">
+                    {Math.round(landingCostDisplay).toLocaleString()}
+                  </span>
                 </div>
                 <div className="text-xs text-neutral-500">
-                  USD:{" "}
-                  {exchangeUsd > 0 ? (totals.totalDueNgn / exchangeUsd).toFixed(2) : "0.00"}
+                  USD: {usdLineTotal > 0 ? usdLineTotal.toFixed(2) : "0.00"}
                 </div>
+                {missingFxRates.length ? (
+                  <div className="text-xs text-red-600">
+                    Missing FX rates: {missingFxRates.join(", ")}
+                  </div>
+                ) : null}
                 <div className="grid gap-3 pt-3">
                   {error ? (
                     <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
@@ -1207,6 +1417,14 @@ function QuoteBuilderInner() {
                         if (proj.handoff_id) {
                           setActiveHandoffId(proj.handoff_id);
                           setActiveConversationId(proj.conversation_id || null);
+                          const preferredCountry =
+                            proj.user_country_id || proj.handoff_country_id || null;
+                          if (preferredCountry) {
+                            setActiveCountryId(preferredCountry);
+                          }
+                          if (proj.user_display_currency_code) {
+                            setDisplayCurrencyCode(String(proj.user_display_currency_code));
+                          }
                           setShowAllQuotes(false);
                           setProjectPickerOpen(false);
                         }

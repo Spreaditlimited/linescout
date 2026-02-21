@@ -43,6 +43,10 @@ type QuoteRow = {
   id: number;
   token: string;
   items_json: string;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  display_currency_code?: string | null;
   payment_purpose?: string | null;
   deposit_enabled?: number | null;
   deposit_percent?: number | null;
@@ -64,6 +68,9 @@ type ShippingRate = {
   rate_value: number;
   rate_unit: "per_kg" | "per_cbm";
   currency: string;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
 };
 
 type Settings = {
@@ -106,6 +113,10 @@ export default function QuoteEditPage() {
   const [paymentPurpose, setPaymentPurpose] = useState("full_product_payment");
   const [depositEnabled, setDepositEnabled] = useState(false);
   const [depositPercent, setDepositPercent] = useState("0");
+  const [countryId, setCountryId] = useState<number | null>(null);
+  const [countryName, setCountryName] = useState<string | null>(null);
+  const [countryIso2, setCountryIso2] = useState<string | null>(null);
+  const [displayCurrency, setDisplayCurrency] = useState<string | null>(null);
 
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
 
@@ -146,6 +157,10 @@ export default function QuoteEditPage() {
         setPaymentPurpose(String(q.payment_purpose || "full_product_payment"));
         setDepositEnabled(Boolean(q.deposit_enabled));
         setDepositPercent(String(q.deposit_percent ?? 0));
+        setCountryId(q.country_id ? Number(q.country_id) : null);
+        setCountryName(q.country_name || null);
+        setCountryIso2(q.country_iso2 || null);
+        setDisplayCurrency(q.display_currency_code || null);
       } catch (e: any) {
         setErr(e?.message || "Failed to load");
       } finally {
@@ -188,6 +203,11 @@ export default function QuoteEditPage() {
       totalDue: productNgn + shippingNgn + markup,
     };
   }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent]);
+
+  const availableShippingRates = useMemo(() => {
+    if (!countryId) return shippingRates;
+    return shippingRates.filter((rate) => Number(rate.country_id || 0) === countryId);
+  }, [shippingRates, countryId]);
 
   const save = async () => {
     setSaving(true);
@@ -240,7 +260,7 @@ export default function QuoteEditPage() {
   };
 
   const selectRate = (rateId: number) => {
-    const rate = shippingRates.find((r) => r.id === rateId);
+    const rate = availableShippingRates.find((r) => r.id === rateId);
     if (!rate) return;
     setShippingRateUsd(String(rate.rate_value));
     setShippingRateUnit(rate.rate_unit);
@@ -256,6 +276,10 @@ export default function QuoteEditPage() {
           <div>
             <h2 className="text-lg font-semibold text-neutral-100">Edit quote</h2>
             <p className="text-xs text-neutral-500">Quote ID #{quoteId}</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              {countryName ? `Country: ${countryName} (${countryIso2 || ""})` : "Country: —"} ·{" "}
+              {displayCurrency ? `Display currency: ${displayCurrency}` : "Display currency: —"}
+            </p>
           </div>
           <button
             onClick={save}
@@ -360,7 +384,7 @@ export default function QuoteEditPage() {
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
         <div className="text-sm font-semibold text-neutral-100">Shipping</div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {shippingRates.map((rate) => (
+          {availableShippingRates.map((rate) => (
             <button
               key={rate.id}
               onClick={() => selectRate(rate.id)}

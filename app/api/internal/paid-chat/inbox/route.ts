@@ -203,6 +203,13 @@ export async function GET(req: Request) {
         COALESCE(NULLIF(TRIM(h.email), ''), u.email) AS email,
         h.whatsapp_number,
         h.status AS handoff_status,
+        h.country_id AS handoff_country_id,
+        cc.name AS handoff_country_name,
+        cc.iso2 AS handoff_country_iso2,
+        u.country_id AS user_country_id,
+        uc.name AS user_country_name,
+        uc.iso2 AS user_country_iso2,
+        u.display_currency_code AS user_display_currency_code,
 
         lm.id AS last_message_id,
         lm.sender_type AS last_sender_type,
@@ -220,7 +227,9 @@ export async function GET(req: Request) {
 
       FROM linescout_conversations c
       LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+      LEFT JOIN linescout_countries cc ON cc.id = h.country_id
       LEFT JOIN users u ON u.id = c.user_id
+      LEFT JOIN linescout_countries uc ON uc.id = u.country_id
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
 
       LEFT JOIN linescout_conversation_reads r

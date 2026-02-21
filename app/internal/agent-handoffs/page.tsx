@@ -21,6 +21,10 @@ type Handoff = {
 
   quote_count?: number | null;
   latest_quote_at?: string | null;
+
+  country_name?: string | null;
+  country_iso2?: string | null;
+  display_currency_code?: string | null;
 };
 
 type SummaryWindow = "all" | "30" | "60" | "90";
@@ -206,6 +210,9 @@ export default function AgentHandoffsPage() {
         h.whatsapp_number,
         h.status,
         h.claimed_by,
+        h.country_name,
+        h.country_iso2,
+        h.display_currency_code,
       ]
         .map(norm)
         .join(" | ");
@@ -571,11 +578,13 @@ export default function AgentHandoffsPage() {
           <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
             <table className="w-full table-fixed text-sm">
               {/* ✅ Tight column widths */}
-              {/* created | token | type | customer | email | whatsapp | owner | quote | status | view */}
+              {/* created | token | type | country | currency | customer | email | whatsapp | owner | quote | status | view */}
               <colgroup>
                 <col className="w-[170px]" />
                 <col className="w-[170px]" />
                 <col className="w-[120px]" />
+                <col className="w-[150px]" />
+                <col className="w-[110px]" />
                 <col className="w-[170px]" />
                 <col className="w-[220px]" />
                 <col className="w-[140px]" />
@@ -590,6 +599,8 @@ export default function AgentHandoffsPage() {
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Created</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Token</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Type</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Country</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Currency</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Customer</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Email</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">WhatsApp</th>
@@ -616,6 +627,14 @@ export default function AgentHandoffsPage() {
 
                     <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap overflow-hidden text-ellipsis">
                       {h.handoff_type}
+                    </td>
+
+                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap overflow-hidden text-ellipsis">
+                      {h.country_name ? `${h.country_name} (${h.country_iso2 || ""})` : "—"}
+                    </td>
+
+                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap overflow-hidden text-ellipsis">
+                      {h.display_currency_code || "—"}
                     </td>
 
                     <td className="px-3 py-3">
@@ -671,7 +690,7 @@ export default function AgentHandoffsPage() {
 
                 {paged.length === 0 ? (
                   <tr className="border-t border-neutral-800">
-                    <td colSpan={10} className="px-3 py-4 text-sm text-neutral-400">
+                    <td colSpan={12} className="px-3 py-4 text-sm text-neutral-400">
                       No handoffs.
                     </td>
                   </tr>

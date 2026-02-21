@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import {
+  ensureCountryConfig,
+  ensureHandoffCountryColumns,
+  backfillHandoffDefaults,
+  getNigeriaDefaults,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -122,6 +128,14 @@ export async function POST(req: Request) {
 
     conn = await db();
     await conn.beginTransaction();
+    await ensureCountryConfig(conn as any);
+    await ensureHandoffCountryColumns(conn as any);
+    await backfillHandoffDefaults(conn as any);
+
+    const defaults = await getNigeriaDefaults(conn as any);
+    const displayCurrency = currency || defaults.display_currency_code;
+    const settlementCurrency = currency || defaults.settlement_currency_code;
+    const countryId = defaults.country_id;
 
     // 1) Create token record matching production logic
     // type MUST be "sourcing"
@@ -174,9 +188,21 @@ export async function POST(req: Request) {
     // 2) Create handoff record (handoff_type MUST be "sourcing")
     const [handoffInsert]: any = await conn.query(
       `INSERT INTO linescout_handoffs
-       (token, handoff_type, customer_name, email, context, whatsapp_number, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [token, "sourcing", customer_name, customer_email, notes, whatsapp_number, status]
+       (token, handoff_type, customer_name, email, context, whatsapp_number, status,
+        country_id, display_currency_code, settlement_currency_code)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        token,
+        "sourcing",
+        customer_name,
+        customer_email,
+        notes,
+        whatsapp_number,
+        status,
+        countryId || null,
+        displayCurrency || null,
+        settlementCurrency || null,
+      ]
     );
 
     const handoffId = Number(handoffInsert?.insertId || 0);

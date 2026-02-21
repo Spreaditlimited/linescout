@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { cookies } from "next/headers";
+import { ArrowRight, BadgeCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import {
   computeLandedRange,
@@ -9,6 +10,10 @@ import {
 } from "@/lib/white-label-products";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
+import FilterForm from "@/components/filters/FilterForm";
+import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountrySelector";
+import { currencyForCode } from "@/lib/white-label-country";
+import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -84,7 +89,7 @@ export async function generateMetadata({
     ? `${category} White Label Ideas | LineScout`
     : q
     ? `White Label Ideas: ${q} | LineScout`
-    : "White Label Product Ideas for Nigerian Brands";
+    : "White Label Product Ideas for Emerging Brands";
 
   const description = category
     ? `Explore ${category} white label ideas with pricing signals and sourcing guidance.`
@@ -112,7 +117,7 @@ export async function generateMetadata({
           url: ogImage,
           width: 1200,
           height: 630,
-          alt: "White Label Product Ideas for Nigerian Brands",
+          alt: "White Label Product Ideas for Emerging Brands",
         },
       ],
     },
@@ -157,6 +162,35 @@ function slugify(value?: string | null) {
     .slice(0, 64);
 }
 
+function pickCountryFromCookie(
+  cookieValue: string | undefined,
+  countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
+) {
+  const normalized = String(cookieValue || "").trim().toUpperCase();
+  const picked =
+    countries.find((c) => c.iso2 === normalized) ||
+    (normalized === "UK" ? countries.find((c) => c.iso2 === "GB") : null) ||
+    countries.find((c) => c.iso2 === "NG") ||
+    countries[0] ||
+    null;
+  return picked;
+}
+
+function getCountryCurrencyCode(
+  country: { default_currency_id?: number | null; settlement_currency_code?: string | null } | null,
+  currencyById: Map<number, string>
+) {
+  if (!country) return "NGN";
+  const fromDefault = country.default_currency_id
+    ? currencyById.get(Number(country.default_currency_id)) || null
+    : null;
+  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
+  if (allowed.has(candidate)) return candidate;
+  const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
+  return allowed.has(settlement) ? settlement : "NGN";
+}
+
 export default async function WhiteLabelPage({
   searchParams,
 }: {
@@ -169,6 +203,8 @@ export default async function WhiteLabelPage({
   const regulatory = String(params?.regulatory || "").trim();
   const sort = String(params?.sort || "").trim();
   const requestedPage = toInt(params?.page, 1);
+  const cookieStore = await cookies();
+  const countryCookie = cookieStore.get("wl_country")?.value;
 
   const conn = await db.getConnection();
   let items: any[] = [];
@@ -176,7 +212,24 @@ export default async function WhiteLabelPage({
   let categories: string[] = [];
   let mostViewed: any[] = [];
   let categorySpotlights: { category: string; items: any[] }[] = [];
+  let countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[] = [];
+  let countryOptions: { value: string; label: string }[] = [];
+  let countryCode = "NG";
+  let currencyCode = "NGN";
+  const effectivePrice = currencyCode === "NGN" ? price : "";
+
   try {
+    await ensureCountryConfig(conn);
+    const lists = await listActiveCountriesAndCurrencies(conn);
+    countries = (lists.countries || []) as typeof countries;
+    const currencyById = new Map<number, string>(
+      (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
+    );
+    const picked = pickCountryFromCookie(countryCookie, countries);
+    countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
+    currencyCode = getCountryCurrencyCode(picked, currencyById);
+    countryOptions = countries.map((c) => ({ value: String(c.iso2 || "").toUpperCase(), label: c.name }));
+
     await ensureWhiteLabelProductsReady(conn);
 
     const clauses = ["is_active = 1"];
@@ -209,7 +262,7 @@ export default async function WhiteLabelPage({
 
     const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
 
-    if (price) {
+    if (effectivePrice) {
       if (price === "lt1k") {
         clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
       } else if (price === "1k-3k") {
@@ -351,10 +404,37 @@ export default async function WhiteLabelPage({
     conn.release();
   }
 
+  const currency = currencyForCode(currencyCode);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
-  const selectClass =
-    "w-full appearance-none rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 shadow-sm focus:outline-none focus:border-[rgba(45,52,97,0.45)] focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]";
+  const categoryOptions = [{ value: "", label: "All categories" }].concat(
+    categories.map((c) => ({ value: c, label: c }))
+  );
+  const priceOptions =
+    currencyCode === "NGN"
+      ? [
+          { value: "", label: "Any budget" },
+          { value: "lt1k", label: "Under ₦1,000" },
+          { value: "1k-3k", label: "₦1,000 - ₦3,000" },
+          { value: "3k-7k", label: "₦3,000 - ₦7,000" },
+          { value: "7k-15k", label: "₦7,000 - ₦15,000" },
+          { value: "15kplus", label: "₦15,000+" },
+        ]
+      : [{ value: "", label: "Any budget" }];
+  const regulatoryOptions = [
+    { value: "", label: "Any status" },
+    { value: "non_regulated", label: "Non-regulated only" },
+    { value: "regulated", label: "Regulated only" },
+    { value: "unknown", label: "Unknown" },
+  ];
+  const sortOptions = [
+    { value: "", label: "Recommended" },
+    { value: "newest", label: "Newest" },
+    { value: "price_low", label: "Price: Low to High" },
+    { value: "price_high", label: "Price: High to Low" },
+    { value: "name", label: "Name (A-Z)" },
+  ];
 
   const brandBlue = "#2D3461";
 
@@ -447,100 +527,25 @@ export default async function WhiteLabelPage({
 
         <section className="mx-auto max-w-6xl px-6 pb-6">
           {!(q || category) ? (
-            <form method="GET" action="/white-label" className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex flex-1 items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                  <Search className="h-4 w-4 text-neutral-400" />
-                  <input
-                    name="q"
-                    defaultValue={q}
-                    placeholder="Search products, categories, or use cases"
-                    className="w-full bg-transparent text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white"
-                >
-                  Search
-                </button>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Category</label>
-                  <div className="relative">
-                    <select name="category" defaultValue={category} className={selectClass}>
-                      <option value="">All categories</option>
-                      {categories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Budget (landed per unit in ₦)</label>
-                  <div className="relative">
-                    <select name="price" defaultValue={price} className={selectClass}>
-                      <option value="">Any budget</option>
-                      <option value="lt1k">Under ₦1,000</option>
-                      <option value="1k-3k">₦1,000 - ₦3,000</option>
-                      <option value="3k-7k">₦3,000 - ₦7,000</option>
-                      <option value="7k-15k">₦7,000 - ₦15,000</option>
-                      <option value="15kplus">₦15,000+</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Regulatory</label>
-                  <div className="relative">
-                    <select name="regulatory" defaultValue={regulatory} className={selectClass}>
-                      <option value="">Any status</option>
-                      <option value="non_regulated">Non-regulated only</option>
-                      <option value="regulated">Regulated only</option>
-                      <option value="unknown">Unknown</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Sort by</label>
-                  <div className="relative">
-                    <select name="sort" defaultValue={sort} className={selectClass}>
-                      <option value="">Recommended</option>
-                      <option value="newest">Newest</option>
-                      <option value="price_low">Price: Low to High</option>
-                      <option value="price_high">Price: High to Low</option>
-                      <option value="name">Name (A-Z)</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {(q || category || price || regulatory || sort) && (
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Link href="/white-label" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
-                    Clear filters
-                  </Link>
-                </div>
-              )}
-            </form>
+            <FilterForm
+              action="/white-label"
+              searchPlaceholder="Search products, categories, or use cases"
+              initial={{ q, category, price: effectivePrice, regulatory, sort }}
+              categoryOptions={categoryOptions}
+              priceOptions={priceOptions}
+              regulatoryOptions={regulatoryOptions}
+              sortOptions={sortOptions}
+              gridColsClass="sm:grid-cols-2 lg:grid-cols-5"
+              labels={{
+                category: "Category",
+                price: `Budget (landed per unit in ${currency.symbol})`,
+                regulatory: "Regulatory",
+                sort: "Sort by",
+              }}
+              clearHref="/white-label"
+              countrySelector={<WhiteLabelCountrySelector value={countryCode} options={countryOptions} />}
+              countryLabel="Country"
+            />
           ) : (
             <div className="pt-6" />
           )}
@@ -568,7 +573,7 @@ export default async function WhiteLabelPage({
                     q,
                     category: "",
                     page: 1,
-                    price,
+                    price: effectivePrice,
                     regulatory,
                     sort,
                   })}
@@ -587,7 +592,7 @@ export default async function WhiteLabelPage({
                       q,
                       category: c,
                       page: 1,
-                      price,
+                      price: effectivePrice,
                       regulatory,
                       sort,
                     })}
@@ -606,7 +611,7 @@ export default async function WhiteLabelPage({
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-10">
-          <WhiteLabelCatalogClient items={items} detailBase="/white-label" />
+          <WhiteLabelCatalogClient items={items} detailBase="/white-label" currencyCode={currencyCode} />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-neutral-500">
@@ -618,7 +623,7 @@ export default async function WhiteLabelPage({
                   q,
                   category,
                   page: Math.max(1, page - 1),
-                  price,
+                  price: effectivePrice,
                   regulatory,
                   sort,
                 })}
@@ -636,7 +641,7 @@ export default async function WhiteLabelPage({
                   q,
                   category,
                   page: Math.min(totalPages, page + 1),
-                  price,
+                  price: effectivePrice,
                   regulatory,
                   sort,
                 })}

@@ -19,6 +19,7 @@ export default function WhiteLabelStep5Page() {
   const [resetting, setResetting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [commitmentDue, setCommitmentDue] = useState<number | null>(null);
+  const [commitmentCurrency, setCommitmentCurrency] = useState<string>("NGN");
   const [commitmentErr, setCommitmentErr] = useState<string | null>(null);
 
   const summary = useMemo(() => {
@@ -78,9 +79,10 @@ export default function WhiteLabelStep5Page() {
           if (!cancelled) setCommitmentErr(data?.error || "Could not load commitment fee.");
           return;
         }
-        const raw = Number(data?.commitment_due_ngn || 0);
+        const raw = Number((data?.commitment_due_amount ?? data?.commitment_due_ngn) || 0);
         if (!cancelled) {
           setCommitmentDue(Number.isFinite(raw) && raw > 0 ? raw : null);
+          setCommitmentCurrency(String(data?.commitment_due_currency_code || "NGN").toUpperCase());
         }
       } catch {
         if (!cancelled) setCommitmentErr("Could not load commitment fee.");
@@ -180,7 +182,7 @@ export default function WhiteLabelStep5Page() {
               <div className="mt-4 rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
                 <p className="text-sm font-semibold text-neutral-900">Project Activation Deposit</p>
                 <p className="mt-2 text-3xl font-semibold tracking-tight text-neutral-900">
-                  {commitmentDue ? formatNgn(commitmentDue) : "—"}
+                  {commitmentDue ? formatMoney(commitmentDue, commitmentCurrency) : "—"}
                 </p>
                 <p className="mt-2 text-sm text-neutral-600">
                   This activates the White Label workflow and is fully credited to your first production order.
@@ -220,6 +222,18 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-function formatNgn(v: number) {
-  return `₦${Number(v || 0).toLocaleString("en-NG")}`;
+function formatMoney(value: number, currencyCode?: string | null) {
+  const code = String(currencyCode || "NGN").toUpperCase();
+  const n = Number(value || 0);
+  const safe = Number.isFinite(n) ? n : 0;
+  try {
+    return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-NG", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: code === "NGN" ? 0 : 2,
+    }).format(safe);
+  } catch {
+    const symbol = code === "GBP" ? "£" : "₦";
+    return `${symbol}${safe.toLocaleString()}`;
+  }
 }

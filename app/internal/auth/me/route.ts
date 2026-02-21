@@ -1,14 +1,7 @@
 // app/internal/auth/me/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import mysql from "mysql2/promise";
-
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+import { db } from "@/lib/db";
 
 export async function GET() {
   const cookieName = (process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session").trim();
@@ -26,7 +19,7 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: "Not signed in" }, { status: 401 });
   }
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT

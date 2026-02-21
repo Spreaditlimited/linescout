@@ -8,6 +8,10 @@ type AppUser = {
   email: string;
   display_name: string | null;
   created_at: string;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  display_currency_code?: string | null;
 
   last_seen_at: string | null;
   last_session_created_at: string | null;
@@ -142,6 +146,9 @@ export default function AdminAppUsersPage() {
         u.id,
         u.email,
         u.display_name,
+        u.country_name,
+        u.country_iso2,
+        u.display_currency_code,
         u.active_sessions,
         u.conversations_count,
         u.white_label_projects_count,
@@ -300,6 +307,8 @@ export default function AdminAppUsersPage() {
                 <tr>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">User</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Name</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Country</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">Currency</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Created</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Sessions</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Last seen</th>
@@ -324,6 +333,14 @@ export default function AdminAppUsersPage() {
 
                     <td className="px-3 py-3 text-sm text-neutral-200">
                       {u.display_name ? u.display_name : "—"}
+                    </td>
+
+                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                      {u.country_name ? `${u.country_name} (${u.country_iso2 || ""})` : "—"}
+                    </td>
+
+                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                      {u.display_currency_code || "—"}
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
@@ -378,7 +395,7 @@ export default function AdminAppUsersPage() {
 
                 {filtered.length === 0 ? (
                   <tr className="border-t border-neutral-800">
-                    <td colSpan={10} className="px-3 py-4 text-sm text-neutral-400">
+                    <td colSpan={12} className="px-3 py-4 text-sm text-neutral-400">
                       No matching users.
                     </td>
                   </tr>

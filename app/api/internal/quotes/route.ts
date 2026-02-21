@@ -1,7 +1,17 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { getFxRate } from "@/lib/fx";
 import crypto from "crypto";
+import {
+  ensureCountryConfig,
+  ensureQuoteCountryColumns,
+  ensureHandoffCountryColumns,
+  backfillQuoteDefaults,
+  backfillHandoffDefaults,
+  getNigeriaDefaults,
+  resolveCountryCurrency,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -227,6 +237,12 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureHandoffCountryColumns(conn);
+    await ensureQuoteCountryColumns(conn);
+    await backfillHandoffDefaults(conn);
+    await backfillQuoteDefaults(conn);
+
     if (handoffId) {
       const allowed = await canAccessHandoff(conn, auth.user, handoffId);
       if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
@@ -278,8 +294,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "At least one valid item is required" }, { status: 400 });
   }
 
-  const exchange_rate_rmb = num(body?.exchange_rate_rmb, 0);
-  const exchange_rate_usd = num(body?.exchange_rate_usd, 0);
   const shipping_rate_usd = num(body?.shipping_rate_usd, 0);
   const shipping_rate_unit = String(body?.shipping_rate_unit || "per_kg");
   const shipping_type_id = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
@@ -294,8 +308,8 @@ export async function POST(req: Request) {
   const currency = String(body?.currency || "NGN");
   const agent_note = String(body?.agent_note || "").trim();
 
-  if (exchange_rate_rmb <= 0 || exchange_rate_usd <= 0 || shipping_rate_usd <= 0) {
-    return NextResponse.json({ ok: false, error: "Exchange rates and shipping rate must be greater than 0" }, { status: 400 });
+  if (shipping_rate_usd <= 0) {
+    return NextResponse.json({ ok: false, error: "Shipping rate must be greater than 0" }, { status: 400 });
   }
   if (deposit_enabled && (deposit_percent < 1 || deposit_percent > 100)) {
     return NextResponse.json({ ok: false, error: "Deposit percent must be between 1 and 100" }, { status: 400 });
@@ -304,11 +318,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid shipping_rate_unit" }, { status: 400 });
   }
 
-  const totals = computeTotals(items, exchange_rate_rmb, exchange_rate_usd, shipping_rate_usd, shipping_rate_unit, markup_percent);
   const token = crypto.randomBytes(9).toString("hex");
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureHandoffCountryColumns(conn);
+    await ensureQuoteCountryColumns(conn);
+    await backfillHandoffDefaults(conn);
+    await backfillQuoteDefaults(conn);
+
     const allowed = await canCreateQuote(conn, auth.user, handoff_id);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     const stageOk = await isHandoffQuoteStage(conn, handoff_id);
@@ -319,9 +338,52 @@ export async function POST(req: Request) {
       );
     }
 
+    const defaults = await getNigeriaDefaults(conn);
+    let country_id = defaults.country_id;
+    let display_currency_code = defaults.display_currency_code;
+    let settlement_currency_code = defaults.settlement_currency_code;
+
+    const [userRows]: any = await conn.query(
+      `SELECT u.country_id, u.display_currency_code
+       FROM linescout_conversations c
+       JOIN users u ON u.id = c.user_id
+       WHERE c.handoff_id = ?
+       LIMIT 1`,
+      [handoff_id]
+    );
+    if (userRows?.length) {
+      const u = userRows[0];
+      const userCountry = Number(u.country_id || 0);
+      const userDisplay = String(u.display_currency_code || "").trim();
+      if (userCountry) {
+        const resolved = await resolveCountryCurrency(conn, userCountry, userDisplay || null);
+        if (resolved) {
+          country_id = resolved.country_id;
+          display_currency_code = resolved.display_currency_code;
+          settlement_currency_code = resolved.settlement_currency_code;
+        }
+      }
+    }
+
+    const exchange_rate_rmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
+    const exchange_rate_usd = (await getFxRate(conn, "USD", "NGN")) || 0;
+    if (!exchange_rate_rmb || !exchange_rate_usd) {
+      return NextResponse.json({ ok: false, error: "FX rates for NGN are not configured." }, { status: 500 });
+    }
+
+    const totals = computeTotals(
+      items,
+      exchange_rate_rmb,
+      exchange_rate_usd,
+      shipping_rate_usd,
+      shipping_rate_unit,
+      markup_percent
+    );
+
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const insertColumns = supportsAgentNote
       ? `handoff_id, token, status, currency, payment_purpose,
+        country_id, display_currency_code, settlement_currency_code,
         exchange_rate_rmb, exchange_rate_usd,
         shipping_type_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
@@ -331,6 +393,7 @@ export async function POST(req: Request) {
         total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
         created_by, updated_by`
       : `handoff_id, token, status, currency, payment_purpose,
+        country_id, display_currency_code, settlement_currency_code,
         exchange_rate_rmb, exchange_rate_usd,
         shipping_type_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
@@ -341,14 +404,17 @@ export async function POST(req: Request) {
         created_by, updated_by`;
 
     const insertValues = supportsAgentNote
-      ? `?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
-      : `?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`;
+      ? `?, ?, 'draft', ${Array(28).fill("?").join(", ")}`
+      : `?, ?, 'draft', ${Array(27).fill("?").join(", ")}`;
     const insertParams = supportsAgentNote
       ? [
           handoff_id,
           token,
           currency,
           payment_purpose,
+          country_id,
+          display_currency_code,
+          settlement_currency_code,
           exchange_rate_rmb,
           exchange_rate_usd,
           shipping_type_id,
@@ -378,6 +444,9 @@ export async function POST(req: Request) {
           token,
           currency,
           payment_purpose,
+          country_id,
+          display_currency_code,
+          settlement_currency_code,
           exchange_rate_rmb,
           exchange_rate_usd,
           shipping_type_id,

@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
-
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+import {
+  ensureCountryConfig,
+  ensureShippingRateCountryColumn,
+  getNigeriaDefaults,
+} from "@/lib/country-config";
+import { db } from "@/lib/db";
 
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
@@ -24,7 +18,7 @@ async function requireAdmin() {
 
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT u.role
@@ -50,13 +44,17 @@ export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
       `SELECT r.id, r.shipping_type_id, t.name AS shipping_type_name,
-              r.rate_value, r.rate_unit, r.currency, r.is_active, r.created_at
+              r.rate_value, r.rate_unit, r.currency, r.is_active, r.created_at,
+              r.country_id, c.name AS country_name, c.iso2 AS country_iso2
        FROM linescout_shipping_rates r
        JOIN linescout_shipping_types t ON t.id = r.shipping_type_id
+       LEFT JOIN linescout_countries c ON c.id = r.country_id
        ORDER BY r.id DESC`
     );
     return NextResponse.json({ ok: true, items: rows || [] });
@@ -73,7 +71,9 @@ export async function POST(req: Request) {
   const shipping_type_id = Number(body?.shipping_type_id);
   const rate_value = Number(body?.rate_value);
   const rate_unit = String(body?.rate_unit || "").trim();
-  const currency = String(body?.currency || "NGN").trim() || "NGN";
+  // Shipping rates are always stored in USD (base currency).
+  const currency = "USD";
+  let country_id = Number(body?.country_id || 0);
 
   if (!shipping_type_id || Number.isNaN(shipping_type_id)) {
     return NextResponse.json({ ok: false, error: "Invalid shipping_type_id" }, { status: 400 });
@@ -85,13 +85,30 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid rate_unit" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
+    if (!country_id) {
+      const defaults = await getNigeriaDefaults(conn);
+      country_id = Number(defaults.country_id || 0);
+    }
+    if (!country_id) {
+      return NextResponse.json({ ok: false, error: "Invalid country_id" }, { status: 400 });
+    }
+    const [countryRows]: any = await conn.query(
+      `SELECT id FROM linescout_countries WHERE id = ? LIMIT 1`,
+      [country_id]
+    );
+    if (!countryRows?.length) {
+      return NextResponse.json({ ok: false, error: "Invalid country_id" }, { status: 400 });
+    }
+
     const [result]: any = await conn.query(
       `INSERT INTO linescout_shipping_rates
-       (shipping_type_id, rate_value, rate_unit, currency, is_active)
-       VALUES (?, ?, ?, ?, 1)`,
-      [shipping_type_id, rate_value, rate_unit, currency]
+       (shipping_type_id, rate_value, rate_unit, currency, is_active, country_id)
+       VALUES (?, ?, ?, ?, 1, ?)`,
+      [shipping_type_id, rate_value, rate_unit, currency, country_id]
     );
 
     return NextResponse.json({ ok: true, id: result.insertId });
@@ -109,13 +126,16 @@ export async function PATCH(req: Request) {
   const is_active = body?.is_active === 0 ? 0 : 1;
   const rate_value = body?.rate_value;
   const rate_unit = body?.rate_unit;
+  const country_id = body?.country_id;
 
   if (!id || Number.isNaN(id)) {
     return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const setParts: string[] = ["is_active = ?"];
     const params: any[] = [is_active];
 
@@ -134,6 +154,22 @@ export async function PATCH(req: Request) {
       }
       setParts.push("rate_unit = ?");
       params.push(rate_unit);
+    }
+
+    if (country_id !== undefined) {
+      const countryNum = Number(country_id || 0);
+      if (!countryNum) {
+        return NextResponse.json({ ok: false, error: "Invalid country_id" }, { status: 400 });
+      }
+      const [countryRows]: any = await conn.query(
+        `SELECT id FROM linescout_countries WHERE id = ? LIMIT 1`,
+        [countryNum]
+      );
+      if (!countryRows?.length) {
+        return NextResponse.json({ ok: false, error: "Invalid country_id" }, { status: 400 });
+      }
+      setParts.push("country_id = ?");
+      params.push(countryNum);
     }
 
     params.push(id);

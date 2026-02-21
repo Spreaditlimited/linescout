@@ -18,6 +18,9 @@ type RouteStatus = {
   has_active_project: boolean;
   is_cancelled: boolean;
   commitment_due_ngn?: number;
+  commitment_due_amount?: number;
+  commitment_due_currency_code?: string;
+  payment_provider?: "paystack" | "paypal";
   error?: string;
 };
 
@@ -55,10 +58,20 @@ function pickMostRecent(projects: ProjectItem[]) {
   return sorted[0] || null;
 }
 
-function formatNgn(v: any) {
-  const n = Number(v || 0);
+function formatMoney(value: any, currencyCode?: string | null) {
+  const code = String(currencyCode || "NGN").toUpperCase();
+  const n = Number(value || 0);
   const safe = Number.isFinite(n) ? n : 0;
-  return `₦${safe.toLocaleString("en-NG")}`;
+  try {
+    return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-NG", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: code === "NGN" ? 0 : 2,
+    }).format(safe);
+  } catch {
+    const symbol = code === "GBP" ? "£" : "₦";
+    return `${symbol}${safe.toLocaleString()}`;
+  }
 }
 
 function Card({
@@ -124,9 +137,11 @@ export default function SourcingProjectClient() {
   const [working, setWorking] = useState<"pay" | "human" | null>(null);
   const startEventSent = useRef(false);
   const commitmentDue = useMemo(() => {
-    const raw = Number(status?.commitment_due_ngn || 0);
+    const raw = Number((status?.commitment_due_amount ?? status?.commitment_due_ngn) || 0);
     return Number.isFinite(raw) && raw > 0 ? raw : null;
-  }, [status?.commitment_due_ngn]);
+  }, [status?.commitment_due_amount, status?.commitment_due_ngn]);
+  const commitmentCurrency = String(status?.commitment_due_currency_code || "NGN").toUpperCase();
+  const paymentProvider = status?.payment_provider ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -236,6 +251,10 @@ export default function SourcingProjectClient() {
 
   async function goPay() {
     if (working) return;
+    if (!paymentProvider) {
+      setErr("Payment provider is not available yet. Please try again.");
+      return;
+    }
     setWorking("pay");
     setErr(null);
     const qs = new URLSearchParams({
@@ -251,7 +270,9 @@ export default function SourcingProjectClient() {
       ...(simpleDestination ? { simple_destination: simpleDestination } : {}),
       ...(simpleNotes ? { simple_notes: simpleNotes } : {}),
     });
-    router.push(`/paystack-checkout?${qs.toString()}`);
+    const checkout =
+      paymentProvider === "paypal" ? `/paypal-checkout?${qs.toString()}` : `/paystack-checkout?${qs.toString()}`;
+    router.push(checkout);
     setTimeout(() => setWorking(null), 250);
   }
 
@@ -351,7 +372,7 @@ export default function SourcingProjectClient() {
                   order.
                 </p>
                 <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-4 py-3 text-xs font-semibold text-[var(--agent-blue)]">
-                  Commitment fee: {commitmentDue ? formatNgn(commitmentDue) : "—"}
+                  Commitment fee: {commitmentDue ? formatMoney(commitmentDue, commitmentCurrency) : "—"}
                 </div>
               </div>
 
@@ -439,12 +460,16 @@ export default function SourcingProjectClient() {
               <button
                 type="button"
                 onClick={goPay}
-                disabled={working !== null}
+                disabled={working !== null || !paymentProvider}
                 className="btn btn-primary w-full rounded-2xl disabled:opacity-60 sm:w-auto"
               >
                 {working === "pay"
                   ? "Preparing..."
-                  : `Continue to Paystack${commitmentDue ? ` (${formatNgn(commitmentDue)})` : ""}`}
+                  : !paymentProvider
+                  ? "Loading payment provider..."
+                  : paymentProvider === "paypal"
+                  ? `Continue to PayPal${commitmentDue ? ` (${formatMoney(commitmentDue, commitmentCurrency)})` : ""}`
+                  : `Continue to Paystack${commitmentDue ? ` (${formatMoney(commitmentDue, commitmentCurrency)})` : ""}`}
               </button>
               <button
                 type="button"

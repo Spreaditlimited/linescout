@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import {
+  ensureCountryConfig,
+  ensureUserCountryColumns,
+  backfillUserDefaults,
+} from "@/lib/country-config";
+import { convertAmount } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +27,40 @@ export async function GET(req: NextRequest) {
     }
 
     const user = await requireUser(req);
+    const userId = Number((user as any)?.id || 0);
 
     const conn = await db.getConnection();
     let conv: any = null;
+    let paymentProvider: string | null = null;
+    let settlementCurrency: string = "NGN";
+    let displayCurrency: string = "NGN";
     try {
+      await ensureCountryConfig(conn);
+      await ensureUserCountryColumns(conn);
+      await backfillUserDefaults(conn);
+
+      const [countryRows]: any = await conn.query(
+        `
+        SELECT u.country_id, u.display_currency_code, c.payment_provider, c.settlement_currency_code
+        FROM users u
+        LEFT JOIN linescout_countries c ON c.id = u.country_id
+        WHERE u.id = ?
+        LIMIT 1
+        `,
+        [userId]
+      );
+      if (countryRows?.length) {
+        paymentProvider = countryRows[0]?.payment_provider || null;
+        settlementCurrency = String(countryRows[0]?.settlement_currency_code || "NGN").toUpperCase();
+        displayCurrency = String(countryRows[0]?.display_currency_code || settlementCurrency || "NGN").toUpperCase();
+      }
+
       const [rows]: any = await conn.query(
         `SELECT *
          FROM linescout_conversations
          WHERE user_id = ? AND route_type = ?
          LIMIT 1`,
-        [user.id, routeType]
+        [userId, routeType]
       );
 
       conv = rows?.[0] || null;
@@ -41,7 +71,7 @@ export async function GET(req: NextRequest) {
             (user_id, route_type, chat_mode, human_message_limit, human_message_used, payment_status, project_status)
            VALUES
             (?, ?, 'ai_only', 0, 0, 'unpaid', 'active')`,
-          [user.id, routeType]
+          [userId, routeType]
         );
 
         const id = Number(ins?.insertId || 0);
@@ -68,6 +98,8 @@ export async function GET(req: NextRequest) {
     const conversation_status = conv?.project_status ?? null;
 
     let commitmentDueNgn = 0;
+    let commitmentDueAmount = 0;
+    let commitmentCurrency = settlementCurrency || "NGN";
     const settingsConn = await db.getConnection();
     try {
       const [rows]: any = await settingsConn.query(
@@ -77,6 +109,20 @@ export async function GET(req: NextRequest) {
       if (Number.isFinite(ngn) && ngn > 0) commitmentDueNgn = ngn;
     } finally {
       settingsConn.release();
+    }
+
+    const fxConn = await db.getConnection();
+    try {
+      const converted = await convertAmount(fxConn, commitmentDueNgn, "NGN", displayCurrency || "NGN");
+      if (converted && Number.isFinite(converted)) {
+        commitmentDueAmount = converted;
+        commitmentCurrency = displayCurrency || "NGN";
+      } else {
+        commitmentDueAmount = commitmentDueNgn;
+        commitmentCurrency = "NGN";
+      }
+    } finally {
+      fxConn.release();
     }
 
     return NextResponse.json(
@@ -91,6 +137,9 @@ export async function GET(req: NextRequest) {
         has_active_project: Boolean(conv?.handoff_id && conversation_status === "active"),
         is_cancelled: conversation_status === "cancelled",
         commitment_due_ngn: commitmentDueNgn,
+        commitment_due_amount: commitmentDueAmount,
+        commitment_due_currency_code: commitmentCurrency,
+        payment_provider: paymentProvider || (settlementCurrency === "GBP" ? "paypal" : "paystack"),
       },
       { status: 200 }
     );

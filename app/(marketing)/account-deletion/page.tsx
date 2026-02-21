@@ -25,7 +25,7 @@ export default function AccountDeletionPage() {
               <span className="hidden h-7 w-px rounded-full bg-emerald-200 sm:inline-block" />
               <div className="hidden sm:block">
                 <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
-                  Nigeria-first sourcing
+                  Market-specific sourcing
                 </p>
                 <p className="text-xs text-neutral-500">AI clarity + specialist execution</p>
               </div>

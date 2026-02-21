@@ -27,7 +27,7 @@ export default function MachineSourcingPage() {
       id: "welcome-1",
       role: "assistant",
       content:
-        "Hi, I’m LineScout. Tell me the production line you’re considering and where you want to install it (for example 5T per day groundnut oil line in Lagos). I’ll help you think through capacity, budget and key machines.",
+        "Hi, I’m LineScout. Tell me the production line you’re considering and where you want to install it (for example 5T per day groundnut oil line in your city). I’ll help you think through capacity, budget and key machines.",
     },
   ]);
 
@@ -164,19 +164,19 @@ export default function MachineSourcingPage() {
     const digits = raw.replace(/\D/g, "");
 
     if (digits.startsWith("234")) {
-      if (digits.length !== 13) throw new Error("Invalid Nigerian WhatsApp number.");
+      if (digits.length !== 13) throw new Error("Invalid WhatsApp number.");
       return digits;
     }
 
     if (digits.startsWith("0")) {
       const trimmed = digits.slice(1);
-      if (trimmed.length !== 10) throw new Error("Invalid Nigerian WhatsApp number.");
+      if (trimmed.length !== 10) throw new Error("Invalid WhatsApp number.");
       return "234" + trimmed;
     }
 
     if (digits.length === 10) return "234" + digits;
 
-    throw new Error("Please enter a valid Nigerian WhatsApp number.");
+    throw new Error("Please enter a valid WhatsApp number.");
   }
 
   async function submitLead() {
@@ -916,7 +916,7 @@ function ChatMode({
           <textarea
             ref={textareaRef}
             className="min-h-[70px] max-h-[200px] w-full resize-none rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm sm:text-base text-neutral-100 outline-none placeholder:text-neutral-500 focus:border-neutral-700 focus:ring-0"
-            placeholder="Example: Help me evaluate a 1T per hour cassava flour line for Ogun state with a budget under NGN 120M."
+            placeholder="Example: Help me evaluate a 1T per hour cassava flour line for my region with a budget under 120M."
             value={input}
             onChange={(e) => onChangeInput(e.target.value)}
             onKeyDown={handleKeyDown}

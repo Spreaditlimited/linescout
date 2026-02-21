@@ -117,7 +117,7 @@ export default function WhiteLabelStep2Page() {
                     className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                     placeholder="Example: 20,000mAh power bank with fast charge"
                   />
-                  <p className="mt-2 text-xs text-neutral-500">Use the name you’d use to sell it in Nigeria.</p>
+                  <p className="mt-2 text-xs text-neutral-500">Use the name you’d use to sell it in your market.</p>
                 </div>
 
                 <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">

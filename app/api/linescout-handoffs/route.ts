@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import {
+  ensureCountryConfig,
+  ensureHandoffCountryColumns,
+  backfillHandoffDefaults,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,12 +67,18 @@ export async function GET(req: Request) {
         `
         : "";
 
+    await ensureCountryConfig(conn as any);
+    await ensureHandoffCountryColumns(conn as any);
+    await backfillHandoffDefaults(conn as any);
+
     const [rows] = await conn.execute<any[]>(
       `
       SELECT
         h.*,
         COALESCE(q.quote_count, 0) AS quote_count,
         q.latest_quote_at,
+        hc.name AS country_name,
+        hc.iso2 AS country_iso2,
         COALESCE(
           NULLIF(TRIM(h.customer_name), ''),
           NULLIF(TRIM(l.name), ''),
@@ -96,6 +107,7 @@ export async function GET(req: Request) {
           GROUP BY email
         ) latest ON latest.email = l1.email AND latest.max_id = l1.id
       ) l ON l.email = u.email
+      LEFT JOIN linescout_countries hc ON hc.id = h.country_id
       WHERE 1=1
       ${excludeWhere}
       ORDER BY h.created_at DESC

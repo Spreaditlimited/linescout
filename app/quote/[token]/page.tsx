@@ -1,8 +1,14 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { getFxRate } from "@/lib/fx";
+import { resolveCountryCurrency } from "@/lib/country-config";
+import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults } from "@/lib/country-config";
 import { selectPaymentProvider } from "@/lib/payment-provider";
+import { ensureQuotePaymentProviderTable, resolveQuotePaymentProvider } from "@/lib/quote-payment-provider";
 import QuoteClient from "./QuoteClient";
+
+export const dynamic = "force-dynamic";
 
 export default async function QuotePage({ params }: { params: Promise<{ token: string }> }) {
   const { token: rawToken } = await params;
@@ -11,9 +17,12 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
       `SELECT
          q.*,
+         c.iso2 AS country_iso2,
          h.email AS handoff_email,
          COALESCE(
            NULLIF(TRIM(h.customer_name), ''),
@@ -43,6 +52,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
            'Customer'
          ) AS customer_name
        FROM linescout_quotes q
+       LEFT JOIN linescout_countries c ON c.id = q.country_id
        LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
        WHERE q.token = ?
        LIMIT 1`,
@@ -52,6 +62,8 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     if (!rows?.length) return notFound();
 
     const quote = rows[0];
+    const defaults = await getNigeriaDefaults(conn);
+    const quoteCountryId = Number(quote.country_id || defaults.country_id || 0);
     let items: any[] = [];
     try {
       if (Array.isArray(quote.items_json)) {
@@ -68,9 +80,18 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     const [settingsRows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
     const settings = settingsRows?.[0] || null;
 
-    const exchangeRmb = Number(settings?.exchange_rate_rmb || quote.exchange_rate_rmb || 0);
-    const exchangeUsd = Number(settings?.exchange_rate_usd || quote.exchange_rate_usd || 0);
+    const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
+    const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
     const markupPercent = Number(settings?.markup_percent || quote.markup_percent || 0);
+
+    const resolved = await resolveCountryCurrency(conn, quote.country_id, null);
+    const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
+    const displayFxRate =
+      displayCurrencyCode === "NGN" ? 1 : (await getFxRate(conn, "NGN", displayCurrencyCode)) || 0;
+    const shippingFxRate =
+      displayCurrencyCode === "NGN" ? 0 : (await getFxRate(conn, "USD", displayCurrencyCode)) || 0;
+    const productFxRate =
+      displayCurrencyCode === "NGN" ? 0 : (await getFxRate(conn, "RMB", displayCurrencyCode)) || 0;
 
     let shippingRates: any[] = [];
     try {
@@ -83,10 +104,13 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
            SELECT shipping_type_id, MAX(id) AS max_id
            FROM linescout_shipping_rates
            WHERE is_active = 1
+             AND country_id = ?
            GROUP BY shipping_type_id
          ) latest ON latest.max_id = r.id
          WHERE r.is_active = 1
-         ORDER BY t.name ASC, r.id DESC`
+           AND r.country_id = ?
+         ORDER BY t.name ASC, r.id DESC`,
+        [quoteCountryId, quoteCountryId]
       );
       shippingRates = Array.isArray(rateRows) ? rateRows : [];
     } catch {
@@ -103,7 +127,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       });
     }
 
-    let providerDefault: "paystack" | "providus" = "paystack";
+    let providerDefault: "paystack" | "providus" | "paypal" = "paystack";
     let providerAllowOverrides = true;
     const [providerRows]: any = await conn.query(
       `SELECT provider_default, allow_overrides
@@ -119,8 +143,13 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       }
     }
 
-    let provider = providerDefault;
-    if (providerAllowOverrides) {
+    let provider: "paystack" | "providus" | "paypal" = providerDefault;
+    const countryIso2 = String(quote.country_iso2 || "").toUpperCase();
+    if (countryIso2 && countryIso2 !== "NG") {
+      await ensureQuotePaymentProviderTable(conn);
+      const mapped = await resolveQuotePaymentProvider(conn, quote.country_id);
+      provider = "paypal";
+    } else if (providerAllowOverrides) {
       const email = String(quote.handoff_email || quote.email || "").trim().toLowerCase();
       if (email) {
         const [userRows]: any = await conn.query(
@@ -154,6 +183,10 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           depositPercent={Number(quote.deposit_percent || 0)}
           commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
           provider={provider}
+          displayCurrencyCode={displayCurrencyCode}
+          displayFxRate={displayFxRate}
+          shippingFxRate={shippingFxRate}
+          productFxRate={productFxRate}
         />
       </Suspense>
     );

@@ -163,6 +163,8 @@ export async function POST(req: Request) {
     fob_low_usd: toNum(body?.fob_low_usd),
     fob_high_usd: toNum(body?.fob_high_usd),
     cbm_per_1000: toNum(body?.cbm_per_1000),
+    size_template: clean(body?.size_template) || null,
+    volumetric_kg_per_1000: toNum(body?.volumetric_kg_per_1000),
     is_active: body?.is_active === false || body?.is_active === 0 ? 0 : 1,
     sort_order: Number.isFinite(Number(body?.sort_order)) ? Number(body?.sort_order) : 0,
   };
@@ -175,9 +177,9 @@ export async function POST(req: Request) {
       `
       INSERT INTO linescout_white_label_products
         (product_name, category, short_desc, why_sells, regulatory_note, mockup_prompt, image_url,
-         fob_low_usd, fob_high_usd, cbm_per_1000, is_active, sort_order)
+         fob_low_usd, fob_high_usd, cbm_per_1000, size_template, volumetric_kg_per_1000, is_active, sort_order)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         product_name,
@@ -190,6 +192,8 @@ export async function POST(req: Request) {
         payload.fob_low_usd,
         payload.fob_high_usd,
         payload.cbm_per_1000,
+        payload.size_template,
+        payload.volumetric_kg_per_1000,
         payload.is_active,
         payload.sort_order,
       ]

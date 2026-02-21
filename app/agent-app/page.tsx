@@ -20,7 +20,7 @@ const highlights = [
   },
   {
     title: "Points-based rewards",
-    desc: "Earn points for fast execution and response times, converted to NGN rewards.",
+    desc: "Earn points for fast execution and response times, converted to cash rewards.",
     icon: <BadgeCheck className="h-5 w-5" />,
   },
   {
@@ -226,10 +226,10 @@ export default function AgentAppLandingPage() {
           <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-[28px] border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--agent-blue)]">Rewards</p>
-              <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Points that convert to NGN rewards</h2>
+              <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Points that convert to cash rewards</h2>
               <p className="mt-2 text-sm text-neutral-600">
                 Earn points based on speed between payment, shipping, and delivery, plus response time on paid chats.
-                Points are converted to NGN at a configurable rate, and appear in your payouts summary.
+                Points are converted to cash at a configurable rate, and appear in your payouts summary.
               </p>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
@@ -247,7 +247,7 @@ export default function AgentAppLandingPage() {
                 <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
                   <p className="text-sm font-semibold text-neutral-900">Transparent value</p>
                   <p className="mt-1 text-xs text-neutral-600">
-                    Points convert to NGN using an admin‑set value shown in the app.
+                    Points convert to cash using an admin‑set value shown in the app.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white p-4">
@@ -274,7 +274,7 @@ export default function AgentAppLandingPage() {
                 <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.06)] p-4">
                   <p className="text-xs font-semibold text-[var(--agent-blue)]">Admin configurable</p>
                   <p className="mt-2 text-xs text-neutral-600">
-                    LineScout can adjust thresholds and NGN value per point as we scale the agent program.
+                    LineScout can adjust thresholds and reward value per point as we scale the agent program.
                   </p>
                 </div>
               </div>

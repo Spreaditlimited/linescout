@@ -42,6 +42,9 @@ type HandoffDetail = {
   shipper: string | null;
   tracking_number: string | null;
   conversation_id: number | null;
+  user_country_id?: number | null;
+  user_country_name?: string | null;
+  user_country_iso2?: string | null;
 };
 
 type PaymentInfo = {
@@ -49,6 +52,10 @@ type PaymentInfo = {
   total_paid: number;
   balance: number;
   currency: string;
+  display_currency_code?: string | null;
+  display_total_due?: number | null;
+  display_total_paid?: number | null;
+  display_balance?: number | null;
   commitment_payment?: {
     id: number;
     purpose: string;
@@ -63,6 +70,13 @@ type PaymentInfo = {
     shipping_due: number;
     shipping_paid: number;
     shipping_balance: number;
+    display_currency_code?: string | null;
+    product_due_display?: number | null;
+    shipping_due_display?: number | null;
+    product_paid_display?: number | null;
+    shipping_paid_display?: number | null;
+    product_balance_display?: number | null;
+    shipping_balance_display?: number | null;
   } | null;
 } | null;
 
@@ -115,6 +129,22 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function formatMoney(value: number, currency?: string | null) {
+  const code = String(currency || "NGN").toUpperCase();
+  const n = Number(value || 0);
+  const safe = Number.isFinite(n) ? n : 0;
+  try {
+    return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-NG", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: code === "NGN" ? 0 : 2,
+    }).format(safe);
+  } catch {
+    const symbol = code === "GBP" ? "£" : code === "USD" ? "$" : "₦";
+    return `${symbol}${safe.toLocaleString()}`;
+  }
+}
+
 function ProjectDetailInner() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -131,6 +161,8 @@ function ProjectDetailInner() {
   const [updating, setUpdating] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [releasing, setReleasing] = useState(false);
+  const [requestingCountry, setRequestingCountry] = useState(false);
+  const [requestCountryMsg, setRequestCountryMsg] = useState<string | null>(null);
   const [confirmReleaseOpen, setConfirmReleaseOpen] = useState(false);
   const [confirmProductPaidOpen, setConfirmProductPaidOpen] = useState(false);
   const [shippingCompanyId, setShippingCompanyId] = useState<number | null>(null);
@@ -199,6 +231,29 @@ function ProjectDetailInner() {
     setQuotes(Array.isArray(json.items) ? json.items : []);
   }, [handoffId]);
 
+  const requestCountry = useCallback(async () => {
+    if (!detail?.id || !isValidEmail(detail.email || "")) return;
+    setRequestingCountry(true);
+    setRequestCountryMsg(null);
+    try {
+      const res = await fetch("/api/internal/handoffs/request-country", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ handoff_id: detail.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Failed to send email.");
+      }
+      setRequestCountryMsg("Email sent. Awaiting customer update.");
+    } catch (e: any) {
+      setRequestCountryMsg(e?.message || "Failed to send email.");
+    } finally {
+      setRequestingCountry(false);
+    }
+  }, [detail]);
+
   const loadAttachments = useCallback(async () => {
     if (!conversationId) return;
     const res = await fetch(`/api/internal/paid-chat/messages?conversation_id=${conversationId}&limit=40`, {
@@ -266,6 +321,7 @@ function ProjectDetailInner() {
 
   const quoteAllowed = ["manufacturer_found", "paid", "shipped", "delivered"].includes(statusRaw);
   const quoteReadOnly = statusRaw === "delivered";
+  const userCountryMissing = !detail?.user_country_id;
 
   const productBalance = payments?.quote_summary?.product_balance ?? payments?.balance ?? 0;
   const productFullyPaid = payments?.quote_summary
@@ -574,7 +630,27 @@ function ProjectDetailInner() {
                     </button>
                   </span>
                 )}
+                {userCountryMissing && isValidEmail(detail?.email || "") ? (
+                  <button
+                    type="button"
+                    onClick={requestCountry}
+                    disabled={requestingCountry}
+                    className="btn btn-outline px-4 py-2 text-xs"
+                  >
+                    {requestingCountry ? "Sending..." : "Request country"}
+                  </button>
+                ) : null}
               </div>
+              {userCountryMissing ? (
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  Customer country is missing. Send a request so they can update their profile.
+                </div>
+              ) : null}
+              {requestCountryMsg ? (
+                <div className="mt-3 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-xs text-neutral-600">
+                  {requestCountryMsg}
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -791,31 +867,68 @@ function ProjectDetailInner() {
               <p className="text-sm font-semibold text-neutral-900">Payments snapshot</p>
               {payments ? (
                 <div className="mt-4 space-y-3 text-sm text-neutral-600">
+                  {(() => {
+                    const currency =
+                      payments.display_currency_code || payments.currency || "NGN";
+                    const totalDue =
+                      payments.display_total_due ?? payments.total_due ?? 0;
+                    const totalPaid =
+                      payments.display_total_paid ?? payments.total_paid ?? 0;
+                    const balance =
+                      payments.display_balance ??
+                      (payments.balance ?? totalDue - totalPaid);
+                    return (
+                      <>
                   <div className="flex items-center justify-between">
                     <span>Total due</span>
-                    <span className="font-semibold text-neutral-900">{Number(payments.total_due || 0).toLocaleString()}</span>
+                    <span className="font-semibold text-neutral-900">
+                      {formatMoney(totalDue, currency)}
+                    </span>
                   </div>
                   {payments.commitment_payment ? (
                     <div className="flex items-center justify-between">
                       <span>Commitment fee</span>
                       <span className="font-semibold text-neutral-900">
-                        {Number(payments.commitment_payment.amount || 0).toLocaleString()}
+                        {formatMoney(
+                          Number(payments.commitment_payment.amount || 0),
+                          payments.commitment_payment.currency || currency
+                        )}
                       </span>
                     </div>
                   ) : null}
                   <div className="flex items-center justify-between">
                     <span>Total paid</span>
-                    <span className="font-semibold text-neutral-900">{Number(payments.total_paid || 0).toLocaleString()}</span>
+                    <span className="font-semibold text-neutral-900">
+                      {formatMoney(totalPaid, currency)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Balance</span>
-                    <span className="font-semibold text-neutral-900">{Number(payments.balance || 0).toLocaleString()}</span>
+                    <span className="font-semibold text-neutral-900">
+                      {formatMoney(balance, currency)}
+                    </span>
                   </div>
                   {payments.quote_summary ? (
                     <div className="rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
-                      Product balance: {Number(payments.quote_summary.product_balance || 0).toLocaleString()} · Shipping balance: {Number(payments.quote_summary.shipping_balance || 0).toLocaleString()}
+                      Product balance:{" "}
+                      {formatMoney(
+                        payments.quote_summary.product_balance_display ??
+                          payments.quote_summary.product_balance ??
+                          0,
+                        payments.quote_summary.display_currency_code || currency
+                      )}{" "}
+                      · Shipping balance:{" "}
+                      {formatMoney(
+                        payments.quote_summary.shipping_balance_display ??
+                          payments.quote_summary.shipping_balance ??
+                          0,
+                        payments.quote_summary.display_currency_code || currency
+                      )}
                     </div>
                   ) : null}
+                      </>
+                    );
+                  })()}
                 </div>
               ) : (
                 <p className="mt-4 text-sm text-neutral-500">Payments data not available.</p>

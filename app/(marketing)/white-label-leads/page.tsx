@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 const highlights = [
   {
     title: "Pick a winning product",
-    desc: "Learn how to choose products with demand, margin, and brand potential in Nigeria.",
+    desc: "Learn how to choose products with demand, margin, and brand potential for your market.",
     icon: Sparkles,
   },
   {
@@ -84,7 +84,7 @@ export default function WhiteLabelLeadsPage() {
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
               A 35-minute training on how to find winning products, validate demand, and source safely
-              for Nigeria. Presented by Tochukwu Nkwocha of Sure Importers Limited (since 2018).
+              for your market. Presented by Tochukwu Nkwocha of Sure Importers Limited (since 2018).
             </p>
 
             <div className="mt-4 hidden gap-2 sm:mt-8 sm:grid sm:grid-cols-3">

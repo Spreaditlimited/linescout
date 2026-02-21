@@ -3,12 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import SearchableSelect from "../../../_components/SearchableSelect";
 
 type UserSummary = {
   id: number;
   email: string;
   display_name: string | null;
   created_at: string;
+  country_id?: number | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  display_currency_code?: string | null;
 
   last_seen_at: string | null;
   last_session_created_at: string | null;
@@ -49,6 +54,8 @@ type WLRow = {
   handoff_id: number | null;
   created_at: string;
   updated_at: string;
+  country_id?: number | null;
+  display_currency_code?: string | null;
 };
 
 type HandoffRow = {
@@ -66,6 +73,8 @@ type HandoffRow = {
   shipped_at: string | null;
   delivered_at: string | null;
   cancelled_at: string | null;
+  country_id?: number | null;
+  display_currency_code?: string | null;
 };
 
 type ApiResponse =
@@ -76,6 +85,9 @@ type ApiResponse =
       conversations: ConversationRow[];
       white_label_projects: WLRow[];
       handoffs: HandoffRow[];
+      countries: { id: number; name: string; iso2: string; default_currency_id?: number | null }[];
+      currencies: { id: number; code: string; symbol?: string | null }[];
+      country_currencies: { country_id: number; currency_id: number }[];
     }
   | { ok: false; error: string };
 
@@ -95,8 +107,12 @@ export default function AdminAppUserDetailPage() {
   const [data, setData] = useState<ApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const [tab, setTab] = useState<Tab>("overview");
+  const [countryId, setCountryId] = useState<number | "">("");
+  const [displayCurrencyCode, setDisplayCurrencyCode] = useState("");
 
   async function load() {
     setLoading(true);
@@ -108,6 +124,9 @@ export default function AdminAppUserDetailPage() {
         throw new Error((json as any)?.error || "Failed to load user");
       }
       setData(json);
+      const u = (json as any).user as UserSummary;
+      setCountryId(typeof u?.country_id === "number" ? u.country_id : "");
+      setDisplayCurrencyCode(String(u?.display_currency_code || ""));
     } catch (e: any) {
       setErr(e?.message || "Failed to load user");
     } finally {
@@ -123,6 +142,34 @@ export default function AdminAppUserDetailPage() {
 
   const ok = useMemo(() => !!(data && "ok" in data && data.ok), [data]);
   const user = ok ? (data as any).user as UserSummary : null;
+  const countries = ok
+    ? (data as any).countries as { id: number; name: string; iso2: string; default_currency_id?: number | null }[]
+    : [];
+  const currencies = ok ? (data as any).currencies as { id: number; code: string; symbol?: string | null }[] : [];
+  const countryCurrencies = ok ? (data as any).country_currencies as { country_id: number; currency_id: number }[] : [];
+
+  const countryOptions = [{ value: "", label: "Select country" }].concat(
+    (countries || []).map((c) => ({
+      value: String(c.id),
+      label: `${c.name} (${c.iso2})`,
+    }))
+  );
+  function getCountryDefaultCurrency(nextCountryId: number | "") {
+    if (!nextCountryId) return "";
+    const country = (countries || []).find((c) => Number(c.id) === Number(nextCountryId));
+    const defaultCurrencyId = country?.default_currency_id ? Number(country.default_currency_id) : null;
+    if (!defaultCurrencyId) return "";
+    const currency = (currencies || []).find((c) => Number(c.id) === defaultCurrencyId);
+    return currency?.code ? String(currency.code) : "";
+  }
+
+  useEffect(() => {
+    if (!countryId) return;
+    if (displayCurrencyCode) return;
+    const next = getCountryDefaultCurrency(countryId);
+    if (next) setDisplayCurrencyCode(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryId, countries, currencies]);
 
   const btnBase =
     "inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-medium transition-colors";
@@ -181,6 +228,74 @@ export default function AdminAppUserDetailPage() {
 
       {ok && user ? (
         <>
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Country & currency</h3>
+                <p className="mt-1 text-xs text-neutral-500">Controls display currency for this user.</p>
+              </div>
+              <button
+                onClick={async () => {
+                  setSaveErr(null);
+                  setSaving(true);
+                  try {
+                    const res = await fetch(`/api/internal/admin/app-users/${userId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        country_id: countryId || null,
+                      }),
+                    });
+                    const json = await res.json().catch(() => ({}));
+                    if (!res.ok || !json?.ok) {
+                      throw new Error(json?.error || "Failed to save");
+                    }
+                    await load();
+                  } catch (e: any) {
+                    setSaveErr(e?.message || "Failed to save");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+            </div>
+
+            {saveErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {saveErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-neutral-400">Country</label>
+                <SearchableSelect
+                  value={countryId === "" ? "" : String(countryId)}
+                  onChange={(value) => {
+                    const next = value ? Number(value) : "";
+                    setCountryId(next);
+                    setDisplayCurrencyCode(getCountryDefaultCurrency(next));
+                  }}
+                  options={countryOptions}
+                  placeholder="Select country"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-neutral-400">Display currency</label>
+                <input
+                  type="text"
+                  value={displayCurrencyCode}
+                  disabled
+                  className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Tabs */}
           <div className="flex flex-wrap items-center gap-2">
             {(

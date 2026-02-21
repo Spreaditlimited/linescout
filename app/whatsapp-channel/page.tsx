@@ -27,8 +27,8 @@ export default function WhatsAppChannelLandingPage() {
               </h1>
 
               <p className="mt-5 max-w-xl text-base leading-relaxed text-white/70">
-                Short daily lessons, practical examples, and the real mistakes Nigerian founders make when importing
-                machines or white label products from China.
+                Short daily lessons, practical examples, and the real mistakes founders make when importing machines
+                or white label products from China.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -56,7 +56,7 @@ export default function WhatsAppChannelLandingPage() {
                 />
                 <TrustPill
                   icon={<ShieldCheck className="h-4 w-4" />}
-                  title="Nigeria-aware"
+                  title="Market-aware"
                   desc="Power, ports, and execution."
                 />
               </div>
@@ -100,7 +100,7 @@ export default function WhatsAppChannelLandingPage() {
                     </li>
                     <li className="flex gap-3">
                       <span className="mt-2 h-2 w-2 rounded-full bg-white/60" />
-                      Power and voltage realities in Nigeria, and how they destroy installs
+                      Power and voltage realities in your market, and how they destroy installs
                     </li>
                     <li className="flex gap-3">
                       <span className="mt-2 h-2 w-2 rounded-full bg-white/60" />

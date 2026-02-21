@@ -6,7 +6,7 @@ import MachineWebinarLeadForm from "@/components/marketing/MachineWebinarLeadFor
 export const metadata: Metadata = {
   title: "Machine Sourcing Webinar | LineScout",
   description:
-    "Free training on how to source machines from China and launch profitable operations in Nigeria.",
+    "Free training on how to source machines from China and launch profitable operations in your market.",
 };
 
 const highlights = [

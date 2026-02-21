@@ -65,7 +65,7 @@ export default function WhiteLabelWebinarPage() {
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-neutral-700 sm:text-base">
             This 35-minute session walks you through product selection, sourcing, branding, and
-            launching in Nigeria. Presented by Tochukwu Nkwocha.
+            launching in your market. Presented by Tochukwu Nkwocha.
           </p>
           <p className="mt-3 text-xs font-semibold uppercase tracking-[0.22em] text-[var(--agent-blue)]">
             Trusted by 40,000+ entrepreneurs

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import {
+  ensureCountryConfig,
+  ensureUserCountryColumns,
+  backfillUserDefaults,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +81,10 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureUserCountryColumns(conn);
+    await backfillUserDefaults(conn);
+
     const [totalRows]: any = await conn.query(`SELECT COUNT(*) AS total FROM users`);
     const total = Number(totalRows?.[0]?.total || 0);
 
@@ -86,6 +95,10 @@ export async function GET(req: Request) {
         u.email,
         u.display_name,
         u.created_at,
+        u.country_id,
+        u.display_currency_code,
+        c.name AS country_name,
+        c.iso2 AS country_iso2,
 
         COALESCE(sAgg.last_seen_at, NULL) AS last_seen_at,
         COALESCE(sAgg.last_session_created_at, NULL) AS last_session_created_at,
@@ -142,6 +155,7 @@ export async function GET(req: Request) {
         WHERE email IS NOT NULL AND TRIM(email) <> ''
         GROUP BY LOWER(TRIM(email))
       ) hAgg ON hAgg.email_norm = u.email_normalized
+      LEFT JOIN linescout_countries c ON c.id = u.country_id
 
       ORDER BY u.id DESC
       LIMIT ? OFFSET ?

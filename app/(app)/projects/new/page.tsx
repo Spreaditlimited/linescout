@@ -197,8 +197,8 @@ export default function NewProjectPage() {
                       className="mt-1 w-full rounded-2xl border border-neutral-200 px-3 py-2 text-sm"
                       placeholder={
                         briefRoute === "machine_sourcing"
-                          ? "e.g. Aba, Nigeria (factory site)"
-                          : "e.g. Lagos, Nigeria"
+                          ? "e.g. factory site (city, country)"
+                          : "e.g. destination port (city, country)"
                       }
                     />
                   </div>

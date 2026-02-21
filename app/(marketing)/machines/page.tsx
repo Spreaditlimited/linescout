@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Search, ShieldCheck, Sparkles, Settings } from "lucide-react";
+import { ArrowRight, ShieldCheck, Sparkles, Settings } from "lucide-react";
 import { db } from "@/lib/db";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import MachinesCatalogClient from "@/components/machines/MachinesCatalogClient";
 import { computeMachineLandedRange, ensureMachinesReady, getMachinePricingSettings } from "@/lib/machines";
+import FilterForm from "@/components/filters/FilterForm";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -101,7 +102,7 @@ export async function generateMetadata({
     : "Agro Processing Machines & Production Lines | LineScout";
 
   const description = category
-    ? `Explore ${category} machines and production lines with landed cost estimates in Lagos.`
+    ? `Explore ${category} machines and production lines with landed cost estimates for your market.`
     : q
     ? `Search results for “${q}” in agro processing machines and production lines.`
     : "Find agro processing machines and production lines with pricing signals and sourcing guidance.";
@@ -246,8 +247,24 @@ export default async function MachinesPage({
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
-  const selectClass =
-    "w-full appearance-none rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-800 shadow-sm focus:outline-none focus:border-[rgba(45,52,97,0.45)] focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]";
+  const categoryOptions = [{ value: "", label: "All categories" }].concat(
+    categories.map((c) => ({ value: c, label: c }))
+  );
+  const priceOptions = [
+    { value: "", label: "Any budget" },
+    { value: "lt1m", label: "Under ₦1,000,000" },
+    { value: "1m-5m", label: "₦1,000,000 - ₦5,000,000" },
+    { value: "5m-15m", label: "₦5,000,000 - ₦15,000,000" },
+    { value: "15m-30m", label: "₦15,000,000 - ₦30,000,000" },
+    { value: "30mplus", label: "₦30,000,000+" },
+  ];
+  const sortOptions = [
+    { value: "", label: "Recommended" },
+    { value: "newest", label: "Newest" },
+    { value: "price_low", label: "Price: Low to High" },
+    { value: "price_high", label: "Price: High to Low" },
+    { value: "name", label: "Name (A-Z)" },
+  ];
 
   const brandBlue = "#2D3461";
 
@@ -288,11 +305,11 @@ export default async function MachinesPage({
                 Agro machines & production lines
               </div>
               <h1 className="mt-6 text-4xl font-semibold tracking-tight text-neutral-900 md:text-5xl">
-                Machines Nigerians buy to scale agro processing.
+                Machines buyers use to scale agro processing.
               </h1>
               <p className="mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
                 Browse small and medium agro processing machines and complete production lines. View landed cost
-                estimates for Lagos and start sourcing with verified China manufacturers.
+                estimates for your market and start sourcing with verified China manufacturers.
               </p>
               <div className="mt-6 flex flex-nowrap gap-3">
                 <Link
@@ -318,7 +335,7 @@ export default async function MachinesPage({
                   Small & medium capacity
                 </span>
                 <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
-                  Landed cost estimate (Lagos, sea)
+                  Landed cost estimate (sea freight)
                 </span>
               </div>
               <p className="mt-4 text-xs text-neutral-500">
@@ -343,85 +360,20 @@ export default async function MachinesPage({
 
         <section className="mx-auto max-w-6xl px-6 pb-6">
           {!(q || category) ? (
-            <form method="GET" action="/machines" className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex flex-1 items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700">
-                  <Search className="h-4 w-4 text-neutral-400" />
-                  <input
-                    name="q"
-                    defaultValue={q}
-                    placeholder="Search machines, lines, or processes"
-                    className="w-full bg-transparent text-sm text-neutral-700 placeholder:text-neutral-400 focus:outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="rounded-xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white"
-                >
-                  Search
-                </button>
-              </div>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Category</label>
-                  <div className="relative">
-                    <select name="category" defaultValue={category} className={selectClass}>
-                      <option value="">All categories</option>
-                      {categories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Budget (landed in ₦)</label>
-                  <div className="relative">
-                    <select name="price" defaultValue={price} className={selectClass}>
-                      <option value="">Any budget</option>
-                      <option value="lt1m">Under ₦1,000,000</option>
-                      <option value="1m-5m">₦1,000,000 - ₦5,000,000</option>
-                      <option value="5m-15m">₦5,000,000 - ₦15,000,000</option>
-                      <option value="15m-30m">₦15,000,000 - ₦30,000,000</option>
-                      <option value="30mplus">₦30,000,000+</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-neutral-600">Sort by</label>
-                  <div className="relative">
-                    <select name="sort" defaultValue={sort} className={selectClass}>
-                      <option value="">Recommended</option>
-                      <option value="newest">Newest</option>
-                      <option value="price_low">Price: Low to High</option>
-                      <option value="price_high">Price: High to Low</option>
-                      <option value="name">Name (A-Z)</option>
-                    </select>
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400">
-                      ▾
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {(q || category || price || sort) && (
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Link href="/machines" className="text-xs font-semibold text-neutral-500 hover:text-neutral-700">
-                    Clear filters
-                  </Link>
-                </div>
-              )}
-            </form>
+            <FilterForm
+              action="/machines"
+              searchPlaceholder="Search machines, lines, or processes"
+              initial={{ q, category, price, sort }}
+              categoryOptions={categoryOptions}
+              priceOptions={priceOptions}
+              sortOptions={sortOptions}
+              labels={{
+                category: "Category",
+                price: "Budget (landed)",
+                sort: "Sort by",
+              }}
+              clearHref="/machines"
+            />
           ) : (
             <div className="pt-6" />
           )}
@@ -519,7 +471,7 @@ export default async function MachinesPage({
             </div>
           </div>
           <p className="mt-4 text-xs text-neutral-500">
-            Estimated landed cost in Lagos using sea freight. Last‑mile delivery not included.
+            Estimated landed cost using sea freight for your destination. Last‑mile delivery not included.
           </p>
         </section>
       </div>

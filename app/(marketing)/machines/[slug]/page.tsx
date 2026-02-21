@@ -71,7 +71,7 @@ export async function generateMetadata({
     const title = machine.seo_title || `${machine.machine_name} | LineScout`;
     const description =
       machine.seo_description ||
-      `Learn about ${machine.machine_name} for agro processing in Nigeria and get sourcing support from LineScout.`;
+      `Learn about ${machine.machine_name} for agro processing and get sourcing support from LineScout.`;
     const image =
       machine.image_url ||
       `${BASE_URL}/linescout-social.PNG`;
@@ -172,7 +172,7 @@ export default async function MachineDetailPage({
                 </p>
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm">
-                <p className="text-xs font-semibold text-neutral-500">Estimated landed (Lagos)</p>
+                <p className="text-xs font-semibold text-neutral-500">Estimated landed (sea freight)</p>
                 <p className="mt-1 text-lg font-semibold">
                   {formatNaira(landed.landed_ngn_low)}–{formatNaira(landed.landed_ngn_high)}
                 </p>

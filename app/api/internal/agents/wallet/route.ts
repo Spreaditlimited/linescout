@@ -249,7 +249,8 @@ export async function GET() {
 
       const wallet = await ensureWallet(conn, auth.id);
       const { provider } = await selectPaymentProvider(conn, "agent", auth.id);
-      await ensureVirtualAccount(conn, auth.id, accountName, provider, {
+      const walletProvider = provider === "providus" ? "providus" : "paystack";
+      await ensureVirtualAccount(conn, auth.id, accountName, walletProvider, {
         email,
         first_name: first,
         last_name: last,
@@ -262,7 +263,7 @@ export async function GET() {
          WHERE owner_type = 'agent' AND owner_id = ? AND provider = ?
          ORDER BY id DESC
          LIMIT 1`,
-        [auth.id, provider]
+        [auth.id, walletProvider]
       );
       const vAccount = primaryRows?.[0] || null;
 
@@ -288,7 +289,7 @@ export async function GET() {
         wallet: { id: wallet.id, balance: wallet.balance, currency: wallet.currency },
         virtual_account: vAccount,
         accounts: accountRows || [],
-        provider_used: provider,
+        provider_used: walletProvider,
         transactions: txRows || [],
       });
     } finally {

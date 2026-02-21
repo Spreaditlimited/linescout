@@ -15,6 +15,8 @@ type WhiteLabelProduct = {
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
+  size_template: string | null;
+  volumetric_kg_per_1000: number | null;
   is_active: number;
   sort_order: number;
   created_at: string;
@@ -36,6 +38,8 @@ type EditState = {
   fob_low_usd: string;
   fob_high_usd: string;
   cbm_per_1000: string;
+  size_template: string;
+  volumetric_kg_per_1000: string;
   is_active: boolean;
   sort_order: string;
 };
@@ -51,9 +55,36 @@ const emptyForm: EditState = {
   fob_low_usd: "",
   fob_high_usd: "",
   cbm_per_1000: "",
+  size_template: "",
+  volumetric_kg_per_1000: "",
   is_active: true,
   sort_order: "0",
 };
+
+const SIZE_TEMPLATES = [
+  {
+    value: "small",
+    label: "Small (30.5×30.5×30.5 cm, 150–300 units/carton)",
+    carton: { l: 30.5, w: 30.5, h: 30.5 },
+    units: 200,
+  },
+  {
+    value: "medium",
+    label: "Medium (45.7×45.7×30.5 cm, 20–100 units/carton)",
+    carton: { l: 45.7, w: 45.7, h: 30.5 },
+    units: 60,
+  },
+];
+
+function computeVolumetricKgPer1000(templateValue: string) {
+  const t = SIZE_TEMPLATES.find((tpl) => tpl.value === templateValue);
+  if (!t) return "";
+  const cbm = (t.carton.l * t.carton.w * t.carton.h) / 1_000_000;
+  const volKgPerCarton = cbm * 1000;
+  const perUnit = volKgPerCarton / t.units;
+  const per1000 = perUnit * 1000;
+  return Number.isFinite(per1000) ? per1000.toFixed(2) : "";
+}
 
 export default function WhiteLabelProductsPage() {
   const [items, setItems] = useState<WhiteLabelProduct[]>([]);
@@ -197,6 +228,9 @@ export default function WhiteLabelProductsPage() {
         fob_low_usd: item.fob_low_usd != null ? String(item.fob_low_usd) : "",
         fob_high_usd: item.fob_high_usd != null ? String(item.fob_high_usd) : "",
         cbm_per_1000: item.cbm_per_1000 != null ? String(item.cbm_per_1000) : "",
+        size_template: item.size_template || "",
+        volumetric_kg_per_1000:
+          item.volumetric_kg_per_1000 != null ? String(item.volumetric_kg_per_1000) : "",
         is_active: item.is_active === 1,
         sort_order: String(item.sort_order ?? 0),
       },
@@ -234,6 +268,8 @@ export default function WhiteLabelProductsPage() {
           fob_low_usd: state.fob_low_usd,
           fob_high_usd: state.fob_high_usd,
           cbm_per_1000: state.cbm_per_1000,
+          size_template: state.size_template,
+          volumetric_kg_per_1000: state.volumetric_kg_per_1000,
           is_active: state.is_active,
           sort_order: state.sort_order,
         }),
@@ -283,18 +319,20 @@ export default function WhiteLabelProductsPage() {
         body: JSON.stringify({
           product_name: form.product_name,
           category: form.category,
-          short_desc: form.short_desc,
-          why_sells: form.why_sells,
-          regulatory_note: form.regulatory_note,
-          mockup_prompt: form.mockup_prompt,
-          image_url: form.image_url,
-          fob_low_usd: form.fob_low_usd,
-          fob_high_usd: form.fob_high_usd,
-          cbm_per_1000: form.cbm_per_1000,
-          is_active: form.is_active,
-          sort_order: form.sort_order,
-        }),
-      });
+        short_desc: form.short_desc,
+        why_sells: form.why_sells,
+        regulatory_note: form.regulatory_note,
+        mockup_prompt: form.mockup_prompt,
+        image_url: form.image_url,
+        fob_low_usd: form.fob_low_usd,
+        fob_high_usd: form.fob_high_usd,
+        cbm_per_1000: form.cbm_per_1000,
+        size_template: form.size_template,
+        volumetric_kg_per_1000: form.volumetric_kg_per_1000,
+        is_active: form.is_active,
+        sort_order: form.sort_order,
+      }),
+    });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || "Failed to create");
@@ -356,6 +394,26 @@ export default function WhiteLabelProductsPage() {
             value={form.cbm_per_1000}
             onChange={(e) => setForm((s) => ({ ...s, cbm_per_1000: e.target.value }))}
           />
+          <SearchableSelect
+            value={form.size_template}
+            onChange={(value) =>
+              setForm((s) => ({
+                ...s,
+                size_template: value,
+                volumetric_kg_per_1000: value ? computeVolumetricKgPer1000(value) : s.volumetric_kg_per_1000,
+              }))
+            }
+            options={[{ value: "", label: "Size template (optional)" }].concat(
+              SIZE_TEMPLATES.map((t) => ({ value: t.value, label: t.label }))
+            )}
+            placeholder="Size template (optional)"
+          />
+          <input
+            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            placeholder="Volumetric kg per 1000 (sea)"
+            value={form.volumetric_kg_per_1000}
+            onChange={(e) => setForm((s) => ({ ...s, volumetric_kg_per_1000: e.target.value }))}
+          />
           <input
             className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
             placeholder="Sort order"
@@ -372,7 +430,7 @@ export default function WhiteLabelProductsPage() {
           />
           <textarea
             className="min-h-[80px] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-            placeholder="Why it sells in Nigeria"
+            placeholder="Why it sells in your market"
             value={form.why_sells}
             onChange={(e) => setForm((s) => ({ ...s, why_sells: e.target.value }))}
           />
@@ -571,6 +629,25 @@ export default function WhiteLabelProductsPage() {
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
                           value={edit.cbm_per_1000}
                           onChange={(e) => updateEdit(item.id, "cbm_per_1000", e.target.value)}
+                        />
+                        <SearchableSelect
+                          value={edit.size_template}
+                          onChange={(value) => {
+                            updateEdit(item.id, "size_template", value);
+                            if (value) {
+                              updateEdit(item.id, "volumetric_kg_per_1000", computeVolumetricKgPer1000(value));
+                            }
+                          }}
+                          options={[{ value: "", label: "Size template (optional)" }].concat(
+                            SIZE_TEMPLATES.map((t) => ({ value: t.value, label: t.label }))
+                          )}
+                          placeholder="Size template (optional)"
+                        />
+                        <input
+                          className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                          placeholder="Volumetric kg per 1000 (sea)"
+                          value={edit.volumetric_kg_per_1000}
+                          onChange={(e) => updateEdit(item.id, "volumetric_kg_per_1000", e.target.value)}
                         />
                         <input
                           className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"

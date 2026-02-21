@@ -62,7 +62,7 @@ export default function WhiteLabelStep4Page() {
       return;
     }
     if (n < 100 || n > 500000) {
-      setErr("Enter a realistic target between ₦100 and ₦500,000 per unit.");
+      setErr("Enter a realistic target amount per unit.");
       return;
     }
 
@@ -103,7 +103,7 @@ export default function WhiteLabelStep4Page() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label Wizard</p>
           <h1 className="text-2xl font-semibold text-neutral-900">Target landed cost per unit</h1>
           <p className="text-sm text-neutral-600">
-            This is your maximum cost per unit after shipping and clearing into Nigeria. If it’s unrealistic, we will
+            This is your maximum cost per unit after shipping and clearing into your market. If it’s unrealistic, we will
             tell you early to avoid wasted time and money.
           </p>
         </div>
@@ -116,7 +116,7 @@ export default function WhiteLabelStep4Page() {
           ) : (
             <>
               <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
-                <label className="text-xs font-semibold text-neutral-600">Target landed cost (₦)</label>
+                <label className="text-xs font-semibold text-neutral-600">Target landed cost</label>
                 <input
                   value={targetLandedCost}
                   onChange={(e) => setTargetLandedCost(String(e.target.value || "").replace(/[^\d]/g, ""))}
@@ -128,7 +128,7 @@ export default function WhiteLabelStep4Page() {
                   Preview: <span className="font-semibold text-neutral-900">{preview}</span>
                 </p>
                 <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
-                  <p className="text-sm font-semibold text-neutral-800">Nigeria reality check</p>
+                  <p className="text-sm font-semibold text-neutral-800">Reality check</p>
                   <p className="mt-1 text-sm text-neutral-600">
                     Landed cost can jump due to exchange rate movement, port delays, duties, and inland logistics. Your
                     target should include buffer, not wishful thinking.

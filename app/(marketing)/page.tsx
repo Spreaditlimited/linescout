@@ -8,8 +8,8 @@ import HomeAppDownloadButtons from "@/components/marketing/HomeAppDownloadButton
 
 const features = [
   {
-    title: "Nigeria-first sourcing clarity",
-    desc: "Get guidance that reflects real costs, timelines, and risks for Nigerian buyers.",
+    title: "Market-ready sourcing clarity",
+    desc: "Get guidance that reflects real costs, timelines, and risks for your market.",
     icon: ShieldCheck,
   },
   {
@@ -136,7 +136,7 @@ export default function HomePage() {
                 Smart China product sourcing
               </div>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-                Source smarter from China with Nigeria-first guidance.
+                Source smarter from China with market-specific guidance.
               </h1>
               <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
                 LineScout helps you think through specs, quotes, and shipping before you commit to a supplier. When you
@@ -269,7 +269,7 @@ export default function HomePage() {
               </div>
               <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.06)] p-6 text-sm text-neutral-700 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-8">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-                  Built for Nigeria
+                  Built for your market
                 </p>
                 <p className="mt-3 text-sm text-neutral-600">
                   Save time by starting with products that already have demand signals and a clear path to

@@ -25,7 +25,11 @@ type QuoteClientProps = {
   depositEnabled?: boolean;
   depositPercent?: number;
   commitmentDueNgn?: number;
-  provider?: "paystack" | "providus";
+  provider?: "paystack" | "providus" | "paypal";
+  displayCurrencyCode?: string | null;
+  displayFxRate?: number | null;
+  shippingFxRate?: number | null;
+  productFxRate?: number | null;
 };
 
 type QuotePayment = {
@@ -40,16 +44,18 @@ type QuotePayment = {
   paid_at?: string | null;
 };
 
-function fmtNaira(value: number) {
-  if (!Number.isFinite(value)) return "NGN 0";
+function fmtCurrency(value: number, currency: string) {
+  const code = String(currency || "").toUpperCase() || "NGN";
+  if (!Number.isFinite(value)) return `${code} 0`;
+  const maxDigits = code === "NGN" ? 0 : 2;
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
+      currency: code,
+      maximumFractionDigits: maxDigits,
     }).format(value);
   } catch {
-    return `NGN ${Math.round(value).toLocaleString()}`;
+    return `${code} ${value.toFixed(maxDigits)}`;
   }
 }
 
@@ -113,21 +119,25 @@ function computeTotals(
     totalCbm += qty * unitCbm;
   }
 
-  const totalProductNgn = (totalProductRmb + totalLocalTransportRmb) * exchangeRmb;
+  const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
+  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
   const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * markupPercent) / 100;
   const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
 
   return {
     totalProductRmb,
+    totalProductRmbWithLocal,
     totalProductNgn,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,
     totalShippingNgn,
     totalMarkupNgn,
+    totalMarkupRmb,
     totalDueNgn,
   };
 }
@@ -146,8 +156,20 @@ export default function QuoteClient({
   depositPercent = 0,
   commitmentDueNgn = 0,
   provider = "paystack",
+  displayCurrencyCode,
+  displayFxRate,
+  shippingFxRate,
+  productFxRate,
 }: QuoteClientProps) {
+  const rawDisplayCurrency = String(displayCurrencyCode || "NGN").toUpperCase();
+  const effectiveDisplayCurrency = rawDisplayCurrency || "NGN";
+  const fx = Number(displayFxRate || 0);
+  const effectiveDisplayRate = effectiveDisplayCurrency === "NGN" ? 1 : fx;
+  const shippingFx = Number(shippingFxRate || 0);
+  const productFx = Number(productFxRate || 0);
+  const shippingDisplayRate = effectiveDisplayCurrency === "NGN" ? exchangeUsd : shippingFx;
   const searchParams = useSearchParams();
+  const showFxDebug = String(searchParams?.get("fxdebug") || "") === "1";
   const initialRateId = useMemo(() => {
     if (!shippingRates.length) return null;
     if (defaultShippingTypeId) {
@@ -269,12 +291,28 @@ export default function QuoteClient({
 
   const canUseWallet = walletBalance != null && !walletLoading && !walletAuthMissing;
   const isProvidus = provider === "providus";
+  const isPaystack = provider === "paystack";
+  const isPaypal = provider === "paypal";
 
   useEffect(() => {
     if (!canUseWallet && useWallet) {
       setUseWallet(false);
     }
   }, [canUseWallet, useWallet]);
+
+  useEffect(() => {
+    if (!isPaystack && useWallet) {
+      setUseWallet(false);
+    }
+  }, [isPaystack, useWallet]);
+
+  useEffect(() => {
+    if (!isProvidus && providusDetails) {
+      setProvidusDetails(null);
+      setProvidusExpiresAt(null);
+      setProvidusCountdown(null);
+    }
+  }, [isProvidus, providusDetails]);
 
   useEffect(() => {
     if (!providusExpiresAt) {
@@ -307,28 +345,98 @@ export default function QuoteClient({
   }, [items, exchangeRmb, exchangeUsd, markupPercent, selectedRate]);
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
-  const productTotalDisplay = totals.totalProductNgn + totals.totalMarkupNgn;
-  const productPaidTotal = paidTotals.deposit_paid + paidTotals.product_paid;
-  const productTarget = Math.max(0, Math.round(productTotalDisplay - commitmentDueNgn));
-  const depositAmount = depositEnabled ? Math.round((productTotalDisplay * depositPercent) / 100) : 0;
-  const depositRemaining = Math.max(0, depositAmount - paidTotals.deposit_paid);
-  const productRemaining = Math.max(0, Math.round(productTarget - productPaidTotal));
-  const shippingRemaining = Math.max(0, Math.round(totals.totalShippingNgn - paidTotals.shipping_paid));
+  const productTotalNgn = totals.totalProductNgn + totals.totalMarkupNgn;
+  const productPaidTotalNgn = paidTotals.deposit_paid + paidTotals.product_paid;
+  const productTargetNgn = Math.max(0, Math.round(productTotalNgn - commitmentDueNgn));
+  const depositAmountNgn = depositEnabled ? Math.round((productTotalNgn * depositPercent) / 100) : 0;
+  const depositRemainingNgn = Math.max(0, depositAmountNgn - paidTotals.deposit_paid);
+  const productRemainingNgn = Math.max(0, Math.round(productTargetNgn - productPaidTotalNgn));
+  const shippingRemainingNgn = Math.max(0, Math.round(totals.totalShippingNgn - paidTotals.shipping_paid));
+
+  const paymentDisplayTotals = useMemo(() => {
+    const convert = (amount: number, currency: string) => {
+      const code = String(currency || "").toUpperCase();
+      if (!amount || !Number.isFinite(amount)) return 0;
+      if (code === effectiveDisplayCurrency) return amount;
+      if (code === "NGN") return amount * effectiveDisplayRate;
+      if (code === "USD") {
+        if (effectiveDisplayCurrency === "USD") return amount;
+        if (shippingFx > 0) return amount * shippingFx;
+      }
+      return 0;
+    };
+
+    const totals = { deposit: 0, product: 0, shipping: 0 };
+    for (const p of payments) {
+      if (p.status !== "paid") continue;
+      const amt = convert(Number(p.amount || 0), p.currency || "NGN");
+      if (!amt) continue;
+      if (p.purpose === "deposit") totals.deposit += amt;
+      else if (p.purpose === "shipping_payment") totals.shipping += amt;
+      else if (p.purpose === "product_balance" || p.purpose === "full_product_payment") totals.product += amt;
+    }
+    return totals;
+  }, [payments, effectiveDisplayCurrency, effectiveDisplayRate, shippingFx]);
+
+  const productTotalDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? productTotalNgn
+      : (totals.totalProductRmbWithLocal + totals.totalMarkupRmb) * productFx;
+  const productTargetDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? productTargetNgn
+      : Math.max(0, productTotalDisplay - commitmentDueNgn * effectiveDisplayRate);
+  const depositAmountDisplay =
+    effectiveDisplayCurrency === "NGN" ? depositAmountNgn : depositAmountNgn * effectiveDisplayRate;
+  const productPaidTotalDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? productPaidTotalNgn * effectiveDisplayRate
+      : paymentDisplayTotals.product;
+  const depositPaidDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? paidTotals.deposit_paid * effectiveDisplayRate
+      : paymentDisplayTotals.deposit;
+  const shippingPaidDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? paidTotals.shipping_paid * effectiveDisplayRate
+      : paymentDisplayTotals.shipping;
+  const depositRemainingDisplay = Math.max(0, depositAmountDisplay - depositPaidDisplay);
+  const productRemainingDisplay = Math.max(0, productTargetDisplay - productPaidTotalDisplay);
+  const shippingTotalDisplay = totals.totalShippingUsd * shippingDisplayRate;
+  const shippingRemainingDisplay = Math.max(0, shippingTotalDisplay - shippingPaidDisplay);
 
   const totalDueNgn = useMemo(() => {
-    if (paymentOption === "deposit") return depositRemaining;
-    if (paymentOption === "shipping") return shippingRemaining;
-    return productRemaining;
-  }, [paymentOption, depositRemaining, shippingRemaining, productRemaining]);
+    if (paymentOption === "deposit") return depositRemainingNgn;
+    if (paymentOption === "shipping") return shippingRemainingNgn;
+    return productRemainingNgn;
+  }, [paymentOption, depositRemainingNgn, shippingRemainingNgn, productRemainingNgn]);
 
-  const canPayShipping = productPaidTotal >= productTarget && handoffStatus === "shipped";
-  const canPayDeposit = depositEnabled && depositRemaining > 0;
-  const canPayProduct = productRemaining > 0;
+  const totalDueDisplay =
+    paymentOption === "deposit"
+      ? depositRemainingDisplay
+      : paymentOption === "shipping"
+      ? shippingRemainingDisplay
+      : productRemainingDisplay;
+
+  const hasShippingRemaining =
+    effectiveDisplayCurrency === "NGN" ? shippingRemainingNgn > 0 : shippingRemainingDisplay > 0;
+
+  const canPayShipping =
+    (effectiveDisplayCurrency === "NGN"
+      ? productPaidTotalNgn >= productTargetNgn
+      : productPaidTotalDisplay >= productTargetDisplay) && handoffStatus === "shipped";
+  const canPayDeposit =
+    depositEnabled &&
+    (effectiveDisplayCurrency === "NGN" ? depositRemainingNgn > 0 : depositRemainingDisplay > 0);
+  const canPayProduct =
+    effectiveDisplayCurrency === "NGN" ? productRemainingNgn > 0 : productRemainingDisplay > 0;
 
   const progress = {
-    deposit: depositEnabled ? Math.min(1, depositAmount > 0 ? paidTotals.deposit_paid / depositAmount : 0) : null,
-    product: productTarget > 0 ? Math.min(1, productPaidTotal / productTarget) : 0,
-    shipping: totals.totalShippingNgn > 0 ? Math.min(1, paidTotals.shipping_paid / totals.totalShippingNgn) : 0,
+    deposit: depositEnabled
+      ? Math.min(1, depositAmountDisplay > 0 ? depositPaidDisplay / depositAmountDisplay : 0)
+      : null,
+    product: productTargetDisplay > 0 ? Math.min(1, productPaidTotalDisplay / productTargetDisplay) : 0,
+    shipping: shippingTotalDisplay > 0 ? Math.min(1, shippingPaidDisplay / shippingTotalDisplay) : 0,
   };
 
   const handlePay = async () => {
@@ -357,6 +465,10 @@ export default function QuoteClient({
       }
       if (json.authorization_url) {
         window.location.href = json.authorization_url;
+        return;
+      }
+      if (json.approval_url) {
+        window.location.href = json.approval_url;
         return;
       }
       if (json.provider === "providus" && json.account_number) {
@@ -432,7 +544,7 @@ export default function QuoteClient({
       `Bank: ${providusDetails.bank_name}`,
       `Account name: ${providusDetails.account_name}`,
       `Account number: ${providusDetails.account_number}`,
-      `Amount: ${fmtNaira(providusDetails.amount)}`,
+      `Amount: ${fmtCurrency(providusDetails.amount, "NGN")}`,
     ].join("\n");
     copyText(content);
   };
@@ -456,7 +568,9 @@ export default function QuoteClient({
             </div>
             <div className="text-right">
               <div className="text-xs text-neutral-600">Total due</div>
-              <div className="text-2xl font-semibold text-[var(--agent-blue)]">{fmtNaira(totalDueNgn)}</div>
+              <div className="text-2xl font-semibold text-[var(--agent-blue)]">
+                {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
+              </div>
             </div>
           </div>
 
@@ -528,7 +642,7 @@ export default function QuoteClient({
                       : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                   } ${!canPayDeposit ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  Pay deposit ({depositPercent || 0}% · {fmtNaira(depositRemaining || 0)})
+                  Pay deposit ({depositPercent || 0}% · {fmtCurrency(depositRemainingDisplay || 0, effectiveDisplayCurrency)})
                 </button>
               ) : null}
               <button
@@ -541,19 +655,19 @@ export default function QuoteClient({
                     : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
                 } ${!canPayProduct ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                Pay product ({fmtNaira(productRemaining || 0)})
+                Pay product ({fmtCurrency(productRemainingDisplay || 0, effectiveDisplayCurrency)})
               </button>
               <button
                 type="button"
                 onClick={() => setPaymentOption("shipping")}
-                disabled={!canPayShipping || shippingRemaining <= 0}
+                disabled={!canPayShipping || !hasShippingRemaining}
                 className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
                   paymentOption === "shipping"
                     ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                     : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
-                } ${!canPayShipping || shippingRemaining <= 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!canPayShipping || !hasShippingRemaining ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                Pay shipping ({fmtNaira(shippingRemaining || 0)})
+                Pay shipping ({fmtCurrency(shippingRemainingDisplay || 0, effectiveDisplayCurrency)})
               </button>
             </div>
             <p className="mt-3 text-xs text-neutral-500">
@@ -569,7 +683,8 @@ export default function QuoteClient({
                   <div className="flex items-center justify-between">
                     <div className="text-neutral-800">Deposit</div>
                     <div className="text-xs text-neutral-600">
-                      {fmtNaira(paidTotals.deposit_paid)} / {fmtNaira(depositAmount)}
+                    {fmtCurrency(depositPaidDisplay, effectiveDisplayCurrency)} /{" "}
+                      {fmtCurrency(depositAmountDisplay, effectiveDisplayCurrency)}
                     </div>
                   </div>
                   <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
@@ -585,7 +700,8 @@ export default function QuoteClient({
                 <div className="flex items-center justify-between">
                   <div className="text-neutral-800">Product payment</div>
                   <div className="text-xs text-neutral-600">
-                    {fmtNaira(productPaidTotal)} / {fmtNaira(productTarget)}
+                    {fmtCurrency(productPaidTotalDisplay, effectiveDisplayCurrency)} /{" "}
+                    {fmtCurrency(productTargetDisplay, effectiveDisplayCurrency)}
                   </div>
                 </div>
                 <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
@@ -596,7 +712,7 @@ export default function QuoteClient({
                 </div>
                 {commitmentDueNgn > 0 ? (
                   <div className="mt-2 text-[11px] text-neutral-500">
-                    Commitment fee discount: {fmtNaira(commitmentDueNgn)}
+                    Commitment fee discount: {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}
                   </div>
                 ) : null}
               </div>
@@ -605,7 +721,8 @@ export default function QuoteClient({
                 <div className="flex items-center justify-between">
                   <div className="text-neutral-800">Shipping payment</div>
                   <div className="text-xs text-neutral-600">
-                    {fmtNaira(paidTotals.shipping_paid)} / {fmtNaira(totals.totalShippingNgn)}
+                    {fmtCurrency(shippingPaidDisplay, effectiveDisplayCurrency)} /{" "}
+                    {fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}
                   </div>
                 </div>
                 <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
@@ -625,22 +742,37 @@ export default function QuoteClient({
 
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Product total (NGN)</div>
-              <div className="text-lg font-semibold">{fmtNaira(productTotalDisplay)}</div>
+              <div className="text-xs text-neutral-500">Product total ({effectiveDisplayCurrency})</div>
+              <div className="text-lg font-semibold">{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</div>
             </div>
             <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
               <div className="text-xs text-neutral-500">Shipping (USD)</div>
               <div className="text-lg font-semibold">{fmtUsd(totals.totalShippingUsd)}</div>
             </div>
             <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Shipping (NGN)</div>
-              <div className="text-lg font-semibold">{fmtNaira(totals.totalShippingNgn)}</div>
+              <div className="text-xs text-neutral-500">Shipping ({effectiveDisplayCurrency})</div>
+              <div className="text-lg font-semibold">{fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}</div>
             </div>
           </div>
+          {showFxDebug ? (
+            <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-[11px] text-neutral-700">
+              <div className="font-semibold text-neutral-800">FX debug</div>
+              <div className="mt-1 flex flex-wrap gap-3">
+                <span>Display: {effectiveDisplayCurrency}</span>
+                <span>NGN→{effectiveDisplayCurrency}: {fx || 0}</span>
+                <span>USD→{effectiveDisplayCurrency}: {shippingFx || 0}</span>
+                <span>RMB→{effectiveDisplayCurrency}: {productFx || 0}</span>
+                <span>USD→NGN: {exchangeUsd || 0}</span>
+                <span>RMB→NGN: {exchangeRmb || 0}</span>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-            <div className="text-xs text-neutral-500">Amount due (NGN)</div>
-            <div className="text-xl font-semibold text-[var(--agent-blue)]">{fmtNaira(totalDueNgn)}</div>
+            <div className="text-xs text-neutral-500">Amount due ({effectiveDisplayCurrency})</div>
+            <div className="text-xl font-semibold text-[var(--agent-blue)]">
+              {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
+            </div>
             {commitmentDueNgn > 0 ? (
               <p className="mt-2 text-xs text-neutral-500">
                 Commitment fee is applied as an instant discount once product is fully paid.
@@ -650,15 +782,15 @@ export default function QuoteClient({
               <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
                 <div className="flex items-center justify-between">
                   <span>Product total</span>
-                  <span>{fmtNaira(productTotalDisplay)}</span>
+                  <span>{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   <span>Commitment fee discount</span>
-                  <span>- {fmtNaira(commitmentDueNgn)}</span>
+                  <span>- {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between text-neutral-800">
                   <span>Amount due now</span>
-                  <span>{fmtNaira(productRemaining)}</span>
+                  <span>{fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)}</span>
                 </div>
               </div>
             ) : null}
@@ -673,95 +805,105 @@ export default function QuoteClient({
 
           <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment method</div>
-            <div className={`mt-3 grid gap-3 ${isProvidus ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
-              {!isProvidus ? (
-                <button
-                  type="button"
-                  onClick={() => setUseWallet(false)}
-                  className={`rounded-2xl border px-4 py-3 text-left transition ${
-                    !useWallet
-                      ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
-                      : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
-                  }`}
-                >
-                  <div className="text-sm font-semibold">Card/bank</div>
-                  <div className="mt-1 text-xs text-neutral-600">Pay with debit card or bank transfer.</div>
-                  <div className="mt-3 flex items-center gap-2">
-                    {["VISA", "Mastercard", "Verve"].map((brand) => (
-                      <span
-                        key={brand}
-                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-700"
-                      >
-                        {brand}
-                      </span>
-                    ))}
+            {isPaypal ? (
+              <div className="mt-3 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-sm font-semibold text-neutral-900">PayPal</div>
+                    <div className="mt-1 text-xs text-neutral-600">Secure card or PayPal balance payment.</div>
                   </div>
-                </button>
-              ) : null}
+                  <img
+                    src="/PayPal.png"
+                    alt="PayPal"
+                    className="h-6 w-auto"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className={`mt-3 grid gap-3 ${isProvidus ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
+                  {isPaystack ? (
+                    <button
+                      type="button"
+                      onClick={() => setUseWallet(false)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        !useWallet
+                          ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                          : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">Card/bank</div>
+                      <div className="mt-1 text-xs text-neutral-600">Pay with debit card or bank transfer.</div>
+                      <div className="mt-3 flex items-center gap-2">
+                        {["VISA", "Mastercard", "Verve"].map((brand) => (
+                          <span
+                            key={brand}
+                            className="rounded-full border border-[rgba(45,52,97,0.2)] px-2.5 py-1 text-[10px] font-semibold uppercase text-neutral-700"
+                          >
+                            {brand}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  ) : null}
 
-              {isProvidus ? (
-                <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-left">
-                  <div className="text-sm font-semibold text-neutral-900">Bank transfer (Providus)</div>
-                  <div className="mt-1 text-xs text-neutral-600">
-                    Click Pay now to generate a dedicated Providus account for this payment.
-                  </div>
-                </div>
-              ) : null}
+                  {isProvidus ? (
+                    <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-left">
+                      <div className="text-sm font-semibold text-neutral-900">Bank transfer (Providus)</div>
+                      <div className="mt-1 text-xs text-neutral-600">
+                        Click Pay now to generate a dedicated Providus account for this payment.
+                      </div>
+                    </div>
+                  ) : null}
 
-              <button
-                type="button"
-                onClick={() => canUseWallet && setUseWallet(true)}
-                disabled={!canUseWallet}
-                className={`rounded-2xl border px-4 py-3 text-left transition ${
-                  useWallet
-                    ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
-                    : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
-                } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
-              >
-                <div className="text-sm font-semibold">
-                  {isProvidus ? "Wallet" : "Wallet + card/bank"}
+                  {isPaystack ? (
+                    <button
+                      type="button"
+                      onClick={() => canUseWallet && setUseWallet(true)}
+                      disabled={!canUseWallet}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        useWallet
+                          ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                          : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
+                      } ${!canUseWallet ? "cursor-not-allowed opacity-50" : ""}`}
+                    >
+                      <div className="text-sm font-semibold">Wallet + card/bank</div>
+                      <div className="mt-1 text-xs text-neutral-600">
+                        Use wallet balance first, then complete the rest.
+                      </div>
+                      {walletLoading ? (
+                        <div className="mt-3 text-xs text-neutral-500">Loading wallet…</div>
+                      ) : walletBalance != null ? (
+                        <div className="mt-3 text-xs text-neutral-700">
+                          Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
+                        </div>
+                      ) : null}
+                    </button>
+                  ) : null}
                 </div>
-                <div className="mt-1 text-xs text-neutral-600">
-                  {isProvidus
-                    ? "Use wallet balance to pay for this quote."
-                    : "Use wallet balance first, then complete the rest."}
-                </div>
-                {walletLoading ? (
-                  <div className="mt-3 text-xs text-neutral-500">Loading wallet…</div>
-                ) : walletBalance != null ? (
-                  <div className="mt-3 text-xs text-neutral-700">
-                    Wallet: {walletCurrency || "NGN"} {Math.round(walletBalance).toLocaleString()}
+
+                {isPaystack && walletAuthMissing ? (
+                  <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] px-3 py-2 text-xs text-neutral-600">
+                    To use wallet, ensure you are signed into your LineScout account. If you are not signed in, sign in and then refresh this page.
                   </div>
                 ) : null}
-              </button>
-            </div>
-
-            {walletAuthMissing ? (
-              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] px-3 py-2 text-xs text-neutral-600">
-                To use wallet, ensure you are signed into your LineScout account. If you are not signed in, sign in and then refresh this page.
-              </div>
-            ) : null}
-            {walletAccount ? (
-              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-700">
-                <div className="text-[11px] uppercase text-neutral-500">
-                  {isProvidus ? "Wallet transfer account" : "Wallet funding account"}
-                </div>
-                <div className="mt-1 font-semibold text-neutral-800">
-                  {walletAccount.bank_name || "Bank transfer"}
-                </div>
-                <div className="mt-1">Account name: {walletAccount.account_name}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span>Account number: {walletAccount.account_number}</span>
-                  <button
-                    type="button"
-                    onClick={() => copyText(walletAccount.account_number)}
-                    className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
-                  >
-                    Copy
-                  </button>
-                </div>
-                {!isProvidus ? (
-                  <>
+                {isPaystack && walletAccount ? (
+                  <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-700">
+                    <div className="text-[11px] uppercase text-neutral-500">Wallet funding account</div>
+                    <div className="mt-1 font-semibold text-neutral-800">
+                      {walletAccount.bank_name || "Bank transfer"}
+                    </div>
+                    <div className="mt-1">Account name: {walletAccount.account_name}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span>Account number: {walletAccount.account_number}</span>
+                      <button
+                        type="button"
+                        onClick={() => copyText(walletAccount.account_number)}
+                        className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                      >
+                        Copy
+                      </button>
+                    </div>
                     <div className="mt-3 text-[11px] text-neutral-500">Top up wallet</div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {[50000, 100000, 250000, 500000].map((amt) => (
@@ -775,15 +917,15 @@ export default function QuoteClient({
                         </button>
                       ))}
                     </div>
-                  </>
+                  </div>
                 ) : null}
-              </div>
-            ) : null}
+              </>
+            )}
 
             {payErr ? <div className="mt-3 text-xs text-red-600">{payErr}</div> : null}
             {payMsg ? <div className="mt-3 text-xs text-[var(--agent-blue)]">{payMsg}</div> : null}
 
-            {providusDetails ? (
+            {isProvidus && providusDetails ? (
               <div className="mt-4 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] p-4 text-sm">
                 <div className="text-xs text-neutral-500">Providus transfer details</div>
                 <div className="mt-2 text-base font-semibold text-neutral-900">
@@ -803,7 +945,7 @@ export default function QuoteClient({
                   </button>
                 </div>
                 <div className="mt-2 text-sm text-[var(--agent-blue)]">
-                  Amount: {fmtNaira(providusDetails.amount)}
+                  Amount: {fmtCurrency(providusDetails.amount, "NGN")}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button
@@ -860,7 +1002,7 @@ export default function QuoteClient({
                     <div className="mt-1 text-[11px] text-neutral-500">
                       {p.paid_at ? `Paid ${fmtDate(p.paid_at)}` : `Created ${fmtDate(p.created_at)}`}
                     </div>
-                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref && !isProvidus ? (
+                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref && isPaystack ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
                         <span>Reference: {p.provider_ref}</span>
                         <button
@@ -871,6 +1013,35 @@ export default function QuoteClient({
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ reference: p.provider_ref }),
+                              });
+                              const json = await res.json().catch(() => null);
+                              if (!res.ok || !json?.ok) {
+                                setPayErr(json?.error || "Verification failed.");
+                                return;
+                              }
+                              setPayMsg("Payment verified.");
+                              await refreshPayments();
+                            } catch (e: any) {
+                              setPayErr(e?.message || "Verification failed.");
+                            }
+                          }}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                        >
+                          Verify payment
+                        </button>
+                      </div>
+                    ) : null}
+                    {p.status !== "paid" && p.method === "paypal" && p.provider_ref ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
+                        <span>Order: {p.provider_ref}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch("/api/quote/paypal/verify", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ order_id: p.provider_ref }),
                               });
                               const json = await res.json().catch(() => null);
                               if (!res.ok || !json?.ok) {

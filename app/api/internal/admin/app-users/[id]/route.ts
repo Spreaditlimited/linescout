@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import {
+  ensureCountryConfig,
+  ensureUserCountryColumns,
+  backfillUserDefaults,
+  listActiveCountriesAndCurrencies,
+  ensureWhiteLabelCountryColumns,
+  backfillWhiteLabelDefaults,
+  ensureHandoffCountryColumns,
+  backfillHandoffDefaults,
+} from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,6 +92,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureUserCountryColumns(conn);
+    await ensureWhiteLabelCountryColumns(conn);
+    await ensureHandoffCountryColumns(conn);
+    await backfillUserDefaults(conn);
+    await backfillWhiteLabelDefaults(conn);
+    await backfillHandoffDefaults(conn);
+
     // user summary (same aggregates as list page)
     const [uRows]: any = await conn.query(
       `
@@ -90,6 +108,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         u.email,
         u.display_name,
         u.created_at,
+        u.country_id,
+        u.display_currency_code,
+        c.name AS country_name,
+        c.iso2 AS country_iso2,
 
         COALESCE(sAgg.last_seen_at, NULL) AS last_seen_at,
         COALESCE(sAgg.last_session_created_at, NULL) AS last_session_created_at,
@@ -127,6 +149,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         WHERE user_id = ?
         GROUP BY user_id
       ) wAgg ON wAgg.user_id = u.id
+      LEFT JOIN linescout_countries c ON c.id = u.country_id
       WHERE u.id = ?
       LIMIT 1
       `,
@@ -187,6 +210,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         target_landed_cost_naira,
         sourcing_token,
         handoff_id,
+        country_id,
+        display_currency_code,
         created_at,
         updated_at
       FROM linescout_white_label_projects
@@ -216,7 +241,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         h.paid_at,
         h.shipped_at,
         h.delivered_at,
-        h.cancelled_at
+        h.cancelled_at,
+        h.country_id,
+        h.display_currency_code
       FROM linescout_handoffs h
       WHERE (h.email = ?)
          OR (h.id IN (
@@ -230,6 +257,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       [email, userId, handoffsLimit]
     );
 
+    const lists = await listActiveCountriesAndCurrencies(conn);
+
     return NextResponse.json({
       ok: true,
       user,
@@ -237,10 +266,53 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       conversations: conversations || [],
       white_label_projects: white_label_projects || [],
       handoffs: handoffs || [],
+      countries: lists.countries,
+      currencies: lists.currencies,
+      country_currencies: lists.country_currencies,
     });
   } catch (e: any) {
     console.error("GET /api/internal/admin/app-users/[id] error:", e?.message || e);
     return NextResponse.json({ ok: false, error: "Failed to load user details" }, { status: 500 });
+  } finally {
+    conn.release();
+  }
+}
+
+export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await requireAdminSession();
+  if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+
+  const { id } = await ctx.params;
+  const userId = Math.max(1, num(id, 0));
+  if (!userId) return NextResponse.json({ ok: false, error: "Invalid user id" }, { status: 400 });
+
+  const body = await req.json().catch(() => ({}));
+  const country_id = body?.country_id != null ? Number(body.country_id) : null;
+
+  const conn = await db.getConnection();
+  try {
+    await ensureCountryConfig(conn);
+    await ensureUserCountryColumns(conn);
+    await backfillUserDefaults(conn);
+
+    if (country_id != null) {
+      return NextResponse.json(
+        { ok: false, error: "User country must be changed by the user profile, not admin." },
+        { status: 400 }
+      );
+    }
+    await conn.query(
+      `UPDATE users
+       SET updated_at = NOW()
+       WHERE id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    console.error("PATCH /api/internal/admin/app-users/[id] error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to update user" }, { status: 500 });
   } finally {
     conn.release();
   }

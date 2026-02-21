@@ -12,6 +12,9 @@ type Handoff = {
   handoff_type: string;
   context: string | null;
   whatsapp_number: string | null;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  display_currency_code?: string | null;
 
   customer_name?: string | null;
   email?: string | null;
@@ -693,6 +696,16 @@ export default function HandoffDetailPage() {
                 <div>
                   <div className="text-xs text-neutral-500">WhatsApp</div>
                   <div className="text-sm text-neutral-200">{handoff.whatsapp_number || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Country</div>
+                  <div className="text-sm text-neutral-200">
+                    {handoff.country_name ? `${handoff.country_name} (${handoff.country_iso2 || ""})` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Display currency</div>
+                  <div className="text-sm text-neutral-200">{handoff.display_currency_code || "—"}</div>
                 </div>
                 <div>
                   <div className="text-xs text-neutral-500">Created</div>

@@ -14,6 +14,7 @@ type Props = {
   searchable?: boolean;
   emptyMessage?: string;
   className?: string;
+  variant?: "dark" | "light";
 };
 
 export default function SearchableSelect({
@@ -25,6 +26,7 @@ export default function SearchableSelect({
   searchable = true,
   emptyMessage = "No results",
   className = "",
+  variant = "dark",
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -71,15 +73,32 @@ export default function SearchableSelect({
     setQuery("");
   };
 
+  const isLight = variant === "light";
+  const buttonClass = isLight
+    ? "flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm transition focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+    : "flex w-full items-center justify-between rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-60";
+  const menuClass = isLight
+    ? "absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+    : "absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl";
+  const searchWrapClass = isLight
+    ? "flex items-center gap-2 border-b border-neutral-200 px-3 py-2"
+    : "flex items-center gap-2 border-b border-neutral-900 px-3 py-2";
+  const searchInputClass = isLight
+    ? "w-full bg-transparent text-sm text-neutral-900 placeholder:text-neutral-500 outline-none"
+    : "w-full bg-transparent text-sm text-white placeholder:text-neutral-500 outline-none";
+  const optionIdleClass = isLight ? "text-neutral-700 hover:bg-neutral-100" : "text-neutral-200 hover:bg-neutral-900";
+  const optionActiveClass = isLight ? "bg-neutral-100 text-neutral-900" : "bg-neutral-900 text-white";
+  const selectedBadgeClass = isLight ? "text-xs text-emerald-600" : "text-xs text-emerald-400";
+
   return (
     <div ref={rootRef} className={`relative ${className}`}>
       <button
         type="button"
         disabled={disabled}
-        className="flex w-full items-center justify-between rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-white transition hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-60"
+        className={buttonClass}
         onClick={() => setOpen((v) => !v)}
       >
-        <span className={selected ? "text-white" : "text-neutral-400"}>
+        <span className={selected ? (isLight ? "text-neutral-900" : "text-white") : "text-neutral-400"}>
           {selected ? selected.label : placeholder}
         </span>
         <ChevronDown className={`h-4 w-4 text-neutral-400 transition ${open ? "rotate-180" : ""}`} />
@@ -87,7 +106,7 @@ export default function SearchableSelect({
 
       {open ? (
         <div
-          className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl"
+          className={menuClass}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.preventDefault();
@@ -112,14 +131,14 @@ export default function SearchableSelect({
           }}
         >
           {searchable ? (
-            <div className="flex items-center gap-2 border-b border-neutral-900 px-3 py-2">
-              <Search className="h-4 w-4 text-neutral-500" />
+            <div className={searchWrapClass}>
+              <Search className={`h-4 w-4 ${isLight ? "text-neutral-500" : "text-neutral-500"}`} />
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search"
-                className="w-full bg-transparent text-sm text-white placeholder:text-neutral-500 outline-none"
+                className={searchInputClass}
               />
             </div>
           ) : null}
@@ -133,14 +152,12 @@ export default function SearchableSelect({
                   type="button"
                   onClick={() => pick(opt)}
                   className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
-                    idx === activeIndex
-                      ? "bg-neutral-900 text-white"
-                      : "text-neutral-200 hover:bg-neutral-900"
+                    idx === activeIndex ? optionActiveClass : optionIdleClass
                   }`}
                 >
                   <span>{opt.label}</span>
                   {opt.value === value ? (
-                    <span className="text-xs text-emerald-400">Selected</span>
+                    <span className={selectedBadgeClass}>Selected</span>
                   ) : null}
                 </button>
               ))

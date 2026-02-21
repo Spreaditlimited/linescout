@@ -2,6 +2,13 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import {
+  ensureCountryConfig,
+  ensureHandoffCountryColumns,
+  backfillHandoffDefaults,
+  ensureShippingRateCountryColumn,
+  getNigeriaDefaults,
+} from "@/lib/country-config";
 import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
@@ -10,6 +17,47 @@ export const dynamic = "force-dynamic";
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+async function ensureReleaseAuditTable(conn: any) {
+  await conn.query(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_handoff_release_audits (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      handoff_id INT NOT NULL,
+      conversation_id INT NULL,
+      released_by_id INT NULL,
+      released_by_name VARCHAR(120) NULL,
+      released_by_role VARCHAR(32) NULL,
+      previous_status VARCHAR(32) NULL,
+      product_paid DECIMAL(18,2) NULL,
+      shipping_paid DECIMAL(18,2) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_handoff_release_handoff (handoff_id),
+      INDEX idx_handoff_release_created (created_at)
+    )
+    `
+  );
+}
+
+async function ensureClaimAuditTable(conn: any) {
+  await conn.query(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_handoff_claim_audits (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      handoff_id INT NOT NULL,
+      conversation_id INT NULL,
+      claimed_by_id INT NULL,
+      claimed_by_name VARCHAR(120) NULL,
+      claimed_by_role VARCHAR(32) NULL,
+      previous_status VARCHAR(32) NULL,
+      new_status VARCHAR(32) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_handoff_claim_handoff (handoff_id),
+      INDEX idx_handoff_claim_created (created_at)
+    )
+    `
+  );
 }
 
 function pickItems(raw: any) {
@@ -107,6 +155,11 @@ async function requireInternalSession() {
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureHandoffCountryColumns(conn);
+    await backfillHandoffDefaults(conn);
+    await ensureReleaseAuditTable(conn);
+    await ensureClaimAuditTable(conn);
     const [rows]: any = await conn.query(
       `
       SELECT
@@ -171,6 +224,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         sc.name AS shipping_company_name,
         c.assigned_agent_id,
         ia.username AS assigned_agent_username,
+        hc.name AS country_name,
+        hc.iso2 AS country_iso2,
+        u.country_id AS user_country_id,
+        uc.name AS user_country_name,
+        uc.iso2 AS user_country_iso2,
+        u.display_currency_code AS user_display_currency_code,
+        ucc.code AS user_country_currency_code,
         COALESCE(
           NULLIF(TRIM(h.customer_name), ''),
           NULLIF(
@@ -192,6 +252,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       LEFT JOIN linescout_conversations c ON c.handoff_id = h.id
       LEFT JOIN users u ON u.id = c.user_id
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
+      LEFT JOIN linescout_countries hc ON hc.id = h.country_id
+      LEFT JOIN linescout_countries uc ON uc.id = u.country_id
+      LEFT JOIN linescout_currencies ucc ON ucc.id = uc.default_currency_id
       WHERE h.id = ?
       LIMIT 1
       `,
@@ -222,6 +285,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       `SELECT id, conversation_id, released_by_id, released_by_name, released_by_role,
               previous_status, product_paid, shipping_paid, created_at
        FROM linescout_handoff_release_audits
+       WHERE handoff_id = ?
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [handoffId]
+    );
+
+    const [claimRows]: any = await conn.query(
+      `SELECT id, conversation_id, claimed_by_id, claimed_by_name, claimed_by_role,
+              previous_status, new_status, created_at
+       FROM linescout_handoff_claim_audits
        WHERE handoff_id = ?
        ORDER BY created_at DESC
        LIMIT 10`,
@@ -271,6 +344,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         conversation_id: item.conversation_id ?? null,
         assigned_agent_id: item.assigned_agent_id ?? null,
         assigned_agent_username: item.assigned_agent_username ?? null,
+        user_country_id: item.user_country_id ?? null,
+        user_country_name: item.user_country_name ?? null,
+        user_country_iso2: item.user_country_iso2 ?? null,
+        user_display_currency_code: item.user_display_currency_code ?? null,
+        user_country_currency_code: item.user_country_currency_code ?? null,
 
         manufacturer_audit: (auditRows || []).map((row: any) => ({
           id: Number(row.id),
@@ -302,6 +380,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
           previous_status: row.previous_status ?? null,
           product_paid: row.product_paid ?? null,
           shipping_paid: row.shipping_paid ?? null,
+          created_at: row.created_at ?? null,
+        })),
+        claim_audit: (claimRows || []).map((row: any) => ({
+          id: Number(row.id),
+          conversation_id: row.conversation_id ?? null,
+          claimed_by_id: row.claimed_by_id ?? null,
+          claimed_by_name: row.claimed_by_name ?? null,
+          claimed_by_role: row.claimed_by_role ?? null,
+          previous_status: row.previous_status ?? null,
+          new_status: row.new_status ?? null,
           created_at: row.created_at ?? null,
         })),
       },
@@ -339,6 +427,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const conn = await db.getConnection();
   try {
+    await ensureCountryConfig(conn);
+    await ensureShippingRateCountryColumn(conn);
     const [handoffRows]: any = await conn.query(
       `SELECT id, token, email, customer_name
        FROM linescout_handoffs
@@ -352,7 +442,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
     const handoff = handoffRows[0];
     const [quoteRows]: any = await conn.query(
-      `SELECT id, token, items_json, exchange_rate_usd, shipping_rate_usd, shipping_rate_unit, shipping_type_id
+      `SELECT id, token, items_json, exchange_rate_usd, shipping_rate_usd, shipping_rate_unit, shipping_type_id, country_id
        FROM linescout_quotes
        WHERE handoff_id = ?
        ORDER BY id DESC
@@ -369,6 +459,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     let shippingRateUsd = num(quote.shipping_rate_usd, 0);
     let shippingRateUnit = String(quote.shipping_rate_unit || "per_kg");
     const shipTypeId = Number(quote.shipping_type_id || 0);
+    const defaults = await getNigeriaDefaults(conn);
+    const quoteCountryId = Number(quote.country_id || defaults.country_id || 0);
 
     if (shipTypeId) {
       const [rateRows]: any = await conn.query(
@@ -376,9 +468,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
          FROM linescout_shipping_rates
          WHERE shipping_type_id = ?
            AND is_active = 1
+           AND country_id = ?
          ORDER BY id DESC
          LIMIT 1`,
-        [shipTypeId]
+        [shipTypeId, quoteCountryId]
       );
       if (rateRows?.length) {
         shippingRateUsd = num(rateRows[0].rate_value, shippingRateUsd);
@@ -414,7 +507,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const title = "Shipping payment required";
     const subject = `Pay for shipping – ${recipientLabel}`;
     const bodyLines = [
-      "Your shipment has arrived in Nigeria and is ready for delivery.",
+      "Your shipment has arrived and is ready for delivery.",
       "Please pay the shipping fee to proceed with final delivery.",
       `Amount due: NGN ${shippingRemaining.toLocaleString()}`,
       `Project: ${recipientLabel}`,

@@ -1,17 +1,6 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
-
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+import { db } from "@/lib/db";
 
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
@@ -24,7 +13,7 @@ async function requireAdmin() {
 
   if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT u.role
@@ -50,7 +39,7 @@ export async function GET() {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query(
       `SELECT id, name, is_active, created_at
@@ -73,7 +62,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Name is too short" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     const [result]: any = await conn.query(
       `INSERT INTO linescout_shipping_types (name, is_active)
@@ -99,7 +88,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid id" }, { status: 400 });
   }
 
-  const conn = await pool.getConnection();
+  const conn = await db.getConnection();
   try {
     await conn.query(`UPDATE linescout_shipping_types SET is_active = ? WHERE id = ?`, [is_active, id]);
     return NextResponse.json({ ok: true });

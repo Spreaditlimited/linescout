@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
 import DeferredSection from "@/components/white-label/DeferredSection";
+import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
+import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -27,17 +30,25 @@ type ProductRow = {
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
+  landed_gbp_sea_per_unit_low?: number | null;
+  landed_gbp_sea_per_unit_high?: number | null;
+  landed_gbp_sea_total_1000_low?: number | null;
+  landed_gbp_sea_total_1000_high?: number | null;
+  landed_cad_sea_per_unit_low?: number | null;
+  landed_cad_sea_per_unit_high?: number | null;
+  landed_cad_sea_total_1000_low?: number | null;
+  landed_cad_sea_total_1000_high?: number | null;
   view_count?: number | null;
 };
 
-function formatNaira(value?: number | null) {
-  if (typeof value !== "number" || Number.isNaN(value)) return "—";
-  return `₦${Math.round(value).toLocaleString()}`;
-}
-
-function formatPerUnitRange(low?: number | null, high?: number | null) {
-  const lowText = formatNaira(low);
-  const highText = formatNaira(high);
+function formatPerUnitRange(
+  low: number | null | undefined,
+  high: number | null | undefined,
+  currency: ReturnType<typeof currencyForCode>
+) {
+  const perUnitDigits = currency.code === "NGN" ? 0 : 2;
+  const lowText = formatCurrency(low, currency, perUnitDigits);
+  const highText = formatCurrency(high, currency, perUnitDigits);
   if (lowText !== "—" && highText !== "—") return `${lowText}–${highText} per unit`;
   if (lowText !== "—") return `${lowText} per unit`;
   if (highText !== "—") return `${highText} per unit`;
@@ -52,12 +63,41 @@ function slugify(value?: string | null) {
     .slice(0, 64);
 }
 
+function pickCountryFromCookie(
+  cookieValue: string | undefined,
+  countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
+) {
+  const normalized = String(cookieValue || "").trim().toUpperCase();
+  const picked =
+    countries.find((c) => c.iso2 === normalized) ||
+    (normalized === "UK" ? countries.find((c) => c.iso2 === "GB") : null) ||
+    countries.find((c) => c.iso2 === "NG") ||
+    countries[0] ||
+    null;
+  return picked;
+}
+
+function getCountryCurrencyCode(
+  country: { default_currency_id?: number | null; settlement_currency_code?: string | null } | null,
+  currencyById: Map<number, string>
+) {
+  if (!country) return "NGN";
+  const fromDefault = country.default_currency_id
+    ? currencyById.get(Number(country.default_currency_id)) || null
+    : null;
+  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
+  if (allowed.has(candidate)) return candidate;
+  const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
+  return allowed.has(settlement) ? settlement : "NGN";
+}
+
 function fallbackSeoDescription(product: ProductRow) {
   return (
     product.seo_description ||
     product.short_desc ||
     product.why_sells ||
-    `White label ${product.product_name} idea tailored for Nigerian founders and business owners.`
+    `White label ${product.product_name} idea tailored for founders and business owners in your market.`
   );
 }
 
@@ -70,7 +110,7 @@ function fallbackSummary(product: ProductRow) {
 
 function fallbackMarketNotes(product: ProductRow) {
   if (product.market_notes) return product.market_notes;
-  return "Position this product for Nigerian consumers who value reliability and affordability. Small minimum order quantities and strong offline demand make it a solid pick for first-time importers.";
+  return "Position this product for consumers who value reliability and affordability. Small minimum order quantities and strong offline demand make it a solid pick for first-time importers.";
 }
 
 function fallbackAngle(product: ProductRow) {
@@ -142,12 +182,23 @@ export default async function WhiteLabelIdeaDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const cookieStore = await cookies();
+  const countryCookie = cookieStore.get("wl_country")?.value;
 
   const conn = await db.getConnection();
   let product: ProductRow | null = null;
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
+  let currencyCode = "NGN";
   try {
+    await ensureCountryConfig(conn);
+    const lists = await listActiveCountriesAndCurrencies(conn);
+    const currencyById = new Map<number, string>(
+      (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
+    );
+    const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
+    currencyCode = getCountryCurrencyCode(picked, currencyById);
+
     await ensureWhiteLabelProductsReady(conn);
 
     const [rows]: any = await conn.query(
@@ -206,13 +257,17 @@ export default async function WhiteLabelIdeaDetailPage({
     conn.release();
   }
 
+  const currency = currencyForCode(currencyCode);
+
   if (!product) return null;
 
-  const landed = computeLandedRange({
+  const landedNgn = computeLandedRange({
     fob_low_usd: product.fob_low_usd,
     fob_high_usd: product.fob_high_usd,
     cbm_per_1000: product.cbm_per_1000,
   });
+  const landedBase = { ...product, ...landedNgn };
+  const landedPicked = pickLandedFieldsByCurrency(landedBase, currencyCode);
 
   const summary = fallbackSummary(product);
   const marketNotes = fallbackMarketNotes(product);
@@ -243,6 +298,7 @@ export default async function WhiteLabelIdeaDetailPage({
       <WhiteLabelViewTracker productId={product.id} source="app" />
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
+          <div className="mb-4 flex justify-end" />
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
@@ -253,7 +309,7 @@ export default async function WhiteLabelIdeaDetailPage({
             </div>
             <div className="hidden sm:block">
               <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-700">
-                {formatPerUnitRange(landed.landed_ngn_per_unit_low, landed.landed_ngn_per_unit_high) || "Pricing pending"}
+                {formatPerUnitRange(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency) || "Pricing pending"}
               </div>
             </div>
           </div>
@@ -301,21 +357,28 @@ export default async function WhiteLabelIdeaDetailPage({
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-4">
-            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
-              {formatNaira(landed.landed_ngn_total_1000_low)}–{formatNaira(landed.landed_ngn_total_1000_high)} for 1,000 units
+          <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-[260px] flex-col gap-2">
+              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
+                {landedPicked.totalLow != null || landedPicked.totalHigh != null
+                  ? `${formatCurrency(landedPicked.totalLow, currency)}–${formatCurrency(
+                      landedPicked.totalHigh,
+                      currency
+                    )} for 1,000 units`
+                  : "Pricing pending"}
+              </div>
+              <Link
+                href="/white-label/ideas"
+                className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"
+              >
+                View all ideas
+              </Link>
             </div>
             <Link
-              href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(product.id))}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(product.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(landed.landed_ngn_per_unit_low, landed.landed_ngn_per_unit_high))}`}
-              className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3 text-sm font-semibold text-white"
+              href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(product.id))}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(product.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency))}`}
+              className="ml-auto inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3 text-sm font-semibold text-white"
             >
               Start sourcing
-            </Link>
-            <Link
-              href="/white-label/ideas"
-              className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"
-            >
-              View all ideas
             </Link>
           </div>
         </div>
@@ -352,7 +415,11 @@ export default async function WhiteLabelIdeaDetailPage({
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-neutral-900">{item.product_name}</p>
                       <p className="text-xs text-neutral-500">
-                        {formatPerUnitRange(item.landed_ngn_per_unit_low, item.landed_ngn_per_unit_high) || "Pricing pending"}
+                        {formatPerUnitRange(
+                          pickLandedFieldsByCurrency(item, currencyCode).perUnitLow,
+                          pickLandedFieldsByCurrency(item, currencyCode).perUnitHigh,
+                          currency
+                        ) || "Pricing pending"}
                       </p>
                     </div>
                   </Link>
