@@ -99,6 +99,16 @@ export async function PATCH(req: Request, ctx: any) {
   if (body?.size_template !== undefined) setField("size_template", clean(body.size_template) || null);
   if (body?.volumetric_kg_per_1000 !== undefined)
     setField("volumetric_kg_per_1000", toNum(body.volumetric_kg_per_1000));
+  if (body?.amazon_asin !== undefined) setField("amazon_asin", clean(body.amazon_asin) || null);
+  if (body?.amazon_url !== undefined) setField("amazon_url", clean(body.amazon_url) || null);
+  if (body?.amazon_marketplace !== undefined)
+    setField("amazon_marketplace", clean(body.amazon_marketplace).toUpperCase() || null);
+  if (body?.amazon_currency !== undefined)
+    setField("amazon_currency", clean(body.amazon_currency).toUpperCase() || null);
+  if (body?.amazon_price_low !== undefined) setField("amazon_price_low", toNum(body.amazon_price_low));
+  if (body?.amazon_price_high !== undefined) setField("amazon_price_high", toNum(body.amazon_price_high));
+  if (body?.amazon_last_checked_at !== undefined)
+    setField("amazon_last_checked_at", clean(body.amazon_last_checked_at) || null);
   if (body?.is_active !== undefined) setField("is_active", body.is_active ? 1 : 0);
   if (body?.sort_order !== undefined) setField("sort_order", toNum(body.sort_order) ?? 0);
 

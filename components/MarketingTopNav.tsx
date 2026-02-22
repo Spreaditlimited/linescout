@@ -54,7 +54,7 @@ export default function MarketingTopNav({
           <span className={`hidden h-7 w-px rounded-full sm:inline-block ${dividerClassName}`} />
           <div className="hidden sm:block">
             <p className={`text-xs font-semibold uppercase tracking-[0.25em] ${accentClassName}`}>
-              Nigeria-first sourcing
+              Market-specific sourcing
             </p>
             <p className="text-xs text-neutral-500">AI clarity + specialist execution</p>
           </div>

@@ -38,6 +38,13 @@ type ProductRow = {
   landed_cad_sea_per_unit_high?: number | null;
   landed_cad_sea_total_1000_low?: number | null;
   landed_cad_sea_total_1000_high?: number | null;
+  amazon_asin?: string | null;
+  amazon_url?: string | null;
+  amazon_marketplace?: string | null;
+  amazon_currency?: string | null;
+  amazon_price_low?: number | null;
+  amazon_price_high?: number | null;
+  amazon_last_checked_at?: string | null;
   view_count?: number | null;
 };
 
@@ -53,6 +60,36 @@ function formatPerUnitRange(
   if (lowText !== "—") return `${lowText} per unit`;
   if (highText !== "—") return `${highText} per unit`;
   return "";
+}
+
+function formatAmazonPriceRange(
+  low: number | null | undefined,
+  high: number | null | undefined,
+  currencyCode: string
+) {
+  const code = String(currencyCode || "").toUpperCase() || "GBP";
+  const fmt = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(Number(value))) return "—";
+    try {
+      return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-CA", {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: 2,
+      }).format(Number(value));
+    } catch {
+      const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : "";
+      return `${symbol}${Number(value).toFixed(2)}`;
+    }
+  };
+  const lowText = fmt(low);
+  const highText = fmt(high);
+  if (lowText !== "—" && highText !== "—" && Number(low) === Number(high)) {
+    return lowText;
+  }
+  if (lowText !== "—" && highText !== "—") return `${lowText}–${highText}`;
+  if (lowText !== "—") return lowText;
+  if (highText !== "—") return highText;
+  return "—";
 }
 
 function slugify(value?: string | null) {
@@ -273,6 +310,45 @@ export default async function WhiteLabelIdeaDetailPage({
   const marketNotes = fallbackMarketNotes(product);
   const angle = fallbackAngle(product);
 
+  const amazonLow = product.amazon_price_low != null ? Number(product.amazon_price_low) : null;
+  const amazonHigh = product.amazon_price_high != null ? Number(product.amazon_price_high) : null;
+  const amazonMarketplace = String(product.amazon_marketplace || "").toUpperCase();
+  const amazonCurrency =
+    String(product.amazon_currency || "").toUpperCase() ||
+    (amazonMarketplace === "UK" ? "GBP" : amazonMarketplace === "CA" ? "CAD" : "");
+  const hasAmazonComparison = Number.isFinite(amazonLow) || Number.isFinite(amazonHigh);
+  const amazonPriceRange = hasAmazonComparison
+    ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency)
+    : null;
+  const amazonLanded =
+    amazonCurrency === "GBP"
+      ? {
+          low: product.landed_gbp_sea_per_unit_low ?? null,
+          high: product.landed_gbp_sea_per_unit_high ?? null,
+        }
+      : amazonCurrency === "CAD"
+      ? {
+          low: product.landed_cad_sea_per_unit_low ?? null,
+          high: product.landed_cad_sea_per_unit_high ?? null,
+        }
+      : { low: null, high: null };
+  const amazonMarginRange = (() => {
+    if (
+      amazonLow == null ||
+      amazonHigh == null ||
+      amazonLanded.low == null ||
+      amazonLanded.high == null
+    ) {
+      return null;
+    }
+    const lowMargin = (amazonLow - amazonLanded.high) / amazonLow;
+    const highMargin = (amazonHigh - amazonLanded.low) / amazonHigh;
+    if (!Number.isFinite(lowMargin) || !Number.isFinite(highMargin)) return null;
+    const clamp = (v: number) => Math.max(-0.99, Math.min(v, 0.99));
+    const toPct = (v: number) => `${Math.round(clamp(v) * 100)}%`;
+    return `${toPct(lowMargin)}–${toPct(highMargin)}`;
+  })();
+
   const similarItems = similar.map((item) => ({
     ...item,
     ...computeLandedRange({
@@ -367,6 +443,19 @@ export default async function WhiteLabelIdeaDetailPage({
                     )} for 1,000 units`
                   : "Pricing pending"}
               </div>
+              {hasAmazonComparison ? (
+                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                    Amazon price{amazonMarketplace ? ` (${amazonMarketplace})` : ""}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-neutral-800">{amazonPriceRange}</p>
+                  {amazonMarginRange ? (
+                    <p className="mt-1 text-[11px] text-neutral-500">
+                      Indicative margin: {amazonMarginRange}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <Link
                 href="/white-label/ideas"
                 className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"

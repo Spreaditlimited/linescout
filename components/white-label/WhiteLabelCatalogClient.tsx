@@ -33,6 +33,12 @@ type ProductItem = {
   landed_cad_sea_per_unit_high?: number | null;
   landed_cad_sea_total_1000_low?: number | null;
   landed_cad_sea_total_1000_high?: number | null;
+  amazon_asin?: string | null;
+  amazon_url?: string | null;
+  amazon_marketplace?: string | null;
+  amazon_currency?: string | null;
+  amazon_price_low?: number | null;
+  amazon_price_high?: number | null;
 };
 
 function formatPerUnitRange(
@@ -109,10 +115,16 @@ export default function WhiteLabelCatalogClient({
   items,
   detailBase = "/white-label",
   currencyCode = "NGN",
+  lockAmazonComparison = false,
+  comparisonCtaHref = "/sign-in?next=/white-label/ideas",
+  comparisonCtaLabel = "Sign in to compare Amazon prices",
 }: {
   items: ProductItem[];
   detailBase?: string;
   currencyCode?: string;
+  lockAmazonComparison?: boolean;
+  comparisonCtaHref?: string;
+  comparisonCtaLabel?: string;
 }) {
   const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
   const currency = currencyForCode(currencyCode);
@@ -179,6 +191,104 @@ export default function WhiteLabelCatalogClient({
                           : "Pricing pending"}
                       </p>
                     </>
+                  );
+                })()}
+                {(() => {
+                  const amazonLow = item.amazon_price_low != null ? Number(item.amazon_price_low) : null;
+                  const amazonHigh = item.amazon_price_high != null ? Number(item.amazon_price_high) : null;
+                  const amazonCurrency = String(item.amazon_currency || "").toUpperCase();
+                  const marketplace = String(item.amazon_marketplace || "").toUpperCase();
+                  const showAmazon = Number.isFinite(amazonLow) || Number.isFinite(amazonHigh);
+                  if (!showAmazon) return null;
+
+                  const amazonCode =
+                    amazonCurrency ||
+                    (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : "");
+                  const labelSuffix = marketplace ? ` (${marketplace})` : "";
+                  const displayAmazonRange = () => {
+                    const code = amazonCode || "GBP";
+                    const fmt = (value: number | null) => {
+                      if (value == null || !Number.isFinite(value)) return "—";
+                      try {
+                        return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-CA", {
+                          style: "currency",
+                          currency: code,
+                          maximumFractionDigits: 2,
+                        }).format(value);
+                      } catch {
+                        const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : "";
+                        return `${symbol}${value.toFixed(2)}`;
+                      }
+                    };
+                    const lowText = fmt(Number.isFinite(amazonLow) ? amazonLow : null);
+                    const highText = fmt(Number.isFinite(amazonHigh) ? amazonHigh : null);
+                    if (lowText !== "—" && highText !== "—" && amazonLow === amazonHigh) {
+                      return lowText;
+                    }
+                    if (lowText !== "—" && highText !== "—") return `${lowText}–${highText}`;
+                    if (lowText !== "—") return lowText;
+                    if (highText !== "—") return highText;
+                    return "—";
+                  };
+
+                  const landedForAmazon = () => {
+                    if (amazonCode === "GBP") {
+                      return {
+                        low: item.landed_gbp_sea_per_unit_low ?? null,
+                        high: item.landed_gbp_sea_per_unit_high ?? null,
+                      };
+                    }
+                    if (amazonCode === "CAD") {
+                      return {
+                        low: item.landed_cad_sea_per_unit_low ?? null,
+                        high: item.landed_cad_sea_per_unit_high ?? null,
+                      };
+                    }
+                    return { low: null, high: null };
+                  };
+
+                  const marginRange = () => {
+                    const landed = landedForAmazon();
+                    const low = Number.isFinite(amazonLow) ? amazonLow : null;
+                    const high = Number.isFinite(amazonHigh) ? amazonHigh : null;
+                    if (low == null || high == null || landed.low == null || landed.high == null) return null;
+                    const lowMargin = (low - landed.high) / low;
+                    const highMargin = (high - landed.low) / high;
+                    if (!Number.isFinite(lowMargin) || !Number.isFinite(highMargin)) return null;
+                    const clamp = (v: number) => Math.max(-0.99, Math.min(v, 0.99));
+                    const toPct = (v: number) => `${Math.round(clamp(v) * 100)}%`;
+                    return `${toPct(lowMargin)}–${toPct(highMargin)}`;
+                  };
+
+                  const rangeText = displayAmazonRange();
+                  const marginText = marginRange();
+
+                  return (
+                    <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                        Amazon price{labelSuffix}
+                      </p>
+                      {lockAmazonComparison ? (
+                        <div className="mt-1">
+                          <div className="h-3 w-28 rounded-full bg-neutral-200/70" />
+                          <Link
+                            href={comparisonCtaHref}
+                            className="mt-2 inline-flex text-[11px] font-semibold text-[var(--agent-blue)]"
+                          >
+                            {comparisonCtaLabel}
+                          </Link>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-sm font-semibold text-neutral-800">{rangeText}</p>
+                          {marginText ? (
+                            <p className="mt-1 text-[11px] text-neutral-500">
+                              Indicative margin: {marginText}
+                            </p>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
                   );
                 })()}
               </div>

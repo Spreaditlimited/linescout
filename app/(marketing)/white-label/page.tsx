@@ -232,66 +232,67 @@ export default async function WhiteLabelPage({
 
     await ensureWhiteLabelProductsReady(conn);
 
-    const clauses = ["is_active = 1"];
+    const clauses = ["p.is_active = 1"];
     const params: any[] = [];
 
     if (category) {
-      clauses.push("category = ?");
+      clauses.push("p.category = ?");
       params.push(category);
     }
 
     if (q) {
       const like = `%${q.toLowerCase()}%`;
       clauses.push(
-        `(LOWER(product_name) LIKE ? OR LOWER(category) LIKE ? OR LOWER(COALESCE(short_desc,'')) LIKE ? OR LOWER(COALESCE(why_sells,'')) LIKE ?)`
+        `(LOWER(p.product_name) LIKE ? OR LOWER(p.category) LIKE ? OR LOWER(COALESCE(p.short_desc,'')) LIKE ? OR LOWER(COALESCE(p.why_sells,'')) LIKE ?)`
       );
       params.push(like, like, like, like);
     }
 
     if (regulatory === "non_regulated") {
       clauses.push(
-        `(LOWER(COALESCE(regulatory_note,'')) LIKE '%non-regulated%' OR LOWER(COALESCE(regulatory_note,'')) LIKE '%non regulated%')`
+        `(LOWER(COALESCE(p.regulatory_note,'')) LIKE '%non-regulated%' OR LOWER(COALESCE(p.regulatory_note,'')) LIKE '%non regulated%')`
       );
     } else if (regulatory === "regulated") {
       clauses.push(
-        `COALESCE(regulatory_note,'') <> '' AND LOWER(COALESCE(regulatory_note,'')) NOT LIKE '%non-regulated%' AND LOWER(COALESCE(regulatory_note,'')) NOT LIKE '%non regulated%'`
+        `COALESCE(p.regulatory_note,'') <> '' AND LOWER(COALESCE(p.regulatory_note,'')) NOT LIKE '%non-regulated%' AND LOWER(COALESCE(p.regulatory_note,'')) NOT LIKE '%non regulated%'`
       );
     } else if (regulatory === "unknown") {
-      clauses.push(`COALESCE(regulatory_note,'') = ''`);
+      clauses.push(`COALESCE(p.regulatory_note,'') = ''`);
     }
 
-    const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
+    const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(p.fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(p.cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
 
     if (effectivePrice) {
       if (price === "lt1k") {
-        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
+        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
       } else if (price === "1k-3k") {
-        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} >= 1000 AND ${landedLowExpr} <= 3000`);
+        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} >= 1000 AND ${landedLowExpr} <= 3000`);
       } else if (price === "3k-7k") {
-        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 3000 AND ${landedLowExpr} <= 7000`);
+        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 3000 AND ${landedLowExpr} <= 7000`);
       } else if (price === "7k-15k") {
-        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 7000 AND ${landedLowExpr} <= 15000`);
+        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 7000 AND ${landedLowExpr} <= 15000`);
       } else if (price === "15kplus") {
-        clauses.push(`fob_low_usd IS NOT NULL AND ${landedLowExpr} > 15000`);
+        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 15000`);
       }
     }
 
+    const hasAmazonExpr = `(CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
     const sortKey = sort || "recommended";
     const orderBy =
       sortKey === "price_low"
-        ? `ORDER BY (fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, id DESC`
+        ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, p.id DESC`
         : sortKey === "price_high"
-        ? `ORDER BY (fob_low_usd IS NULL) ASC, ${landedLowExpr} DESC, id DESC`
+        ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} DESC, p.id DESC`
         : sortKey === "name"
-        ? "ORDER BY product_name ASC, id DESC"
+        ? "ORDER BY p.product_name ASC, p.id DESC"
         : sortKey === "newest"
-        ? "ORDER BY id DESC"
-        : "ORDER BY id DESC";
+        ? "ORDER BY p.id DESC"
+        : `ORDER BY ${hasAmazonExpr} DESC, COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC`;
 
     const [countRows]: any = await conn.query(
       `
       SELECT COUNT(*) AS total
-      FROM linescout_white_label_products
+      FROM linescout_white_label_products p
       WHERE ${clauses.join(" AND ")}
       `,
       params
@@ -304,8 +305,13 @@ export default async function WhiteLabelPage({
 
     const [rows]: any = await conn.query(
       `
-      SELECT *
-      FROM linescout_white_label_products
+      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      FROM linescout_white_label_products p
+      LEFT JOIN (
+        SELECT product_id, COUNT(*) AS views
+        FROM linescout_white_label_views
+        GROUP BY product_id
+      ) v ON v.product_id = p.id
       WHERE ${clauses.join(" AND ")}
       ${orderBy}
       LIMIT ? OFFSET ?
@@ -344,7 +350,8 @@ export default async function WhiteLabelPage({
         GROUP BY product_id
       ) v ON v.product_id = p.id
       WHERE p.is_active = 1
-      ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+      ORDER BY (CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+               view_count DESC, p.sort_order ASC, p.id DESC
       LIMIT 8
       `
     );
@@ -381,7 +388,8 @@ export default async function WhiteLabelPage({
           GROUP BY product_id
         ) v ON v.product_id = p.id
         WHERE p.is_active = 1 AND p.category = ?
-        ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+        ORDER BY (CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+                 view_count DESC, p.sort_order ASC, p.id DESC
         LIMIT 4
         `,
         [cat]
@@ -611,7 +619,14 @@ export default async function WhiteLabelPage({
         </section>
 
         <section className="mx-auto max-w-6xl px-6 pb-10">
-          <WhiteLabelCatalogClient items={items} detailBase="/white-label" currencyCode={currencyCode} />
+          <WhiteLabelCatalogClient
+            items={items}
+            detailBase="/white-label"
+            currencyCode={currencyCode}
+            lockAmazonComparison
+            comparisonCtaHref="/sign-in?next=/white-label/ideas"
+            comparisonCtaLabel="Sign in to compare Amazon prices"
+          />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-neutral-500">

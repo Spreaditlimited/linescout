@@ -22,35 +22,45 @@ export async function GET(req: Request) {
     try {
       await ensureWhiteLabelProductsReady(conn);
 
-      const clauses = ["is_active = 1", "COALESCE(image_url, '') <> ''"];
+      const clauses = ["p.is_active = 1", "COALESCE(p.image_url, '') <> ''"];
       const params: any[] = [];
 
       if (slug) {
         clauses.push(
-          "(slug = ? OR REGEXP_REPLACE(LOWER(product_name), '[^a-z0-9]+', '-') = ?)"
+          "(p.slug = ? OR REGEXP_REPLACE(LOWER(p.product_name), '[^a-z0-9]+', '-') = ?)"
         );
         params.push(slug, slug);
       }
 
       if (!slug && category) {
-        clauses.push("category = ?");
+        clauses.push("p.category = ?");
         params.push(category);
       }
 
       if (!slug && q) {
         const like = `%${q}%`;
         clauses.push(
-          `(LOWER(product_name) LIKE ? OR LOWER(category) LIKE ? OR LOWER(COALESCE(short_desc,'')) LIKE ?)`
+          `(LOWER(p.product_name) LIKE ? OR LOWER(p.category) LIKE ? OR LOWER(COALESCE(p.short_desc,'')) LIKE ?)`
         );
         params.push(like, like, like);
       }
 
+      const orderBy = slug
+        ? "ORDER BY p.id DESC"
+        : `ORDER BY (CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+                 COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC`;
+
       const [rows]: any = await conn.query(
         `
-        SELECT *
-        FROM linescout_white_label_products
+        SELECT p.*, COALESCE(v.views, 0) AS view_count
+        FROM linescout_white_label_products p
+        LEFT JOIN (
+          SELECT product_id, COUNT(*) AS views
+          FROM linescout_white_label_views
+          GROUP BY product_id
+        ) v ON v.product_id = p.id
         WHERE ${clauses.join(" AND ")}
-        ORDER BY id DESC
+        ${orderBy}
         LIMIT ${slug ? 1 : 300}
         `,
         params

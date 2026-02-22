@@ -106,6 +106,11 @@ export default function WhiteLabelProductsPage() {
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [csvMarketplace, setCsvMarketplace] = useState("UK");
+  const [csvName, setCsvName] = useState("");
+  const [csvText, setCsvText] = useState("");
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvMsg, setCsvMsg] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 200);
@@ -166,6 +171,73 @@ export default function WhiteLabelProductsPage() {
 
   function clearSelection() {
     setSelectedIds([]);
+  }
+
+  function downloadCsvTemplate() {
+    const header = [
+      "id",
+      "amazon_marketplace",
+      "amazon_currency",
+      "amazon_price_low",
+      "amazon_price_high",
+      "amazon_asin",
+      "amazon_url",
+      "amazon_last_checked_at",
+    ].join(",");
+    const sample = [
+      "123",
+      "UK",
+      "GBP",
+      "19.99",
+      "24.99",
+      "B0XXXXXXX",
+      "https://www.amazon.co.uk/dp/B0XXXXXXX",
+      "2026-02-22 10:00:00",
+    ].join(",");
+    const csv = `${header}\n${sample}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "white-label-amazon-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleCsvFile(file: File) {
+    setCsvMsg(null);
+    setCsvName(file.name);
+    const text = await file.text();
+    setCsvText(text);
+  }
+
+  async function uploadCsv() {
+    if (!csvText.trim()) {
+      setCsvMsg("Select a CSV file first.");
+      return;
+    }
+    setCsvUploading(true);
+    setCsvMsg(null);
+    try {
+      const res = await fetch("/api/internal/admin/white-label-products/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          csv: csvText,
+          default_marketplace: csvMarketplace,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Import failed.");
+      setCsvMsg(`Imported. Updated ${data.updated || 0} rows, skipped ${data.skipped || 0}.`);
+      await load();
+    } catch (e: any) {
+      setCsvMsg(e?.message || "Import failed.");
+    } finally {
+      setCsvUploading(false);
+    }
   }
 
   async function bulkSetActive(next: boolean) {
@@ -360,6 +432,65 @@ export default function WhiteLabelProductsPage() {
           {err}
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Amazon comparison CSV</h2>
+            <p className="mt-1 text-xs text-neutral-400">
+              Upload a CSV to bulk update Amazon UK/CA price ranges for products.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={downloadCsvTemplate}
+            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs font-semibold text-neutral-200"
+          >
+            Download template
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_auto]">
+          <SearchableSelect
+            value={csvMarketplace}
+            onChange={(value) => setCsvMarketplace(String(value || "UK").toUpperCase())}
+            options={[
+              { value: "UK", label: "UK (GBP)" },
+              { value: "CA", label: "CA (CAD)" },
+            ]}
+            placeholder="Default marketplace"
+          />
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              if (file) handleCsvFile(file);
+            }}
+            className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs text-neutral-200"
+          />
+          <button
+            type="button"
+            onClick={uploadCsv}
+            disabled={csvUploading}
+            className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-neutral-900 disabled:opacity-60"
+          >
+            {csvUploading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
+        {csvName ? (
+          <p className="mt-2 text-xs text-neutral-500">Selected file: {csvName}</p>
+        ) : null}
+        {csvMsg ? (
+          <p
+            className={`mt-2 text-xs ${
+              csvMsg.toLowerCase().includes("fail") ? "text-red-300" : "text-emerald-300"
+            }`}
+          >
+            {csvMsg}
+          </p>
+        ) : null}
+      </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
         <h2 className="text-lg font-semibold">Add new product</h2>
