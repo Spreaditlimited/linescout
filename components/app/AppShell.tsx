@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import SearchableSelect from "@/app/internal/_components/SearchableSelect";
 import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, MessageSquare, Bot, User, ArrowLeft, Sparkles } from "lucide-react";
 
 const navItems = [
@@ -57,6 +58,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [showSignOut, setShowSignOut] = useState(false);
   const [stickyNotice, setStickyNotice] = useState<{ version: number; title: string; body: string } | null>(null);
   const [dismissingSticky, setDismissingSticky] = useState(false);
+  const [countryGateOpen, setCountryGateOpen] = useState(false);
+  const [countryGateSaving, setCountryGateSaving] = useState(false);
+  const [countryGateError, setCountryGateError] = useState<string | null>(null);
+  const [gateCountries, setGateCountries] = useState<any[]>([]);
+  const [gateCurrencies, setGateCurrencies] = useState<any[]>([]);
+  const [gateCountryId, setGateCountryId] = useState<number | "">("");
+  const [gateDisplayCurrency, setGateDisplayCurrency] = useState("");
+  const [gateFirstName, setGateFirstName] = useState("");
+  const [gateLastName, setGateLastName] = useState("");
+  const [gatePhone, setGatePhone] = useState("");
   const brandBlue = "#2D3461";
   const CACHE_KEY = "linescout_user_gate_v1";
   const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -137,6 +148,81 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, [checking]);
+
+  useEffect(() => {
+    if (checking) return;
+    let active = true;
+    (async () => {
+      const res = await authFetch("/api/mobile/profile");
+      const json = await res.json().catch(() => ({}));
+      if (!active) return;
+      if (!res.ok) return;
+      const nextCountryId = typeof json?.country_id === "number" ? json.country_id : "";
+      const nextDisplay = String(json?.display_currency_code || "");
+      setGateCountries(Array.isArray(json?.countries) ? json.countries : []);
+      setGateCurrencies(Array.isArray(json?.currencies) ? json.currencies : []);
+      setGateCountryId(nextCountryId);
+      setGateDisplayCurrency(nextDisplay);
+      setGateFirstName(String(json?.first_name || ""));
+      setGateLastName(String(json?.last_name || ""));
+      setGatePhone(String(json?.phone || ""));
+      if (!nextCountryId || !nextDisplay) {
+        setCountryGateOpen(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [checking]);
+
+  const gateCountryOptions = useMemo(
+    () =>
+      [{ value: "", label: "Select country" }].concat(
+        (gateCountries || []).map((c: any) => ({ value: String(c.id), label: `${c.name} (${c.iso2})` }))
+      ),
+    [gateCountries]
+  );
+
+  function getGateCountryDefaultCurrency(nextCountryId: number | "") {
+    if (!nextCountryId) return "";
+    const country = (gateCountries || []).find((c: any) => Number(c.id) === Number(nextCountryId));
+    const defaultCurrencyId = country?.default_currency_id ? Number(country.default_currency_id) : null;
+    if (!defaultCurrencyId) return "";
+    const currency = (gateCurrencies || []).find((c: any) => Number(c.id) === defaultCurrencyId);
+    return currency?.code ? String(currency.code) : "";
+  }
+
+  async function saveGateCountry() {
+    if (!gateCountryId) {
+      setCountryGateError("Please select your country to continue.");
+      return;
+    }
+    if (!gateFirstName || !gateLastName) {
+      setCountryGateError("Please enter your name to continue.");
+      return;
+    }
+    setCountryGateSaving(true);
+    setCountryGateError(null);
+    const res = await authFetch("/api/mobile/profile", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        first_name: gateFirstName,
+        last_name: gateLastName,
+        phone: gatePhone,
+        country_id: gateCountryId || null,
+        display_currency_code: null,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.ok) {
+      setCountryGateError(json?.error || "Unable to save your country.");
+      setCountryGateSaving(false);
+      return;
+    }
+    setCountryGateSaving(false);
+    setCountryGateOpen(false);
+  }
 
   const goBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {
@@ -259,6 +345,76 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
+
+      {countryGateOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 text-neutral-900 shadow-2xl">
+            <h3 className="text-lg font-semibold">Update your country to continue</h3>
+            <p className="mt-2 text-sm text-neutral-500">
+              We need your country to set the correct currency and payment provider.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              {!gateFirstName || !gateLastName ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-neutral-600">First name</label>
+                    <input
+                      type="text"
+                      value={gateFirstName}
+                      onChange={(e) => setGateFirstName(e.target.value)}
+                      className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-neutral-600">Last name</label>
+                    <input
+                      type="text"
+                      value={gateLastName}
+                      onChange={(e) => setGateLastName(e.target.value)}
+                      className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                    />
+                  </div>
+                </>
+              ) : null}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-neutral-600">Country</label>
+                <SearchableSelect
+                  value={gateCountryId === "" ? "" : String(gateCountryId)}
+                  onChange={(value) => {
+                    const next = value ? Number(value) : "";
+                    setGateCountryId(next);
+                    setGateDisplayCurrency(getGateCountryDefaultCurrency(next));
+                  }}
+                  options={gateCountryOptions}
+                  placeholder="Select country"
+                  variant="light"
+                />
+                {gateDisplayCurrency ? (
+                  <p className="text-[11px] text-neutral-500">Currency: {gateDisplayCurrency}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {countryGateError ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+                {countryGateError}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={saveGateCountry}
+                disabled={countryGateSaving}
+                className="rounded-2xl bg-[#2D3461] px-4 py-2 text-sm font-semibold text-white hover:bg-[#242b56] disabled:opacity-60"
+              >
+                {countryGateSaving ? "Saving..." : "Save country"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showSignOut ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">

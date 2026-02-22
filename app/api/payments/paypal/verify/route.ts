@@ -226,7 +226,8 @@ export async function POST(req: Request) {
       const conversationId = Number(conversation.id || 0);
 
       let whiteLabelBrief = "";
-      if (routeType === "white_label") {
+      const hasSelectedIdea = productName !== "N/A" || productCategory !== "N/A" || productId !== "N/A";
+      if (routeType === "white_label" && !hasSelectedIdea) {
         const [wlRows]: any = await conn.query(
           `
           SELECT *

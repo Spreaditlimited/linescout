@@ -99,7 +99,11 @@ export default function OnboardingNameClient() {
       return;
     }
 
-    await routeAfterProfile();
+    const nextParam = String(searchParams.get("next") || "").trim();
+    const safeNext =
+      nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+    const qs = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
+    router.push(`/onboarding/country${qs}`);
   }
 
   return (
