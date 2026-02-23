@@ -99,9 +99,7 @@ export async function searchKeepaAsin(term: string, marketplace: KeepaMarketplac
   const domain = MARKET_CONFIG[marketplace].domain;
   const data = await keepaRequest("search", {
     domain,
-    type: "product",
     term: term.trim(),
-    page: 0,
   });
   const asin =
     data?.asinList?.[0] ||
@@ -118,9 +116,6 @@ export async function fetchKeepaPrice(asin: string, marketplace: KeepaMarketplac
     domain,
     asin,
     stats: 1,
-    offers: 0,
-    history: 0,
-    buybox: 0,
   });
 
   const product = data?.products?.[0];
