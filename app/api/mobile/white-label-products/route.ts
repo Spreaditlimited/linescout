@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const auth = await requireUser(req);
 
     const url = new URL(req.url);
     const category = String(url.searchParams.get("category") || "").trim();
@@ -47,8 +47,24 @@ export async function GET(req: Request) {
 
       const orderBy = slug
         ? "ORDER BY p.id DESC"
-        : `ORDER BY (CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+        : `ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
                  COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC`;
+
+      const [[userRow]]: any = await conn.query(
+        `
+        SELECT c.iso2 AS country_iso2, cur.code AS currency_code
+        FROM users u
+        LEFT JOIN linescout_countries c ON c.id = u.country_id
+        LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+        WHERE u.id = ?
+        LIMIT 1
+        `,
+        [auth.id]
+      );
+
+      const userCurrency = String(userRow?.currency_code || "").toUpperCase();
+      const displayCurrency = userCurrency === "CAD" ? "CAD" : "GBP";
+      const displayMarketplace = displayCurrency === "CAD" ? "CA" : "UK";
 
       const [rows]: any = await conn.query(
         `
@@ -66,14 +82,37 @@ export async function GET(req: Request) {
         params
       );
 
-      const items = (rows || []).map((r: any) => ({
-        ...r,
-        ...computeLandedRange({
-          fob_low_usd: r.fob_low_usd,
-          fob_high_usd: r.fob_high_usd,
-          cbm_per_1000: r.cbm_per_1000,
-        }),
-      }));
+      const items = (rows || []).map((r: any) => {
+        const base = {
+          ...r,
+          ...computeLandedRange({
+            fob_low_usd: r.fob_low_usd,
+            fob_high_usd: r.fob_high_usd,
+            cbm_per_1000: r.cbm_per_1000,
+          }),
+        };
+
+        const ukLow = r.amazon_uk_price_low != null ? Number(r.amazon_uk_price_low) : null;
+        const ukHigh = r.amazon_uk_price_high != null ? Number(r.amazon_uk_price_high) : null;
+        const caLow = r.amazon_ca_price_low != null ? Number(r.amazon_ca_price_low) : null;
+        const caHigh = r.amazon_ca_price_high != null ? Number(r.amazon_ca_price_high) : null;
+        const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
+        const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
+        const useCa = displayMarketplace === "CA" && hasCa;
+        const useUk = !useCa && hasUk;
+
+        return {
+          ...base,
+          amazon_display_marketplace: useCa ? "CA" : useUk ? "UK" : null,
+          amazon_display_currency: useCa ? "CAD" : useUk ? "GBP" : null,
+          amazon_display_price_low: useCa ? caLow : useUk ? ukLow : null,
+          amazon_display_price_high: useCa ? caHigh : useUk ? ukHigh : null,
+          amazon_display_note:
+            displayMarketplace === "CA" && !hasCa && hasUk
+              ? "Amazon CA price not available at this time for this product."
+              : null,
+        };
+      });
 
       if (slug) {
         const item = items?.[0] || null;

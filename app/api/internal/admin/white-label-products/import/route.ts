@@ -137,6 +137,18 @@ export async function POST(req: Request) {
   const idxLow = colIndex("amazon_price_low");
   const idxHigh = colIndex("amazon_price_high");
   const idxChecked = colIndex("amazon_last_checked_at");
+  const idxUkAsin = colIndex("amazon_uk_asin");
+  const idxUkUrl = colIndex("amazon_uk_url");
+  const idxUkCurrency = colIndex("amazon_uk_currency");
+  const idxUkLow = colIndex("amazon_uk_price_low");
+  const idxUkHigh = colIndex("amazon_uk_price_high");
+  const idxUkChecked = colIndex("amazon_uk_last_checked_at");
+  const idxCaAsin = colIndex("amazon_ca_asin");
+  const idxCaUrl = colIndex("amazon_ca_url");
+  const idxCaCurrency = colIndex("amazon_ca_currency");
+  const idxCaLow = colIndex("amazon_ca_price_low");
+  const idxCaHigh = colIndex("amazon_ca_price_high");
+  const idxCaChecked = colIndex("amazon_ca_last_checked_at");
 
   if (idxId === -1 && idxProductId === -1) {
     return NextResponse.json({ ok: false, error: "CSV must include id or product_id column" }, { status: 400 });
@@ -156,40 +168,115 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const marketplace = clean(idxMarketplace >= 0 ? row[idxMarketplace] : "") || defaultMarketplace;
-      const currency =
-        clean(idxCurrency >= 0 ? row[idxCurrency] : "") ||
-        (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : "");
-      const asin = clean(idxAsin >= 0 ? row[idxAsin] : "") || null;
-      const url = clean(idxUrl >= 0 ? row[idxUrl] : "") || null;
-      const priceLow = toNum(idxLow >= 0 ? row[idxLow] : null);
-      const priceHigh = toNum(idxHigh >= 0 ? row[idxHigh] : null);
-      const checkedAt = clean(idxChecked >= 0 ? row[idxChecked] : "") || null;
+      const hasUk =
+        idxUkAsin >= 0 ||
+        idxUkUrl >= 0 ||
+        idxUkCurrency >= 0 ||
+        idxUkLow >= 0 ||
+        idxUkHigh >= 0 ||
+        idxUkChecked >= 0;
+      const hasCa =
+        idxCaAsin >= 0 ||
+        idxCaUrl >= 0 ||
+        idxCaCurrency >= 0 ||
+        idxCaLow >= 0 ||
+        idxCaHigh >= 0 ||
+        idxCaChecked >= 0;
 
-      await conn.query(
-        `
-        UPDATE linescout_white_label_products
-        SET amazon_asin = ?,
-            amazon_url = ?,
-            amazon_marketplace = ?,
-            amazon_currency = ?,
-            amazon_price_low = ?,
-            amazon_price_high = ?,
-            amazon_last_checked_at = ?
-        WHERE id = ?
-        LIMIT 1
-        `,
-        [
-          asin,
-          url,
-          marketplace || null,
-          currency || null,
-          priceLow,
-          priceHigh,
-          checkedAt,
-          id,
-        ]
-      );
+      if (hasUk || hasCa) {
+        const ukAsin = clean(idxUkAsin >= 0 ? row[idxUkAsin] : "") || null;
+        const ukUrl = clean(idxUkUrl >= 0 ? row[idxUkUrl] : "") || null;
+        const ukCurrency =
+          clean(idxUkCurrency >= 0 ? row[idxUkCurrency] : "") || (ukAsin ? "GBP" : null);
+        const ukLow = toNum(idxUkLow >= 0 ? row[idxUkLow] : null);
+        const ukHigh = toNum(idxUkHigh >= 0 ? row[idxUkHigh] : null);
+        const ukChecked = clean(idxUkChecked >= 0 ? row[idxUkChecked] : "") || null;
+
+        const caAsin = clean(idxCaAsin >= 0 ? row[idxCaAsin] : "") || null;
+        const caUrl = clean(idxCaUrl >= 0 ? row[idxCaUrl] : "") || null;
+        const caCurrency =
+          clean(idxCaCurrency >= 0 ? row[idxCaCurrency] : "") || (caAsin ? "CAD" : null);
+        const caLow = toNum(idxCaLow >= 0 ? row[idxCaLow] : null);
+        const caHigh = toNum(idxCaHigh >= 0 ? row[idxCaHigh] : null);
+        const caChecked = clean(idxCaChecked >= 0 ? row[idxCaChecked] : "") || null;
+
+        await conn.query(
+          `
+          UPDATE linescout_white_label_products
+          SET amazon_uk_asin = ?,
+              amazon_uk_url = ?,
+              amazon_uk_currency = ?,
+              amazon_uk_price_low = ?,
+              amazon_uk_price_high = ?,
+              amazon_uk_last_checked_at = ?,
+              amazon_ca_asin = ?,
+              amazon_ca_url = ?,
+              amazon_ca_currency = ?,
+              amazon_ca_price_low = ?,
+              amazon_ca_price_high = ?,
+              amazon_ca_last_checked_at = ?
+          WHERE id = ?
+          LIMIT 1
+          `,
+          [
+            ukAsin,
+            ukUrl,
+            ukCurrency,
+            ukLow,
+            ukHigh,
+            ukChecked,
+            caAsin,
+            caUrl,
+            caCurrency,
+            caLow,
+            caHigh,
+            caChecked,
+            id,
+          ]
+        );
+      } else {
+        const marketplace = clean(idxMarketplace >= 0 ? row[idxMarketplace] : "") || defaultMarketplace;
+        const currency =
+          clean(idxCurrency >= 0 ? row[idxCurrency] : "") ||
+          (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : "");
+        const asin = clean(idxAsin >= 0 ? row[idxAsin] : "") || null;
+        const url = clean(idxUrl >= 0 ? row[idxUrl] : "") || null;
+        const priceLow = toNum(idxLow >= 0 ? row[idxLow] : null);
+        const priceHigh = toNum(idxHigh >= 0 ? row[idxHigh] : null);
+        const checkedAt = clean(idxChecked >= 0 ? row[idxChecked] : "") || null;
+
+        if (marketplace === "CA") {
+          await conn.query(
+            `
+            UPDATE linescout_white_label_products
+            SET amazon_ca_asin = ?,
+                amazon_ca_url = ?,
+                amazon_ca_currency = ?,
+                amazon_ca_price_low = ?,
+                amazon_ca_price_high = ?,
+                amazon_ca_last_checked_at = ?
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [asin, url, currency || null, priceLow, priceHigh, checkedAt, id]
+          );
+        } else {
+          await conn.query(
+            `
+            UPDATE linescout_white_label_products
+            SET amazon_uk_asin = ?,
+                amazon_uk_url = ?,
+                amazon_uk_currency = ?,
+                amazon_uk_price_low = ?,
+                amazon_uk_price_high = ?,
+                amazon_uk_last_checked_at = ?
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [asin, url, currency || null, priceLow, priceHigh, checkedAt, id]
+          );
+        }
+      }
       updated += 1;
     }
 

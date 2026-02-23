@@ -1544,6 +1544,18 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       amazon_price_low DECIMAL(12,2) NULL,
       amazon_price_high DECIMAL(12,2) NULL,
       amazon_last_checked_at DATETIME NULL,
+      amazon_uk_asin VARCHAR(32) NULL,
+      amazon_uk_url VARCHAR(500) NULL,
+      amazon_uk_currency VARCHAR(3) NULL,
+      amazon_uk_price_low DECIMAL(12,2) NULL,
+      amazon_uk_price_high DECIMAL(12,2) NULL,
+      amazon_uk_last_checked_at DATETIME NULL,
+      amazon_ca_asin VARCHAR(32) NULL,
+      amazon_ca_url VARCHAR(500) NULL,
+      amazon_ca_currency VARCHAR(3) NULL,
+      amazon_ca_price_low DECIMAL(12,2) NULL,
+      amazon_ca_price_high DECIMAL(12,2) NULL,
+      amazon_ca_last_checked_at DATETIME NULL,
       is_active TINYINT NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1574,6 +1586,18 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_white_label_products", "amazon_price_low", "DECIMAL(12,2) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_price_high", "DECIMAL(12,2) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_last_checked_at", "DATETIME NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_asin", "VARCHAR(32) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_url", "VARCHAR(500) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_currency", "VARCHAR(3) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_price_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_price_high", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_uk_last_checked_at", "DATETIME NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_asin", "VARCHAR(32) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_url", "VARCHAR(500) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_currency", "VARCHAR(3) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_price_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_price_high", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_last_checked_at", "DATETIME NULL");
 
   await conn.query(
     `CREATE INDEX IF NOT EXISTS idx_white_label_slug ON linescout_white_label_products (slug)`
@@ -1698,5 +1722,11 @@ async function ensureColumn(conn: PoolConnection, table: string, column: string,
     [table, column]
   );
   if (rows?.length) return;
-  await conn.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  try {
+    await conn.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (e?.errno === 1060 || msg.includes("Duplicate column name")) return;
+    throw e;
+  }
 }

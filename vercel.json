@@ -7,6 +7,14 @@
     {
       "path": "/api/internal/cron/marketing-emails",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/internal/cron/keepa-daily",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/internal/cron/keepa-weekly",
+      "schedule": "45 3 * * 1"
     }
   ]
 }

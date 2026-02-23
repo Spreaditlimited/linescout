@@ -176,22 +176,32 @@ export default function WhiteLabelProductsPage() {
   function downloadCsvTemplate() {
     const header = [
       "id",
-      "amazon_marketplace",
-      "amazon_currency",
-      "amazon_price_low",
-      "amazon_price_high",
-      "amazon_asin",
-      "amazon_url",
-      "amazon_last_checked_at",
+      "amazon_uk_asin",
+      "amazon_uk_url",
+      "amazon_uk_currency",
+      "amazon_uk_price_low",
+      "amazon_uk_price_high",
+      "amazon_uk_last_checked_at",
+      "amazon_ca_asin",
+      "amazon_ca_url",
+      "amazon_ca_currency",
+      "amazon_ca_price_low",
+      "amazon_ca_price_high",
+      "amazon_ca_last_checked_at",
     ].join(",");
     const sample = [
       "123",
-      "UK",
+      "B0UKASIN",
+      "https://www.amazon.co.uk/dp/B0UKASIN",
       "GBP",
       "19.99",
       "24.99",
-      "B0XXXXXXX",
-      "https://www.amazon.co.uk/dp/B0XXXXXXX",
+      "2026-02-22 10:00:00",
+      "B0CAASIN",
+      "https://www.amazon.ca/dp/B0CAASIN",
+      "CAD",
+      "29.99",
+      "34.99",
       "2026-02-22 10:00:00",
     ].join(",");
     const csv = `${header}\n${sample}\n`;
@@ -481,6 +491,10 @@ export default function WhiteLabelProductsPage() {
         {csvName ? (
           <p className="mt-2 text-xs text-neutral-500">Selected file: {csvName}</p>
         ) : null}
+        <p className="mt-2 text-xs text-neutral-500">
+          Tip: If your CSV includes the amazon_uk_* or amazon_ca_* columns, the default marketplace
+          picker is ignored.
+        </p>
         {csvMsg ? (
           <p
             className={`mt-2 text-xs ${

@@ -33,12 +33,16 @@ type ProductItem = {
   landed_cad_sea_per_unit_high?: number | null;
   landed_cad_sea_total_1000_low?: number | null;
   landed_cad_sea_total_1000_high?: number | null;
-  amazon_asin?: string | null;
-  amazon_url?: string | null;
-  amazon_marketplace?: string | null;
-  amazon_currency?: string | null;
-  amazon_price_low?: number | null;
-  amazon_price_high?: number | null;
+  amazon_uk_asin?: string | null;
+  amazon_uk_url?: string | null;
+  amazon_uk_currency?: string | null;
+  amazon_uk_price_low?: number | null;
+  amazon_uk_price_high?: number | null;
+  amazon_ca_asin?: string | null;
+  amazon_ca_url?: string | null;
+  amazon_ca_currency?: string | null;
+  amazon_ca_price_low?: number | null;
+  amazon_ca_price_high?: number | null;
 };
 
 function formatPerUnitRange(
@@ -194,19 +198,26 @@ export default function WhiteLabelCatalogClient({
                   );
                 })()}
                 {(() => {
-                  const amazonLow = item.amazon_price_low != null ? Number(item.amazon_price_low) : null;
-                  const amazonHigh = item.amazon_price_high != null ? Number(item.amazon_price_high) : null;
-                  const amazonCurrency = String(item.amazon_currency || "").toUpperCase();
-                  const marketplace = String(item.amazon_marketplace || "").toUpperCase();
-                  const showAmazon = Number.isFinite(amazonLow) || Number.isFinite(amazonHigh);
-                  if (!showAmazon) return null;
+                  const isCaUser = currencyCode === "CAD";
+                  const ukLow = item.amazon_uk_price_low != null ? Number(item.amazon_uk_price_low) : null;
+                  const ukHigh = item.amazon_uk_price_high != null ? Number(item.amazon_uk_price_high) : null;
+                  const caLow = item.amazon_ca_price_low != null ? Number(item.amazon_ca_price_low) : null;
+                  const caHigh = item.amazon_ca_price_high != null ? Number(item.amazon_ca_price_high) : null;
+                  const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
+                  const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
 
-                  const amazonCode =
-                    amazonCurrency ||
-                    (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : "");
-                  const labelSuffix = marketplace ? ` (${marketplace})` : "";
+                  const useCa = isCaUser && hasCa;
+                  const useUk = !useCa && hasUk;
+                  const showFallbackMessage = isCaUser && !hasCa && hasUk;
+                  if (!useCa && !useUk) return null;
+
+                  const amazonCode = useCa ? "CAD" : "GBP";
+                  const labelSuffix = useCa ? " (CA)" : " (UK)";
+                  const amazonLow = useCa ? caLow : ukLow;
+                  const amazonHigh = useCa ? caHigh : ukHigh;
+
                   const displayAmazonRange = () => {
-                    const code = amazonCode || "GBP";
+                    const code = amazonCode;
                     const fmt = (value: number | null) => {
                       if (value == null || !Number.isFinite(value)) return "—";
                       try {
@@ -216,7 +227,7 @@ export default function WhiteLabelCatalogClient({
                           maximumFractionDigits: 2,
                         }).format(value);
                       } catch {
-                        const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : "";
+                        const symbol = code === "GBP" ? "£" : "CA$";
                         return `${symbol}${value.toFixed(2)}`;
                       }
                     };
@@ -238,13 +249,10 @@ export default function WhiteLabelCatalogClient({
                         high: item.landed_gbp_sea_per_unit_high ?? null,
                       };
                     }
-                    if (amazonCode === "CAD") {
-                      return {
-                        low: item.landed_cad_sea_per_unit_low ?? null,
-                        high: item.landed_cad_sea_per_unit_high ?? null,
-                      };
-                    }
-                    return { low: null, high: null };
+                    return {
+                      low: item.landed_cad_sea_per_unit_low ?? null,
+                      high: item.landed_cad_sea_per_unit_high ?? null,
+                    };
                   };
 
                   const marginRange = () => {
@@ -284,6 +292,11 @@ export default function WhiteLabelCatalogClient({
                           {marginText ? (
                             <p className="mt-1 text-[11px] text-neutral-500">
                               Indicative margin: {marginText}
+                            </p>
+                          ) : null}
+                          {showFallbackMessage ? (
+                            <p className="mt-1 text-[11px] text-amber-700">
+                              Amazon CA price not available at this time for this product.
                             </p>
                           ) : null}
                         </>

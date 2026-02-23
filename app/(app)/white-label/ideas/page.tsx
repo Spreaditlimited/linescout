@@ -272,7 +272,7 @@ export default async function WhiteLabelIdeasPage({
       }
     }
 
-    const hasAmazonExpr = `(CASE WHEN p.amazon_price_low IS NOT NULL OR p.amazon_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
+    const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
     const sortClause =
       sort === "price_low"
         ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, p.id DESC`

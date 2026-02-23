@@ -109,6 +109,26 @@ export async function PATCH(req: Request, ctx: any) {
   if (body?.amazon_price_high !== undefined) setField("amazon_price_high", toNum(body.amazon_price_high));
   if (body?.amazon_last_checked_at !== undefined)
     setField("amazon_last_checked_at", clean(body.amazon_last_checked_at) || null);
+  if (body?.amazon_uk_asin !== undefined) setField("amazon_uk_asin", clean(body.amazon_uk_asin) || null);
+  if (body?.amazon_uk_url !== undefined) setField("amazon_uk_url", clean(body.amazon_uk_url) || null);
+  if (body?.amazon_uk_currency !== undefined)
+    setField("amazon_uk_currency", clean(body.amazon_uk_currency).toUpperCase() || null);
+  if (body?.amazon_uk_price_low !== undefined)
+    setField("amazon_uk_price_low", toNum(body.amazon_uk_price_low));
+  if (body?.amazon_uk_price_high !== undefined)
+    setField("amazon_uk_price_high", toNum(body.amazon_uk_price_high));
+  if (body?.amazon_uk_last_checked_at !== undefined)
+    setField("amazon_uk_last_checked_at", clean(body.amazon_uk_last_checked_at) || null);
+  if (body?.amazon_ca_asin !== undefined) setField("amazon_ca_asin", clean(body.amazon_ca_asin) || null);
+  if (body?.amazon_ca_url !== undefined) setField("amazon_ca_url", clean(body.amazon_ca_url) || null);
+  if (body?.amazon_ca_currency !== undefined)
+    setField("amazon_ca_currency", clean(body.amazon_ca_currency).toUpperCase() || null);
+  if (body?.amazon_ca_price_low !== undefined)
+    setField("amazon_ca_price_low", toNum(body.amazon_ca_price_low));
+  if (body?.amazon_ca_price_high !== undefined)
+    setField("amazon_ca_price_high", toNum(body.amazon_ca_price_high));
+  if (body?.amazon_ca_last_checked_at !== undefined)
+    setField("amazon_ca_last_checked_at", clean(body.amazon_ca_last_checked_at) || null);
   if (body?.is_active !== undefined) setField("is_active", body.is_active ? 1 : 0);
   if (body?.sort_order !== undefined) setField("sort_order", toNum(body.sort_order) ?? 0);
 

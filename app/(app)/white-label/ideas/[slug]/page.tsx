@@ -38,13 +38,18 @@ type ProductRow = {
   landed_cad_sea_per_unit_high?: number | null;
   landed_cad_sea_total_1000_low?: number | null;
   landed_cad_sea_total_1000_high?: number | null;
-  amazon_asin?: string | null;
-  amazon_url?: string | null;
-  amazon_marketplace?: string | null;
-  amazon_currency?: string | null;
-  amazon_price_low?: number | null;
-  amazon_price_high?: number | null;
-  amazon_last_checked_at?: string | null;
+  amazon_uk_asin?: string | null;
+  amazon_uk_url?: string | null;
+  amazon_uk_currency?: string | null;
+  amazon_uk_price_low?: number | null;
+  amazon_uk_price_high?: number | null;
+  amazon_uk_last_checked_at?: string | null;
+  amazon_ca_asin?: string | null;
+  amazon_ca_url?: string | null;
+  amazon_ca_currency?: string | null;
+  amazon_ca_price_low?: number | null;
+  amazon_ca_price_high?: number | null;
+  amazon_ca_last_checked_at?: string | null;
   view_count?: number | null;
 };
 
@@ -310,13 +315,21 @@ export default async function WhiteLabelIdeaDetailPage({
   const marketNotes = fallbackMarketNotes(product);
   const angle = fallbackAngle(product);
 
-  const amazonLow = product.amazon_price_low != null ? Number(product.amazon_price_low) : null;
-  const amazonHigh = product.amazon_price_high != null ? Number(product.amazon_price_high) : null;
-  const amazonMarketplace = String(product.amazon_marketplace || "").toUpperCase();
-  const amazonCurrency =
-    String(product.amazon_currency || "").toUpperCase() ||
-    (amazonMarketplace === "UK" ? "GBP" : amazonMarketplace === "CA" ? "CAD" : "");
-  const hasAmazonComparison = Number.isFinite(amazonLow) || Number.isFinite(amazonHigh);
+  const isCaUser = currencyCode === "CAD";
+  const ukLow = product.amazon_uk_price_low != null ? Number(product.amazon_uk_price_low) : null;
+  const ukHigh = product.amazon_uk_price_high != null ? Number(product.amazon_uk_price_high) : null;
+  const caLow = product.amazon_ca_price_low != null ? Number(product.amazon_ca_price_low) : null;
+  const caHigh = product.amazon_ca_price_high != null ? Number(product.amazon_ca_price_high) : null;
+  const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
+  const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
+  const useCa = isCaUser && hasCa;
+  const useUk = !useCa && hasUk;
+  const showCaFallbackMessage = isCaUser && !hasCa && hasUk;
+  const amazonLow = useCa ? caLow : ukLow;
+  const amazonHigh = useCa ? caHigh : ukHigh;
+  const amazonMarketplace = useCa ? "CA" : "UK";
+  const amazonCurrency = useCa ? "CAD" : "GBP";
+  const hasAmazonComparison = useCa || useUk;
   const amazonPriceRange = hasAmazonComparison
     ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency)
     : null;
@@ -326,12 +339,10 @@ export default async function WhiteLabelIdeaDetailPage({
           low: product.landed_gbp_sea_per_unit_low ?? null,
           high: product.landed_gbp_sea_per_unit_high ?? null,
         }
-      : amazonCurrency === "CAD"
-      ? {
+      : {
           low: product.landed_cad_sea_per_unit_low ?? null,
           high: product.landed_cad_sea_per_unit_high ?? null,
-        }
-      : { low: null, high: null };
+        };
   const amazonMarginRange = (() => {
     if (
       amazonLow == null ||
@@ -452,6 +463,11 @@ export default async function WhiteLabelIdeaDetailPage({
                   {amazonMarginRange ? (
                     <p className="mt-1 text-[11px] text-neutral-500">
                       Indicative margin: {amazonMarginRange}
+                    </p>
+                  ) : null}
+                  {showCaFallbackMessage ? (
+                    <p className="mt-1 text-[11px] text-amber-700">
+                      Amazon CA price not available at this time for this product.
                     </p>
                   ) : null}
                 </div>
