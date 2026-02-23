@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   currencyForCode,
@@ -132,6 +132,49 @@ export default function WhiteLabelCatalogClient({
 }) {
   const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
   const currency = currencyForCode(currencyCode);
+  const [reveals, setReveals] = useState<
+    Record<
+      number,
+      { loading?: boolean; error?: string | null; data?: any }
+    >
+  >({});
+
+  async function handleReveal(productId: number) {
+    setReveals((prev) => ({
+      ...prev,
+      [productId]: { ...(prev[productId] || {}), loading: true, error: null },
+    }));
+    try {
+      const res = await fetch("/api/white-label/amazon/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        const msg =
+          json?.code === "subscription_required"
+            ? "Subscription required to reveal Amazon prices."
+            : json?.code === "limit_reached"
+            ? "Daily reveal limit reached."
+            : json?.error || "Failed to reveal Amazon price.";
+        setReveals((prev) => ({
+          ...prev,
+          [productId]: { loading: false, error: msg },
+        }));
+        return;
+      }
+      setReveals((prev) => ({
+        ...prev,
+        [productId]: { loading: false, error: null, data: json },
+      }));
+    } catch (e: any) {
+      setReveals((prev) => ({
+        ...prev,
+        [productId]: { loading: false, error: e?.message || "Failed to reveal Amazon price." },
+      }));
+    }
+  }
 
   const itemLinks = useMemo(
     () =>
@@ -198,21 +241,27 @@ export default function WhiteLabelCatalogClient({
                   );
                 })()}
                 {(() => {
+                  const reveal = reveals[item.id];
+                  const revealed = Boolean(reveal?.data?.ok);
                   const isCaUser = currencyCode === "CAD";
-                  const ukLow = item.amazon_uk_price_low != null ? Number(item.amazon_uk_price_low) : null;
-                  const ukHigh = item.amazon_uk_price_high != null ? Number(item.amazon_uk_price_high) : null;
-                  const caLow = item.amazon_ca_price_low != null ? Number(item.amazon_ca_price_low) : null;
-                  const caHigh = item.amazon_ca_price_high != null ? Number(item.amazon_ca_price_high) : null;
+                  const dataRow = revealed ? reveal?.data?.product || {} : item;
+                  const ukLow = dataRow.amazon_uk_price_low != null ? Number(dataRow.amazon_uk_price_low) : null;
+                  const ukHigh = dataRow.amazon_uk_price_high != null ? Number(dataRow.amazon_uk_price_high) : null;
+                  const caLow = dataRow.amazon_ca_price_low != null ? Number(dataRow.amazon_ca_price_low) : null;
+                  const caHigh = dataRow.amazon_ca_price_high != null ? Number(dataRow.amazon_ca_price_high) : null;
                   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
                   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
 
                   const useCa = isCaUser && hasCa;
                   const useUk = !useCa && hasUk;
                   const showFallbackMessage = isCaUser && !hasCa && hasUk;
-                  if (!useCa && !useUk) return null;
-
-                  const amazonCode = useCa ? "CAD" : "GBP";
-                  const labelSuffix = useCa ? " (CA)" : " (UK)";
+                  const preferredMarket = isCaUser ? "CA" : "UK";
+                  const amazonCode = revealed ? (useCa ? "CAD" : "GBP") : isCaUser ? "CAD" : "GBP";
+                  const labelSuffix = revealed
+                    ? useCa
+                      ? " (CA)"
+                      : " (UK)"
+                    : ` (${preferredMarket})`;
                   const amazonLow = useCa ? caLow : ukLow;
                   const amazonHigh = useCa ? caHigh : ukHigh;
 
@@ -272,13 +321,13 @@ export default function WhiteLabelCatalogClient({
                   const marginText = marginRange();
 
                   return (
-                    <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                    <div className="mt-3 min-h-[96px] rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
                         Amazon price{labelSuffix}
                       </p>
                       {lockAmazonComparison ? (
                         <div className="mt-1">
-                          <div className="h-3 w-28 rounded-full bg-neutral-200/70" />
+                          <p className="text-[11px] text-neutral-500">Amazon price available</p>
                           <Link
                             href={comparisonCtaHref}
                             className="mt-2 inline-flex text-[11px] font-semibold text-[var(--agent-blue)]"
@@ -286,7 +335,7 @@ export default function WhiteLabelCatalogClient({
                             {comparisonCtaLabel}
                           </Link>
                         </div>
-                      ) : (
+                      ) : revealed ? (
                         <>
                           <p className="mt-1 text-sm font-semibold text-neutral-800">{rangeText}</p>
                           {marginText ? (
@@ -298,6 +347,21 @@ export default function WhiteLabelCatalogClient({
                             <p className="mt-1 text-[11px] text-amber-700">
                               Amazon CA price not available at this time for this product.
                             </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <p className="mt-1 text-[11px] text-neutral-500">Amazon price available</p>
+                          <button
+                            type="button"
+                            onClick={() => handleReveal(item.id)}
+                            disabled={reveal?.loading}
+                            className="mt-2 inline-flex text-[11px] font-semibold text-[var(--agent-blue)] disabled:opacity-60"
+                          >
+                            {reveal?.loading ? "Revealing..." : "Reveal Amazon price"}
+                          </button>
+                          {reveal?.error ? (
+                            <p className="mt-1 text-[11px] text-amber-700">{reveal.error}</p>
                           ) : null}
                         </>
                       )}

@@ -8,6 +8,7 @@ import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracke
 import DeferredSection from "@/components/white-label/DeferredSection";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
+import WhiteLabelAmazonReveal from "@/components/white-label/WhiteLabelAmazonReveal";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -315,50 +316,10 @@ export default async function WhiteLabelIdeaDetailPage({
   const marketNotes = fallbackMarketNotes(product);
   const angle = fallbackAngle(product);
 
-  const isCaUser = currencyCode === "CAD";
-  const ukLow = product.amazon_uk_price_low != null ? Number(product.amazon_uk_price_low) : null;
-  const ukHigh = product.amazon_uk_price_high != null ? Number(product.amazon_uk_price_high) : null;
-  const caLow = product.amazon_ca_price_low != null ? Number(product.amazon_ca_price_low) : null;
-  const caHigh = product.amazon_ca_price_high != null ? Number(product.amazon_ca_price_high) : null;
-  const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
-  const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
-  const useCa = isCaUser && hasCa;
-  const useUk = !useCa && hasUk;
-  const showCaFallbackMessage = isCaUser && !hasCa && hasUk;
-  const amazonLow = useCa ? caLow : ukLow;
-  const amazonHigh = useCa ? caHigh : ukHigh;
-  const amazonMarketplace = useCa ? "CA" : "UK";
-  const amazonCurrency = useCa ? "CAD" : "GBP";
-  const hasAmazonComparison = useCa || useUk;
-  const amazonPriceRange = hasAmazonComparison
-    ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency)
-    : null;
-  const amazonLanded =
-    amazonCurrency === "GBP"
-      ? {
-          low: product.landed_gbp_sea_per_unit_low ?? null,
-          high: product.landed_gbp_sea_per_unit_high ?? null,
-        }
-      : {
-          low: product.landed_cad_sea_per_unit_low ?? null,
-          high: product.landed_cad_sea_per_unit_high ?? null,
-        };
-  const amazonMarginRange = (() => {
-    if (
-      amazonLow == null ||
-      amazonHigh == null ||
-      amazonLanded.low == null ||
-      amazonLanded.high == null
-    ) {
-      return null;
-    }
-    const lowMargin = (amazonLow - amazonLanded.high) / amazonLow;
-    const highMargin = (amazonHigh - amazonLanded.low) / amazonHigh;
-    if (!Number.isFinite(lowMargin) || !Number.isFinite(highMargin)) return null;
-    const clamp = (v: number) => Math.max(-0.99, Math.min(v, 0.99));
-    const toPct = (v: number) => `${Math.round(clamp(v) * 100)}%`;
-    return `${toPct(lowMargin)}–${toPct(highMargin)}`;
-  })();
+  const landedGbpLow = product.landed_gbp_sea_per_unit_low ?? null;
+  const landedGbpHigh = product.landed_gbp_sea_per_unit_high ?? null;
+  const landedCadLow = product.landed_cad_sea_per_unit_low ?? null;
+  const landedCadHigh = product.landed_cad_sea_per_unit_high ?? null;
 
   const similarItems = similar.map((item) => ({
     ...item,
@@ -454,24 +415,14 @@ export default async function WhiteLabelIdeaDetailPage({
                     )} for 1,000 units`
                   : "Pricing pending"}
               </div>
-              {hasAmazonComparison ? (
-                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
-                    Amazon price{amazonMarketplace ? ` (${amazonMarketplace})` : ""}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-neutral-800">{amazonPriceRange}</p>
-                  {amazonMarginRange ? (
-                    <p className="mt-1 text-[11px] text-neutral-500">
-                      Indicative margin: {amazonMarginRange}
-                    </p>
-                  ) : null}
-                  {showCaFallbackMessage ? (
-                    <p className="mt-1 text-[11px] text-amber-700">
-                      Amazon CA price not available at this time for this product.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
+              <WhiteLabelAmazonReveal
+                productId={product.id}
+                currencyCode={currencyCode}
+                landedGbpLow={landedGbpLow}
+                landedGbpHigh={landedGbpHigh}
+                landedCadLow={landedCadLow}
+                landedCadHigh={landedCadHigh}
+              />
               <Link
                 href="/white-label/ideas"
                 className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"

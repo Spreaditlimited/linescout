@@ -82,6 +82,81 @@ export async function paypalCreateOrder(params: {
   };
 }
 
+export async function paypalCreateProduct(params: {
+  name: string;
+  description?: string | null;
+}) {
+  const token = await paypalAccessToken();
+  const res = await fetch(`${paypalBaseUrl()}/v1/catalogs/products`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: params.name,
+      description: params.description || undefined,
+      type: "SERVICE",
+      category: "SOFTWARE",
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    throw new Error(json?.message || "PayPal create product failed");
+  }
+  return { id: String(json.id), raw: json };
+}
+
+export async function paypalCreatePlan(params: {
+  productId: string;
+  name: string;
+  currency: string;
+  price: string;
+  interval: "MONTH" | "YEAR";
+  intervalCount?: number;
+}) {
+  const token = await paypalAccessToken();
+  const res = await fetch(`${paypalBaseUrl()}/v1/billing/plans`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      product_id: params.productId,
+      name: params.name,
+      status: "ACTIVE",
+      billing_cycles: [
+        {
+          frequency: {
+            interval_unit: params.interval,
+            interval_count: params.intervalCount || 1,
+          },
+          tenure_type: "REGULAR",
+          sequence: 1,
+          total_cycles: 0,
+          pricing_scheme: {
+            fixed_price: {
+              value: params.price,
+              currency_code: params.currency,
+            },
+          },
+        },
+      ],
+      payment_preferences: {
+        auto_bill_outstanding: true,
+        setup_fee_failure_action: "CONTINUE",
+        payment_failure_threshold: 3,
+      },
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    throw new Error(json?.message || "PayPal create plan failed");
+  }
+  return { id: String(json.id), raw: json };
+}
+
 export async function paypalCaptureOrder(orderId: string) {
   const token = await paypalAccessToken();
   const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {

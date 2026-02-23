@@ -445,23 +445,20 @@ export default async function WhiteLabelMarketingDetailPage({
                       )} for 1,000 units`
                     : "Pricing pending"}
                 </div>
-                {hasAmazonComparison ? (
-                  <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
-                      Amazon price{amazonMarketplace ? ` (${amazonMarketplace})` : ""}
-                    </p>
-                    <div className="mt-1">
-                      <div className="h-3 w-28 rounded-full bg-neutral-200/70" />
-                      <Link
-                        href="/sign-in?next=/white-label/ideas"
-                        className="mt-2 inline-flex text-[11px] font-semibold text-[#2D3461]"
-                      >
-                        Sign in to compare Amazon prices
-                      </Link>
-                    </div>
-                    <p className="mt-2 text-[11px] text-neutral-400">Estimated range: {amazonPriceRange}</p>
+                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                    Amazon price
+                  </p>
+                  <div className="mt-1">
+                    <p className="text-[11px] text-neutral-500">Amazon price available</p>
+                    <Link
+                      href="/sign-in?next=/white-label/ideas"
+                      className="mt-2 inline-flex text-[11px] font-semibold text-[#2D3461]"
+                    >
+                      Sign in to compare Amazon prices
+                    </Link>
                   </div>
-                ) : null}
+                </div>
                 <Link href="/white-label" className="text-sm font-semibold text-neutral-500 hover:text-neutral-700">
                   Back to ideas
                 </Link>

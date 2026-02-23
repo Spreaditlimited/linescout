@@ -209,13 +209,70 @@ async function ensureRow(conn: mysql.PoolConnection) {
     );
   }
 
+  const [wlTrialCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'white_label_trial_days'
+    LIMIT 1
+    `
+  );
+  if (!wlTrialCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN white_label_trial_days INT NOT NULL DEFAULT 3`
+    );
+  }
+
+  const [wlRevealCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'white_label_daily_reveals'
+    LIMIT 1
+    `
+  );
+  if (!wlRevealCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN white_label_daily_reveals INT NOT NULL DEFAULT 10`
+    );
+  }
+
+  const [wlPriceCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'white_label_monthly_price_gbp'
+    LIMIT 1
+    `
+  );
+  if (!wlPriceCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings
+       ADD COLUMN white_label_monthly_price_gbp DECIMAL(10,2) NULL,
+       ADD COLUMN white_label_yearly_price_gbp DECIMAL(10,2) NULL,
+       ADD COLUMN white_label_monthly_price_cad DECIMAL(10,2) NULL,
+       ADD COLUMN white_label_yearly_price_cad DECIMAL(10,2) NULL,
+       ADD COLUMN white_label_paypal_product_id VARCHAR(64) NULL,
+       ADD COLUMN white_label_paypal_plan_monthly_gbp VARCHAR(64) NULL,
+       ADD COLUMN white_label_paypal_plan_yearly_gbp VARCHAR(64) NULL,
+       ADD COLUMN white_label_paypal_plan_monthly_cad VARCHAR(64) NULL,
+       ADD COLUMN white_label_paypal_plan_yearly_cad VARCHAR(64) NULL`
+    );
+  }
+
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
   if (rows?.length) return rows[0];
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10)`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -496,6 +553,32 @@ export async function POST(req: Request) {
       ? body.agent_otp_mode
       : "phone";
   const max_active_claims = num(body.max_active_claims);
+  const white_label_trial_days = num(body.white_label_trial_days);
+  const white_label_daily_reveals = num(body.white_label_daily_reveals);
+  const white_label_monthly_price_gbp = num(body.white_label_monthly_price_gbp);
+  const white_label_yearly_price_gbp = num(body.white_label_yearly_price_gbp);
+  const white_label_monthly_price_cad = num(body.white_label_monthly_price_cad);
+  const white_label_yearly_price_cad = num(body.white_label_yearly_price_cad);
+  const white_label_paypal_plan_monthly_gbp =
+    typeof body?.white_label_paypal_plan_monthly_gbp === "string"
+      ? body.white_label_paypal_plan_monthly_gbp.trim()
+      : "";
+  const white_label_paypal_plan_yearly_gbp =
+    typeof body?.white_label_paypal_plan_yearly_gbp === "string"
+      ? body.white_label_paypal_plan_yearly_gbp.trim()
+      : "";
+  const white_label_paypal_plan_monthly_cad =
+    typeof body?.white_label_paypal_plan_monthly_cad === "string"
+      ? body.white_label_paypal_plan_monthly_cad.trim()
+      : "";
+  const white_label_paypal_plan_yearly_cad =
+    typeof body?.white_label_paypal_plan_yearly_cad === "string"
+      ? body.white_label_paypal_plan_yearly_cad.trim()
+      : "";
+  const white_label_paypal_product_id =
+    typeof body?.white_label_paypal_product_id === "string"
+      ? body.white_label_paypal_product_id.trim()
+      : "";
   const hasStickyPayload =
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_enabled") ||
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_title") ||
@@ -524,9 +607,24 @@ export async function POST(req: Request) {
     exchange_rate_rmb,
     points_value_ngn,
     max_active_claims,
+    white_label_trial_days,
+    white_label_daily_reveals,
+    white_label_monthly_price_gbp,
+    white_label_yearly_price_gbp,
+    white_label_monthly_price_cad,
+    white_label_yearly_price_cad,
   };
 
-  const invalid = Object.entries(values).find(([, v]) => v == null || Number.isNaN(v));
+  const optionalKeys = new Set([
+    "white_label_monthly_price_gbp",
+    "white_label_yearly_price_gbp",
+    "white_label_monthly_price_cad",
+    "white_label_yearly_price_cad",
+  ]);
+  const invalid = Object.entries(values).find(([k, v]) => {
+    if (optionalKeys.has(k) && (v === null || v === undefined)) return false;
+    return v == null || Number.isNaN(v);
+  });
   if (invalid) {
     return NextResponse.json({ ok: false, error: "All fields must be valid numbers" }, { status: 400 });
   }
@@ -566,6 +664,17 @@ export async function POST(req: Request) {
            payout_summary_email = ?,
            agent_otp_mode = ?,
            max_active_claims = ?,
+           white_label_trial_days = ?,
+           white_label_daily_reveals = ?,
+           white_label_monthly_price_gbp = ?,
+           white_label_yearly_price_gbp = ?,
+           white_label_monthly_price_cad = ?,
+           white_label_yearly_price_cad = ?,
+           white_label_paypal_product_id = ?,
+           white_label_paypal_plan_monthly_gbp = ?,
+           white_label_paypal_plan_yearly_gbp = ?,
+           white_label_paypal_plan_monthly_cad = ?,
+           white_label_paypal_plan_yearly_cad = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
@@ -586,6 +695,17 @@ export async function POST(req: Request) {
         payout_summary_email || null,
         agent_otp_mode,
         max_active_claims,
+        white_label_trial_days,
+        white_label_daily_reveals,
+        white_label_monthly_price_gbp,
+        white_label_yearly_price_gbp,
+        white_label_monthly_price_cad,
+        white_label_yearly_price_cad,
+        white_label_paypal_product_id || null,
+        white_label_paypal_plan_monthly_gbp || null,
+        white_label_paypal_plan_yearly_gbp || null,
+        white_label_paypal_plan_monthly_cad || null,
+        white_label_paypal_plan_yearly_cad || null,
         effectiveEnabled,
         effectiveTitle || null,
         effectiveBody || null,
