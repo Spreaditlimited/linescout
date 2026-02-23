@@ -83,6 +83,8 @@ export default function ProjectDetailPage() {
   const [reorderMsg, setReorderMsg] = useState<string | null>(null);
   const [reorderMsgType, setReorderMsgType] = useState<"ok" | "err" | null>(null);
   const [briefExpanded, setBriefExpanded] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<"paystack" | "paypal" | null>(null);
+  const [providerLoading, setProviderLoading] = useState(false);
 
   const hasPayments = useMemo(() => (data?.payments || []).length > 0, [data]);
   const handoffContext = String(data?.handoff_context || "").trim();
@@ -127,6 +129,30 @@ export default function ProjectDetailPage() {
       active = false;
     };
   }, [conversationId, router]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadProvider() {
+      if (!routeType) return;
+      setProviderLoading(true);
+      try {
+        const res = await authFetch(`/api/mobile/route-status?route_type=${routeType}`);
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          router.replace("/sign-in");
+          return;
+        }
+        if (!res.ok || !json?.ok) return;
+        if (active) setPaymentProvider(json.payment_provider || null);
+      } finally {
+        if (active) setProviderLoading(false);
+      }
+    }
+    loadProvider();
+    return () => {
+      active = false;
+    };
+  }, [routeType, router]);
 
   if (!conversationId) {
     return (
@@ -385,6 +411,11 @@ export default function ProjectDetailPage() {
                 type="button"
                 onClick={async () => {
                   if (reorderBusy) return;
+                  if (!paymentProvider) {
+                    setReorderMsg("Payment provider is not available yet. Please try again.");
+                    setReorderMsgType("err");
+                    return;
+                  }
                   setReorderBusy(true);
                   setReorderMsg(null);
                   setReorderMsgType(null);
@@ -394,7 +425,8 @@ export default function ProjectDetailPage() {
                     reorder_of_conversation_id: String(conversationId),
                     ...(reorderNote.trim() ? { reorder_user_note: reorderNote.trim() } : {}),
                   });
-                  router.push(`/paystack-checkout?${qs.toString()}`);
+                  const checkout = paymentProvider === "paypal" ? "/paypal-checkout" : "/paystack-checkout";
+                  router.push(`${checkout}?${qs.toString()}`);
                   setTimeout(() => {
                     setReorderOpen(false);
                     setReorderNote("");
@@ -402,9 +434,15 @@ export default function ProjectDetailPage() {
                   }, 200);
                 }}
                 className="btn btn-primary px-4 py-2 text-xs"
-                disabled={reorderBusy}
+                disabled={reorderBusy || providerLoading || !paymentProvider}
               >
-                {reorderBusy ? "Submitting..." : "Submit re-order"}
+                {reorderBusy
+                  ? "Submitting..."
+                  : !paymentProvider
+                  ? "Loading payment provider..."
+                  : paymentProvider === "paypal"
+                  ? "Continue to PayPal"
+                  : "Continue to Paystack"}
               </button>
             </div>
           </div>

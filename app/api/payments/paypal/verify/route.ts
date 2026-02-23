@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
+import { ensureReordersTable } from "@/lib/reorders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,16 @@ function isValidRouteType(v: any): v is RouteType {
 
 function randomChunk(len: number) {
   return Math.random().toString(36).substring(2, 2 + len).toUpperCase();
+}
+
+function tokenPrefix(purpose: string) {
+  if (purpose === "reorder") return "RE-";
+  return "SRC-";
+}
+
+function safeNum(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeText(value: any) {
@@ -112,7 +123,8 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const orderId = String(body?.order_id || "").trim();
-    const purpose = String(body?.purpose || "sourcing").trim();
+    const purposeRaw = String(body?.purpose || "sourcing").trim();
+    const purpose = purposeRaw === "reorder" ? "reorder" : "sourcing";
     const routeType = body?.route_type;
     if (!orderId) {
       return NextResponse.json({ ok: false, error: "Missing order_id." }, { status: 400 });
@@ -120,8 +132,8 @@ export async function POST(req: Request) {
     if (!isValidRouteType(routeType)) {
       return NextResponse.json({ ok: false, error: "Invalid route_type." }, { status: 400 });
     }
-    if (purpose !== "sourcing") {
-      return NextResponse.json({ ok: false, error: "PayPal is supported for sourcing only." }, { status: 400 });
+    if (purpose !== "sourcing" && purpose !== "reorder") {
+      return NextResponse.json({ ok: false, error: "Invalid payment purpose." }, { status: 400 });
     }
 
     const capture = await paypalCaptureOrder(orderId);
@@ -142,6 +154,8 @@ export async function POST(req: Request) {
     }
 
     const sourceConversationId = Number(body?.source_conversation_id || 0) || null;
+    const reorderOfConversationId = safeNum(body?.reorder_of_conversation_id);
+    const reorderUserNote = String(body?.reorder_user_note || "").trim();
     const productId = normalizeText(body?.product_id);
     const productName = normalizeText(body?.product_name);
     const productCategory = normalizeText(body?.product_category);
@@ -156,8 +170,347 @@ export async function POST(req: Request) {
           }
         : null;
 
-    const token = `SRC-${randomChunk(6)}-${randomChunk(5)}`;
+    const token = `${tokenPrefix(purpose)}${randomChunk(6)}-${randomChunk(5)}`;
     const payEmail = userEmail;
+
+    if (purpose === "reorder") {
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+
+        await conn.query(
+          `
+          INSERT INTO linescout_tokens
+            (token, type, email, amount, currency, paystack_ref, status, metadata, customer_name, customer_phone, created_at)
+          VALUES
+            (?, 'sourcing', ?, ?, ?, ?, 'valid', ?, NULL, NULL, NOW())
+          `,
+          [
+            token,
+            payEmail,
+            amountValue,
+            currency,
+            orderId,
+            JSON.stringify({
+              paypal: {
+                order_id: orderId,
+                status,
+              },
+              route_type: routeType,
+              user_id: userId,
+              source_conversation_id: sourceConversationId || null,
+              reorder_of_conversation_id: reorderOfConversationId || null,
+              reorder_user_note: reorderUserNote || null,
+              product:
+                productId !== "N/A" || productName !== "N/A" || productCategory !== "N/A"
+                  ? {
+                      id: productId !== "N/A" ? productId : null,
+                      name: productName !== "N/A" ? productName : null,
+                      category: productCategory !== "N/A" ? productCategory : null,
+                      landed_ngn_per_unit: productLandedPerUnit !== "N/A" ? productLandedPerUnit : null,
+                    }
+                  : null,
+              raw: {
+                amount: amountValue,
+                currency,
+              },
+            }),
+          ]
+        );
+
+        let finalRouteType: RouteType = routeType as RouteType;
+        let assignedAgentId: number | null = null;
+        let sourceConversationIdForContext = sourceConversationId;
+        let sourceHandoffIdForContext: number | null = null;
+        let sourceAgentId: number | null = null;
+        let sourceProductSummary = "";
+
+        const sourceId = reorderOfConversationId || sourceConversationId;
+        if (!sourceId) {
+          throw new Error("Missing reorder source project.");
+        }
+
+        const [srcRows]: any = await conn.query(
+          `
+          SELECT c.id, c.user_id, c.route_type, c.assigned_agent_id, c.handoff_id, h.status AS handoff_status, h.delivered_at
+          FROM linescout_conversations c
+          LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
+          WHERE c.id = ? AND c.user_id = ?
+          LIMIT 1
+          `,
+          [sourceId, userId]
+        );
+        const src = srcRows?.[0];
+        if (!src?.id || !src?.handoff_id) {
+          throw new Error("Original project not found.");
+        }
+        const handoffStatus = String(src.handoff_status || "").trim().toLowerCase();
+        const isDelivered = handoffStatus === "delivered" || !!src.delivered_at;
+        if (!isDelivered) {
+          throw new Error("Re-order is only available for delivered projects.");
+        }
+
+        sourceConversationIdForContext = Number(src.id);
+        sourceHandoffIdForContext = Number(src.handoff_id);
+        sourceAgentId = Number(src.assigned_agent_id || 0) || null;
+        if (isValidRouteType(src.route_type)) {
+          finalRouteType = src.route_type as RouteType;
+        }
+
+        const [quoteRows]: any = await conn.query(
+          `
+          SELECT items_json
+          FROM linescout_quotes
+          WHERE handoff_id = ?
+          ORDER BY id DESC
+          LIMIT 1
+          `,
+          [Number(src.handoff_id)]
+        );
+        if (quoteRows?.length) {
+          let items: any[] = [];
+          const raw = quoteRows[0]?.items_json;
+          if (Array.isArray(raw)) {
+            items = raw;
+          } else if (typeof raw === "string") {
+            try {
+              const parsed = JSON.parse(raw || "[]");
+              items = Array.isArray(parsed) ? parsed : [];
+            } catch {
+              items = [];
+            }
+          }
+          sourceProductSummary = buildProductSummaryFromItems(items);
+        }
+
+        if (sourceAgentId) {
+          const [agentRows]: any = await conn.query(
+            `
+            SELECT u.id, u.is_active, ap.approval_status
+            FROM internal_users u
+            LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+            WHERE u.id = ?
+            LIMIT 1
+            `,
+            [sourceAgentId]
+          );
+          const a = agentRows?.[0];
+          if (a?.id && Number(a.is_active) === 1 && String(a.approval_status || "") === "approved") {
+            assignedAgentId = Number(a.id);
+          }
+        }
+
+        const [insConv]: any = await conn.query(
+          `
+          INSERT INTO linescout_conversations
+            (user_id, route_type, chat_mode, human_message_limit, human_message_used, payment_status, project_status)
+          VALUES
+            (?, ?, 'paid_human', 0, 0, 'paid', 'active')
+          `,
+          [userId, finalRouteType]
+        );
+        const conversationId = Number(insConv?.insertId || 0);
+        if (!conversationId) throw new Error("Failed to create paid conversation");
+
+        let whiteLabelBrief = "";
+        const hasSelectedIdea = productName !== "N/A" || productCategory !== "N/A" || productId !== "N/A";
+        if (finalRouteType === "white_label" && !hasSelectedIdea) {
+          const [wlRows]: any = await conn.query(
+            `
+            SELECT *
+            FROM linescout_white_label_projects
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            `,
+            [userId]
+          );
+          if (wlRows && wlRows.length) {
+            whiteLabelBrief = buildWhiteLabelBrief(wlRows[0]);
+          }
+        }
+
+        const simpleSourcingBrief = buildSimpleSourcingBrief(simpleBrief);
+
+        const contextNote = [
+          "Created from in-app PayPal payment.",
+          sourceConversationIdForContext ? `Re-order of conversation_id: ${sourceConversationIdForContext}` : "",
+          sourceHandoffIdForContext ? `Original handoff_id: ${sourceHandoffIdForContext}` : "",
+          sourceProductSummary ? `Original product: ${sourceProductSummary}` : "",
+          reorderUserNote ? `Customer note: ${reorderUserNote}` : "",
+          productName !== "N/A" || productCategory !== "N/A"
+            ? `Selected idea: ${productName !== "N/A" ? productName : "Unknown"}${
+                productCategory !== "N/A" ? ` (${productCategory})` : ""
+              }${productId !== "N/A" ? ` [ID ${productId}]` : ""}`
+            : "",
+          productLandedPerUnit !== "N/A" ? `Landed per unit: ${productLandedPerUnit}` : "",
+          simpleSourcingBrief,
+          whiteLabelBrief || "Project brief to be provided in paid chat.",
+        ]
+          .filter(Boolean)
+          .join("\n");
+
+        const [insH]: any = await conn.query(
+          `
+          INSERT INTO linescout_handoffs
+            (token, handoff_type, email, context, status, paid_at, conversation_id)
+          VALUES
+            (?, ?, ?, ?, 'pending', NOW(), ?)
+          `,
+          [token, finalRouteType === "white_label" ? "white_label" : "sourcing", payEmail, contextNote, conversationId]
+        );
+
+        const handoffId = Number(insH?.insertId || 0);
+        if (!handoffId) throw new Error("Failed to create handoff");
+
+        if (typeof amountValue === "number" && amountValue > 0) {
+          await conn.query(
+            `
+            INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              total_due = GREATEST(total_due, VALUES(total_due)),
+              currency = VALUES(currency)
+            `,
+            [handoffId, currency, amountValue]
+          );
+
+          await conn.query(
+            `
+            INSERT INTO linescout_handoff_payments
+              (handoff_id, amount, currency, purpose, note, paid_at, created_at)
+            VALUES
+              (?, ?, ?, 'full_payment', 'Sourcing fee (PayPal)', NOW(), NOW())
+            `,
+            [handoffId, amountValue, currency]
+          );
+        }
+
+        try {
+          const metaForToken = {
+            paypal: {
+              order_id: orderId,
+              status,
+            },
+            route_type: finalRouteType,
+            user_id: userId,
+            source_conversation_id: sourceConversationId || null,
+            reorder_of_conversation_id: reorderOfConversationId || null,
+            reorder_user_note: reorderUserNote || null,
+            product:
+              productId !== "N/A" || productName !== "N/A" || productCategory !== "N/A"
+                ? {
+                    id: productId !== "N/A" ? productId : null,
+                    name: productName !== "N/A" ? productName : null,
+                    category: productCategory !== "N/A" ? productCategory : null,
+                    landed_ngn_per_unit: productLandedPerUnit !== "N/A" ? productLandedPerUnit : null,
+                  }
+                : null,
+            raw: {
+              amount: amountValue,
+              currency,
+            },
+            conversation_id: conversationId,
+            handoff_id: handoffId,
+          };
+
+          await conn.query(
+            `
+            UPDATE linescout_tokens
+            SET metadata = ?
+            WHERE paystack_ref = ?
+            LIMIT 1
+            `,
+            [JSON.stringify(metaForToken), orderId]
+          );
+        } catch {
+          // non-fatal
+        }
+
+        await conn.query(
+          `
+          UPDATE linescout_conversations
+          SET handoff_id = ?, payment_status = 'paid', chat_mode = 'paid_human', assigned_agent_id = COALESCE(?, assigned_agent_id)
+          WHERE id = ? AND user_id = ?
+          LIMIT 1
+          `,
+          [handoffId, assignedAgentId, conversationId, userId]
+        );
+
+        await conn.query(
+          `
+          INSERT INTO linescout_messages (conversation_id, sender_type, sender_id, message_text)
+          VALUES (?, 'agent', ?, ?)
+          `,
+          [
+            conversationId,
+            assignedAgentId || null,
+            [
+              "Hello,",
+              "",
+              "Our China-based agents have been notified of your request, and one of them will attend to you shortly.",
+              "",
+              "Please keep all discussions professional and respectful. Do not exchange personal contact details within the chat. If at any point you need assistance, use the Report or Escalate button and our team will respond promptly.",
+              "",
+              "Thank you.",
+            ].join("\n"),
+          ]
+        );
+
+        await ensureReordersTable(conn);
+        const statusOut = assignedAgentId ? "assigned" : "pending_admin";
+        await conn.query(
+          `
+          INSERT INTO linescout_reorder_requests
+            (user_id, conversation_id, handoff_id, source_conversation_id, source_handoff_id, new_conversation_id, new_handoff_id,
+             route_type, status, original_agent_id, assigned_agent_id, user_note, paystack_ref, amount_ngn, paid_at, assigned_at)
+          VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
+          `,
+          [
+            userId,
+            sourceConversationIdForContext || conversationId,
+            sourceHandoffIdForContext || handoffId,
+            sourceConversationIdForContext,
+            sourceHandoffIdForContext,
+            conversationId,
+            handoffId,
+            finalRouteType,
+            statusOut,
+            sourceAgentId,
+            assignedAgentId,
+            reorderUserNote || null,
+            orderId,
+            null,
+            assignedAgentId ? new Date() : null,
+          ]
+        );
+
+        await conn.commit();
+
+        return NextResponse.json(
+          {
+            ok: true,
+            conversation_id: conversationId,
+            handoff_id: handoffId,
+            route_type: finalRouteType,
+          },
+          { status: 200 }
+        );
+      } catch (e: any) {
+        await conn.rollback();
+        const msg = String(e?.message || "Payment verification failed");
+        if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("paystack_ref")) {
+          return NextResponse.json(
+            { ok: true, conversation_id: null, handoff_id: null, route_type: routeType },
+            { status: 200 }
+          );
+        }
+        throw e;
+      } finally {
+        conn.release();
+      }
+    }
 
     const conn = await db.getConnection();
     try {

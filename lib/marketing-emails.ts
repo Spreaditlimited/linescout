@@ -13,6 +13,7 @@ export type MarketingCampaignKey =
   | "paystack_init_incomplete"
   | "payment_verified"
   | "quote_unpaid"
+  | "quote_unpaid_reminder"
   | "handoff_shipped"
   | "handoff_delivered"
   | "reorder_eligible";
@@ -117,6 +118,8 @@ export function buildMarketingEmail(campaign: MarketingCampaignKey, input: {
   firstName: string | null;
   paystackRetryLink?: string | null;
   statusLabel?: string | null;
+  sequence?: number;
+  quoteLink?: string | null;
 }) {
   const hi = greeting(input.firstName);
 
@@ -190,6 +193,89 @@ export function buildMarketingEmail(campaign: MarketingCampaignKey, input: {
         ],
         footer: "This email was sent because a quote is ready on your LineScout project.",
       };
+    case "quote_unpaid_reminder": {
+      const link = input.quoteLink || "Open your LineScout quote to complete payment.";
+      const seq = Number(input.sequence || 1);
+      const templates = [
+        {
+          subject: "Your LineScout quote is ready — complete payment to start",
+          lines: [
+            hi,
+            "Your LineScout quote is ready. When you complete payment, our team starts sourcing immediately and keeps you updated through each step.",
+            "Complete payment here:",
+            link,
+            "If you need any clarification, just reply — we’re here to help.",
+          ],
+        },
+        {
+          subject: "Quick reminder: your quote is waiting",
+          lines: [
+            hi,
+            "Just a quick reminder about your LineScout quote. Completing payment secures your order slot and gets your sourcing moving.",
+            "Complete payment here:",
+            link,
+            "We’re happy to answer questions if anything is unclear.",
+          ],
+        },
+        {
+          subject: "Ready when you are — your LineScout quote is still active",
+          lines: [
+            hi,
+            "Your quote is still active and ready for payment. Once paid, we’ll proceed with sourcing and keep you updated at each milestone.",
+            "Complete payment here:",
+            link,
+            "Let us know if you want any adjustments before paying.",
+          ],
+        },
+        {
+          subject: "Keep things moving — complete payment on your quote",
+          lines: [
+            hi,
+            "We’d love to get your project moving. Completing payment is the final step before we begin the sourcing process.",
+            "Complete payment here:",
+            link,
+            "If you’d like to revise anything, reply to this email.",
+          ],
+        },
+        {
+          subject: "Your quote is still open — want us to proceed?",
+          lines: [
+            hi,
+            "Your quote is still open. If you want us to proceed, you can complete payment at any time.",
+            "Complete payment here:",
+            link,
+            "We’re here if you want changes or a quick review.",
+          ],
+        },
+        {
+          subject: "One more step to activate your LineScout quote",
+          lines: [
+            hi,
+            "You’re one step away from activating your quote. Once payment is complete, we’ll start sourcing immediately.",
+            "Complete payment here:",
+            link,
+            "Reply if you’d like help or adjustments.",
+          ],
+        },
+        {
+          subject: "Final reminder — your quote is waiting",
+          lines: [
+            hi,
+            "This is a final reminder about your LineScout quote. If you still want to move forward, complete payment using the link below:",
+            "Complete payment here:",
+            link,
+            "If you’d rather pause or update the quote, just reply and we’ll handle it.",
+          ],
+        },
+      ];
+      const picked = templates[Math.min(Math.max(seq, 1), templates.length) - 1];
+      return {
+        subject: picked.subject,
+        title: "Complete payment",
+        lines: picked.lines,
+        footer: "This email was sent because your quote is still unpaid on LineScout.",
+      };
+    }
     case "handoff_shipped":
       return {
         subject: "Your LineScout order has shipped",
@@ -235,11 +321,15 @@ export async function sendMarketingEmail(opts: {
   campaign: MarketingCampaignKey;
   paystackRetryLink?: string | null;
   statusLabel?: string | null;
+  sequence?: number;
+  quoteLink?: string | null;
 }) {
   const payload = buildMarketingEmail(opts.campaign, {
     firstName: opts.firstName,
     paystackRetryLink: opts.paystackRetryLink,
     statusLabel: opts.statusLabel,
+    sequence: opts.sequence,
+    quoteLink: opts.quoteLink,
   });
   if (!payload) return { ok: false as const, error: "Unknown campaign" };
 

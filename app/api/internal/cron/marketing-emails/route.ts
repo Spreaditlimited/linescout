@@ -213,14 +213,17 @@ export async function GET(req: Request) {
     }
     results.payment_verified = sent;
 
-    // 9) Quote ready but unpaid
+    // 9) Quote unpaid reminders (every 2 days, up to 7 sends)
     const [quoteRows]: any = await conn.query(
       `
       SELECT
         q.id AS quote_id,
+        q.token,
         u.id AS user_id,
-        u.email,
+        u.email AS user_email,
         u.display_name,
+        q.email AS quote_email,
+        h.email AS handoff_email,
         COALESCE(q.total_product_ngn, 0) +
         COALESCE(q.total_markup_ngn, 0) +
         COALESCE(q.total_shipping_ngn, 0) -
@@ -228,42 +231,60 @@ export async function GET(req: Request) {
         COALESCE(SUM(CASE
           WHEN p.status = 'paid'
            AND p.purpose IN ('deposit','product_balance','full_product_payment','shipping_payment')
-          THEN p.amount ELSE 0 END), 0) AS total_paid
+          THEN p.amount ELSE 0 END), 0) AS total_paid,
+        (
+          SELECT COUNT(*)
+          FROM linescout_marketing_email_log l
+          WHERE l.campaign_key = 'quote_unpaid_reminder'
+            AND l.related_id = q.id
+        ) AS sent_count,
+        (
+          SELECT MAX(sent_at)
+          FROM linescout_marketing_email_log l
+          WHERE l.campaign_key = 'quote_unpaid_reminder'
+            AND l.related_id = q.id
+        ) AS last_sent_at
       FROM linescout_quotes q
       JOIN linescout_handoffs h ON h.id = q.handoff_id
       JOIN linescout_conversations c ON c.handoff_id = h.id
       JOIN users u ON u.id = c.user_id
       LEFT JOIN linescout_quote_payments p ON p.quote_id = q.id
-      WHERE q.created_at <= (NOW() - INTERVAL 3 DAY)
-        AND u.email IS NOT NULL AND u.email <> ''
-        AND NOT EXISTS (
-          SELECT 1
-          FROM linescout_marketing_email_log l
-          WHERE l.campaign_key = 'quote_unpaid'
-            AND l.related_id = q.id
-        )
+      WHERE q.created_at <= (NOW() - INTERVAL 2 DAY)
       GROUP BY q.id
       HAVING total_due > total_paid
+        AND sent_count < 7
+        AND (last_sent_at IS NULL OR last_sent_at <= (NOW() - INTERVAL 2 DAY))
       LIMIT ?
       `,
       [MAX_PER_CAMPAIGN]
     );
     sent = 0;
     for (const row of quoteRows || []) {
-      const email = String(row.email || "").trim();
+      const email =
+        String(row.handoff_email || "").trim() ||
+        String(row.quote_email || "").trim() ||
+        String(row.user_email || "").trim();
       if (!email) continue;
       const firstName = firstNameFrom(row.display_name, email);
       const quoteId = String(row.quote_id || "").trim();
+      const seq = Number(row.sent_count || 0) + 1;
+      const base = (process.env.NEXT_PUBLIC_APP_URL || "https://linescout.sureimports.com").replace(/\/$/, "");
+      const quoteLink = `${base}/quote/${String(row.token || "").trim()}`;
       const res = await sendMarketingEmail({
         to: email,
         firstName,
-        campaign: "quote_unpaid",
+        campaign: "quote_unpaid_reminder",
+        sequence: seq,
+        quoteLink,
       });
       if (res?.ok === false) continue;
-      await logCampaignSend(conn, Number(row.user_id), "quote_unpaid", quoteId || null);
+      await logCampaignSend(conn, Number(row.user_id), "quote_unpaid_reminder", quoteId || null, {
+        sequence: seq,
+        quote_link: quoteLink,
+      });
       sent += 1;
     }
-    results.quote_unpaid = sent;
+    results.quote_unpaid_reminder = sent;
 
     // 10) Handoff shipped
     const [shippedRows]: any = await conn.query(

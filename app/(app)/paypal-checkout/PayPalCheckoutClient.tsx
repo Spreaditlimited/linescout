@@ -30,6 +30,15 @@ export default function PayPalCheckoutClient() {
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [searchParams]);
+  const reorderOfConversationId = useMemo(() => {
+    const raw = String(searchParams.get("reorder_of_conversation_id") || "").trim();
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+  const reorderUserNote = useMemo(
+    () => String(searchParams.get("reorder_user_note") || "").trim(),
+    [searchParams]
+  );
   const simpleProductName = useMemo(
     () => String(searchParams.get("simple_product_name") || "").trim(),
     [searchParams]
@@ -72,7 +81,13 @@ export default function PayPalCheckoutClient() {
         purpose
       )}&route_type=${encodeURIComponent(routeType)}${
         sourceConversationId ? `&source_conversation_id=${encodeURIComponent(String(sourceConversationId))}` : ""
-      }${productId ? `&product_id=${encodeURIComponent(productId)}` : ""}${
+      }${
+        reorderOfConversationId
+          ? `&reorder_of_conversation_id=${encodeURIComponent(String(reorderOfConversationId))}`
+          : ""
+      }${reorderUserNote ? `&reorder_user_note=${encodeURIComponent(reorderUserNote)}` : ""}${
+        productId ? `&product_id=${encodeURIComponent(productId)}` : ""
+      }${
         productName ? `&product_name=${encodeURIComponent(productName)}` : ""
       }${productCategory ? `&product_category=${encodeURIComponent(productCategory)}` : ""}${
         productLandedPerUnit ? `&product_landed_ngn_per_unit=${encodeURIComponent(productLandedPerUnit)}` : ""
@@ -89,6 +104,8 @@ export default function PayPalCheckoutClient() {
           purpose,
           route_type: routeType,
           source_conversation_id: sourceConversationId,
+          reorder_of_conversation_id: reorderOfConversationId,
+          reorder_user_note: reorderUserNote || null,
           simple_product_name: simpleProductName || null,
           simple_quantity: simpleQuantity || null,
           simple_destination: simpleDestination || null,
@@ -125,6 +142,8 @@ export default function PayPalCheckoutClient() {
     purpose,
     routeType,
     sourceConversationId,
+    reorderOfConversationId,
+    reorderUserNote,
     simpleProductName,
     simpleQuantity,
     simpleDestination,

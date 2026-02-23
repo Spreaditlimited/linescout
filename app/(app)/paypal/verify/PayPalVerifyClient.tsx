@@ -33,6 +33,15 @@ export default function PayPalVerifyClient() {
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [searchParams]);
+  const reorderOfConversationId = useMemo(() => {
+    const raw = String(searchParams.get("reorder_of_conversation_id") || "").trim();
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [searchParams]);
+  const reorderUserNote = useMemo(
+    () => String(searchParams.get("reorder_user_note") || "").trim(),
+    [searchParams]
+  );
   const simpleProductName = useMemo(
     () => String(searchParams.get("simple_product_name") || "").trim(),
     [searchParams]
@@ -84,6 +93,8 @@ export default function PayPalVerifyClient() {
           purpose,
           route_type: routeType,
           source_conversation_id: sourceConversationId,
+          reorder_of_conversation_id: reorderOfConversationId,
+          reorder_user_note: reorderUserNote || null,
           simple_product_name: simpleProductName || null,
           simple_quantity: simpleQuantity || null,
           simple_destination: simpleDestination || null,
@@ -129,6 +140,8 @@ export default function PayPalVerifyClient() {
     purpose,
     routeType,
     sourceConversationId,
+    reorderOfConversationId,
+    reorderUserNote,
     simpleProductName,
     simpleQuantity,
     simpleDestination,
