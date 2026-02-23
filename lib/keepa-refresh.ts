@@ -14,6 +14,7 @@ type RefreshResult = {
   updated: number;
   skipped: number;
   errors: number;
+  lastError?: string | null;
 };
 
 type RefreshOptions = {
@@ -66,6 +67,7 @@ export async function refreshKeepaProducts(
   let updated = 0;
   let skipped = 0;
   let errors = 0;
+  let lastError: string | null = null;
 
   for (const row of rows.slice(0, maxProducts)) {
     for (const market of marketplaces) {
@@ -118,13 +120,16 @@ export async function refreshKeepaProducts(
           ]
         );
         updated += 1;
-      } catch (e) {
+      } catch (e: any) {
         errors += 1;
+        if (!lastError) {
+          lastError = String(e?.message || e || "Keepa request failed");
+        }
       }
     }
   }
 
-  return { updated, skipped, errors };
+  return { updated, skipped, errors, lastError };
 }
 
 export async function listTopWhiteLabelProducts(

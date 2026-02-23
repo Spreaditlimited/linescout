@@ -81,7 +81,17 @@ async function keepaRequest(path: string, params: Record<string, string | number
     throw new Error(`Keepa error (${res.status}): ${text || res.statusText}`);
   }
   const data = await res.json().catch(() => null);
-  return data || {};
+  const payload = data || {};
+  const err =
+    payload?.error?.message ||
+    payload?.error ||
+    payload?.errorMessage ||
+    payload?.message ||
+    null;
+  if (err) {
+    throw new Error(`Keepa error: ${String(err)}`);
+  }
+  return payload;
 }
 
 export async function searchKeepaAsin(term: string, marketplace: KeepaMarketplace) {
