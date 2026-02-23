@@ -14,6 +14,7 @@ import FilterForm from "@/components/filters/FilterForm";
 import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountrySelector";
 import { currencyForCode } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
+import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -191,6 +192,15 @@ function getCountryCurrencyCode(
   return allowed.has(settlement) ? settlement : "NGN";
 }
 
+function parseEligibleCountries(raw?: string | null) {
+  const source = String(raw || "GB,CA");
+  return source
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+    .map((c) => (c === "UK" ? "GB" : c));
+}
+
 export default async function WhiteLabelPage({
   searchParams,
 }: {
@@ -216,10 +226,12 @@ export default async function WhiteLabelPage({
   let countryOptions: { value: string; label: string }[] = [];
   let countryCode = "NG";
   let currencyCode = "NGN";
+  let amazonComparisonEnabled = false;
   const effectivePrice = currencyCode === "NGN" ? price : "";
 
   try {
     await ensureCountryConfig(conn);
+    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     countries = (lists.countries || []) as typeof countries;
     const currencyById = new Map<number, string>(
@@ -229,6 +241,11 @@ export default async function WhiteLabelPage({
     countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
     currencyCode = getCountryCurrencyCode(picked, currencyById);
     countryOptions = countries.map((c) => ({ value: String(c.iso2 || "").toUpperCase(), label: c.name }));
+    const [settingsRows]: any = await conn.query(
+      `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+    );
+    const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
+    amazonComparisonEnabled = Boolean(countryCode) && eligible.has(countryCode) && currencyCode !== "NGN";
 
     await ensureWhiteLabelProductsReady(conn);
 
@@ -623,6 +640,7 @@ export default async function WhiteLabelPage({
             items={items}
             detailBase="/white-label"
             currencyCode={currencyCode}
+            amazonComparisonEnabled={amazonComparisonEnabled}
             lockAmazonComparison
             comparisonCtaHref="/sign-in?next=/white-label/ideas"
             comparisonCtaLabel="Sign in to compare Amazon prices"

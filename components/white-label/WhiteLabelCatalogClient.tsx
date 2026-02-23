@@ -119,6 +119,7 @@ export default function WhiteLabelCatalogClient({
   items,
   detailBase = "/white-label",
   currencyCode = "NGN",
+  amazonComparisonEnabled = true,
   lockAmazonComparison = false,
   comparisonCtaHref = "/sign-in?next=/white-label/ideas",
   comparisonCtaLabel = "Sign in to compare Amazon prices",
@@ -126,6 +127,7 @@ export default function WhiteLabelCatalogClient({
   items: ProductItem[];
   detailBase?: string;
   currencyCode?: string;
+  amazonComparisonEnabled?: boolean;
   lockAmazonComparison?: boolean;
   comparisonCtaHref?: string;
   comparisonCtaLabel?: string;
@@ -135,7 +137,7 @@ export default function WhiteLabelCatalogClient({
   const [reveals, setReveals] = useState<
     Record<
       number,
-      { loading?: boolean; error?: string | null; data?: any }
+      { loading?: boolean; error?: string | null; code?: string | null; data?: any }
     >
   >({});
 
@@ -160,18 +162,22 @@ export default function WhiteLabelCatalogClient({
             : json?.error || "Failed to reveal Amazon price.";
         setReveals((prev) => ({
           ...prev,
-          [productId]: { loading: false, error: msg },
+          [productId]: { loading: false, error: msg, code: json?.code || null },
         }));
         return;
       }
       setReveals((prev) => ({
         ...prev,
-        [productId]: { loading: false, error: null, data: json },
+        [productId]: { loading: false, error: null, code: null, data: json },
       }));
     } catch (e: any) {
       setReveals((prev) => ({
         ...prev,
-        [productId]: { loading: false, error: e?.message || "Failed to reveal Amazon price." },
+        [productId]: {
+          loading: false,
+          error: e?.message || "Failed to reveal Amazon price.",
+          code: null,
+        },
       }));
     }
   }
@@ -215,32 +221,36 @@ export default function WhiteLabelCatalogClient({
               </div>
 
               <div className="flex-1 p-5">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  {item.category}
-                </p>
-                <h2 className="mt-2 text-lg font-semibold text-neutral-900">
-                  {item.product_name}
-                </h2>
-                {(() => {
-                  const landed = pickLandedFieldsByCurrency(item, currencyCode);
-                  const hasPerUnit = landed.perUnitLow != null || landed.perUnitHigh != null;
-                  const hasTotal = landed.totalLow != null || landed.totalHigh != null;
-                  return (
-                    <>
-                      <p className="mt-3 text-sm text-neutral-600">
-                        {hasPerUnit
-                          ? formatPerUnitRange(landed.perUnitLow, landed.perUnitHigh, currencyCode)
-                          : "Pricing pending"}
-                      </p>
-                      <p className="mt-1 text-xs text-neutral-500">
-                        {hasTotal
-                          ? formatTotalRange(landed.totalLow, landed.totalHigh, currencyCode)
-                          : "Pricing pending"}
-                      </p>
-                    </>
-                  );
-                })()}
-                {(() => {
+                <div className="flex h-full flex-col">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                      {item.category}
+                    </p>
+                    <h2 className="mt-2 text-lg font-semibold text-neutral-900">
+                      {item.product_name}
+                    </h2>
+                    {(() => {
+                      const landed = pickLandedFieldsByCurrency(item, currencyCode);
+                      const hasPerUnit = landed.perUnitLow != null || landed.perUnitHigh != null;
+                      const hasTotal = landed.totalLow != null || landed.totalHigh != null;
+                      return (
+                        <>
+                          <p className="mt-3 text-sm text-neutral-600">
+                            {hasPerUnit
+                              ? formatPerUnitRange(landed.perUnitLow, landed.perUnitHigh, currencyCode)
+                              : "Pricing pending"}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            {hasTotal
+                              ? formatTotalRange(landed.totalLow, landed.totalHigh, currencyCode)
+                              : "Pricing pending"}
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {amazonComparisonEnabled
+                    ? (() => {
                   const reveal = reveals[item.id];
                   const revealed = Boolean(reveal?.data?.ok);
                   const isCaUser = currencyCode === "CAD";
@@ -321,7 +331,8 @@ export default function WhiteLabelCatalogClient({
                   const marginText = marginRange();
 
                   return (
-                    <div className="mt-3 min-h-[96px] rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
+                    <div className="mt-auto pt-4">
+                      <div className="min-h-[96px] rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
                         Amazon price{labelSuffix}
                       </p>
@@ -361,13 +372,26 @@ export default function WhiteLabelCatalogClient({
                             {reveal?.loading ? "Revealing..." : "Reveal Amazon price"}
                           </button>
                           {reveal?.error ? (
-                            <p className="mt-1 text-[11px] text-amber-700">{reveal.error}</p>
+                            <div className="mt-1 text-[11px] text-amber-700">
+                              {reveal.error}
+                              {reveal?.code === "subscription_required" ? (
+                                <Link
+                                  href="/white-label/subscribe"
+                                  className="ml-2 inline-flex font-semibold text-[var(--agent-blue)]"
+                                >
+                                  Subscribe now
+                                </Link>
+                              ) : null}
+                            </div>
                           ) : null}
                         </>
                       )}
                     </div>
+                    </div>
                   );
-                })()}
+                })()
+                    : null}
+                </div>
               </div>
 
               <div className="mt-auto px-5 pb-6">

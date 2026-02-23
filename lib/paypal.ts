@@ -157,6 +157,42 @@ export async function paypalCreatePlan(params: {
   return { id: String(json.id), raw: json };
 }
 
+export async function paypalCreateSubscription(params: {
+  planId: string;
+  returnUrl: string;
+  cancelUrl: string;
+  customId?: string | null;
+}) {
+  const token = await paypalAccessToken();
+  const res = await fetch(`${paypalBaseUrl()}/v1/billing/subscriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      plan_id: params.planId,
+      ...(params.customId ? { custom_id: params.customId } : {}),
+      application_context: {
+        return_url: params.returnUrl,
+        cancel_url: params.cancelUrl,
+      },
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    throw new Error(json?.message || "PayPal create subscription failed");
+  }
+  const approve = Array.isArray(json?.links)
+    ? json.links.find((l: any) => l?.rel === "approve")?.href
+    : null;
+  return {
+    id: String(json.id),
+    approveUrl: approve ? String(approve) : null,
+    raw: json,
+  };
+}
+
 export async function paypalCaptureOrder(orderId: string) {
   const token = await paypalAccessToken();
   const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {

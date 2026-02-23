@@ -8,6 +8,7 @@ import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracke
 import DeferredSection from "@/components/white-label/DeferredSection";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
+import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 import WhiteLabelAmazonReveal from "@/components/white-label/WhiteLabelAmazonReveal";
 
 export const runtime = "nodejs";
@@ -135,6 +136,15 @@ function getCountryCurrencyCode(
   return allowed.has(settlement) ? settlement : "NGN";
 }
 
+function parseEligibleCountries(raw?: string | null) {
+  const source = String(raw || "GB,CA");
+  return source
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+    .map((c) => (c === "UK" ? "GB" : c));
+}
+
 function fallbackSeoDescription(product: ProductRow) {
   return (
     product.seo_description ||
@@ -233,14 +243,22 @@ export default async function WhiteLabelIdeaDetailPage({
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
   let currencyCode = "NGN";
+  let amazonComparisonEnabled = false;
   try {
     await ensureCountryConfig(conn);
+    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     const currencyById = new Map<number, string>(
       (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
     );
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
     currencyCode = getCountryCurrencyCode(picked, currencyById);
+    const countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+    const [settingsRows]: any = await conn.query(
+      `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+    );
+    const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
+    amazonComparisonEnabled = Boolean(countryIso2) && eligible.has(countryIso2) && currencyCode !== "NGN";
 
     await ensureWhiteLabelProductsReady(conn);
 
@@ -415,14 +433,16 @@ export default async function WhiteLabelIdeaDetailPage({
                     )} for 1,000 units`
                   : "Pricing pending"}
               </div>
-              <WhiteLabelAmazonReveal
-                productId={product.id}
-                currencyCode={currencyCode}
-                landedGbpLow={landedGbpLow}
-                landedGbpHigh={landedGbpHigh}
-                landedCadLow={landedCadLow}
-                landedCadHigh={landedCadHigh}
-              />
+              {amazonComparisonEnabled ? (
+                <WhiteLabelAmazonReveal
+                  productId={product.id}
+                  currencyCode={currencyCode}
+                  landedGbpLow={landedGbpLow}
+                  landedGbpHigh={landedGbpHigh}
+                  landedCadLow={landedCadLow}
+                  landedCadHigh={landedCadHigh}
+                />
+              ) : null}
               <Link
                 href="/white-label/ideas"
                 className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"

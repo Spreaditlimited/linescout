@@ -1,7 +1,7 @@
 // app/api/mobile/profile/route.ts
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import { queryOne, queryRows } from "@/lib/db";
+import { db, queryOne, queryRows } from "@/lib/db";
 import { RowDataPacket } from "mysql2/promise";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
 import { sendMetaLeadEvent } from "@/lib/meta-capi";
@@ -11,6 +11,7 @@ import {
   backfillUserDefaults,
   listActiveCountriesAndCurrencies,
 } from "@/lib/country-config";
+import { ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,10 +85,33 @@ export async function GET(req: Request) {
     await ensureCountryConfig();
     await ensureUserCountryColumns();
     await backfillUserDefaults();
+    {
+      const conn = await db.getConnection();
+      try {
+        await ensureWhiteLabelUserColumns(conn);
+      } finally {
+        conn.release();
+      }
+    }
     const user = await requireUser(req);
 
-    const userRow = await queryOne<RowDataPacket & { country_id?: number | null; display_currency_code?: string | null }>(
+    const userRow = await queryOne<
+      RowDataPacket & {
+        country_id?: number | null;
+        display_currency_code?: string | null;
+        white_label_trial_ends_at?: string | null;
+        white_label_plan?: string | null;
+        white_label_subscription_status?: string | null;
+        white_label_subscription_provider?: string | null;
+        white_label_subscription_id?: string | null;
+      }
+    >(
       `SELECT country_id, display_currency_code
+              , white_label_trial_ends_at
+              , white_label_plan
+              , white_label_subscription_status
+              , white_label_subscription_provider
+              , white_label_subscription_id
        FROM users
        WHERE id = ?
        LIMIT 1`,
@@ -106,6 +130,11 @@ export async function GET(req: Request) {
       phone: lead.whatsapp === "unknown" ? "" : lead.whatsapp,
       country_id: userRow?.country_id ?? null,
       display_currency_code: userRow?.display_currency_code ?? null,
+      white_label_trial_ends_at: userRow?.white_label_trial_ends_at ?? null,
+      white_label_plan: userRow?.white_label_plan ?? null,
+      white_label_subscription_status: userRow?.white_label_subscription_status ?? null,
+      white_label_subscription_provider: userRow?.white_label_subscription_provider ?? null,
+      white_label_subscription_id: userRow?.white_label_subscription_id ?? null,
       countries: lists.countries,
       currencies: lists.currencies,
       country_currencies: lists.country_currencies,
@@ -122,6 +151,14 @@ export async function PUT(req: Request) {
     await ensureCountryConfig();
     await ensureUserCountryColumns();
     await backfillUserDefaults();
+    {
+      const conn = await db.getConnection();
+      try {
+        await ensureWhiteLabelUserColumns(conn);
+      } finally {
+        conn.release();
+      }
+    }
     const user = await requireUser(req);
 
     const body = await req.json().catch(() => ({}));
@@ -213,8 +250,23 @@ export async function PUT(req: Request) {
       [fullName, phone || lead.whatsapp, lead.id]
     );
 
-    const updatedUser = await queryOne<RowDataPacket & { country_id?: number | null; display_currency_code?: string | null }>(
+    const updatedUser = await queryOne<
+      RowDataPacket & {
+        country_id?: number | null;
+        display_currency_code?: string | null;
+        white_label_trial_ends_at?: string | null;
+        white_label_plan?: string | null;
+        white_label_subscription_status?: string | null;
+        white_label_subscription_provider?: string | null;
+        white_label_subscription_id?: string | null;
+      }
+    >(
       `SELECT country_id, display_currency_code
+              , white_label_trial_ends_at
+              , white_label_plan
+              , white_label_subscription_status
+              , white_label_subscription_provider
+              , white_label_subscription_id
        FROM users
        WHERE id = ?
        LIMIT 1`,
@@ -323,6 +375,11 @@ export async function PUT(req: Request) {
       phone,
       country_id: updatedUser?.country_id ?? null,
       display_currency_code: updatedUser?.display_currency_code ?? null,
+      white_label_trial_ends_at: updatedUser?.white_label_trial_ends_at ?? null,
+      white_label_plan: updatedUser?.white_label_plan ?? null,
+      white_label_subscription_status: updatedUser?.white_label_subscription_status ?? null,
+      white_label_subscription_provider: updatedUser?.white_label_subscription_provider ?? null,
+      white_label_subscription_id: updatedUser?.white_label_subscription_id ?? null,
     });
   } catch (e: any) {
     const msg = e?.message || "Unauthorized";

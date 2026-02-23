@@ -44,6 +44,7 @@ type SettingsItem = {
   white_label_yearly_price_gbp?: number | null;
   white_label_monthly_price_cad?: number | null;
   white_label_yearly_price_cad?: number | null;
+  white_label_subscription_countries?: string | null;
   white_label_paypal_product_id?: string | null;
   white_label_paypal_plan_monthly_gbp?: string | null;
   white_label_paypal_plan_yearly_gbp?: string | null;
@@ -181,12 +182,13 @@ export default function InternalSettingsPage() {
   const [whiteLabelYearlyPriceGbp, setWhiteLabelYearlyPriceGbp] = useState("");
   const [whiteLabelMonthlyPriceCad, setWhiteLabelMonthlyPriceCad] = useState("");
   const [whiteLabelYearlyPriceCad, setWhiteLabelYearlyPriceCad] = useState("");
+  const [whiteLabelSubscriptionCountries, setWhiteLabelSubscriptionCountries] = useState("GB,CA");
   const [whiteLabelPaypalProductId, setWhiteLabelPaypalProductId] = useState("");
   const [whiteLabelPaypalMonthlyGbp, setWhiteLabelPaypalMonthlyGbp] = useState("");
   const [whiteLabelPaypalYearlyGbp, setWhiteLabelPaypalYearlyGbp] = useState("");
   const [whiteLabelPaypalMonthlyCad, setWhiteLabelPaypalMonthlyCad] = useState("");
   const [whiteLabelPaypalYearlyCad, setWhiteLabelPaypalYearlyCad] = useState("");
-
+  
   const [paypalPlanLoading, setPaypalPlanLoading] = useState(false);
   const [paypalPlanMsg, setPaypalPlanMsg] = useState<string | null>(null);
   const [paypalPlanErr, setPaypalPlanErr] = useState<string | null>(null);
@@ -344,6 +346,7 @@ export default function InternalSettingsPage() {
       setWhiteLabelYearlyPriceCad(
         item.white_label_yearly_price_cad != null ? String(item.white_label_yearly_price_cad) : ""
       );
+      setWhiteLabelSubscriptionCountries(String(item.white_label_subscription_countries || "GB,CA"));
       setWhiteLabelPaypalProductId(String(item.white_label_paypal_product_id || ""));
       setWhiteLabelPaypalMonthlyGbp(String(item.white_label_paypal_plan_monthly_gbp || ""));
       setWhiteLabelPaypalYearlyGbp(String(item.white_label_paypal_plan_yearly_gbp || ""));
@@ -611,6 +614,7 @@ export default function InternalSettingsPage() {
         white_label_yearly_price_gbp: whiteLabelYearlyPriceGbp ? Number(whiteLabelYearlyPriceGbp) : null,
         white_label_monthly_price_cad: whiteLabelMonthlyPriceCad ? Number(whiteLabelMonthlyPriceCad) : null,
         white_label_yearly_price_cad: whiteLabelYearlyPriceCad ? Number(whiteLabelYearlyPriceCad) : null,
+        white_label_subscription_countries: whiteLabelSubscriptionCountries.trim() || null,
         white_label_paypal_product_id: whiteLabelPaypalProductId.trim() || null,
         white_label_paypal_plan_monthly_gbp: whiteLabelPaypalMonthlyGbp.trim() || null,
         white_label_paypal_plan_yearly_gbp: whiteLabelPaypalYearlyGbp.trim() || null,
@@ -1695,6 +1699,18 @@ export default function InternalSettingsPage() {
                   inputMode="numeric"
                 />
               </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-neutral-400">Eligible countries (ISO2)</label>
+                <input
+                  value={whiteLabelSubscriptionCountries}
+                  onChange={(e) => setWhiteLabelSubscriptionCountries(e.target.value.toUpperCase())}
+                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  placeholder="GB,CA"
+                />
+                <p className="mt-2 text-[11px] text-neutral-500">
+                  Comma-separated ISO2 codes. Only these countries can see Amazon comparison and subscribe.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1790,6 +1806,9 @@ export default function InternalSettingsPage() {
                 placeholder="PayPal product ID"
               />
             </div>
+            <p className="mt-2 text-[11px] text-neutral-500">
+              If empty, the helper will create a product and fill this automatically.
+            </p>
           </div>
         </div>
 

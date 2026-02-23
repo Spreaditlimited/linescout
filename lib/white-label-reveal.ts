@@ -31,16 +31,23 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   await ensureWhiteLabelUserColumns(conn);
 
   const [[settingsRow]]: any = await conn.query(
-    `SELECT white_label_trial_days, white_label_daily_reveals
+    `SELECT white_label_trial_days, white_label_daily_reveals, white_label_subscription_countries
      FROM linescout_settings
      ORDER BY id DESC LIMIT 1`
   );
   const trialDays = toInt(settingsRow?.white_label_trial_days, 3);
   const dailyLimit = Math.max(1, toInt(settingsRow?.white_label_daily_reveals, 10));
+  const allowedCountries = String(settingsRow?.white_label_subscription_countries || "GB,CA")
+    .split(",")
+    .map((c: string) => c.trim().toUpperCase())
+    .filter(Boolean)
+    .map((c: string) => (c === "UK" ? "GB" : c));
+  const allowedSet = new Set(allowedCountries);
 
   const [[userRow]]: any = await conn.query(
     `SELECT u.id, u.white_label_trial_ends_at, u.white_label_plan, u.white_label_subscription_status,
             u.white_label_reveals_used, u.white_label_reveals_date,
+            c.iso2 AS country_iso2,
             cur.code AS currency_code
      FROM users u
      LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -51,6 +58,10 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   );
 
   if (!userRow?.id) return { ok: false, error: "User not found" };
+  const userCountry = String(userRow?.country_iso2 || "").trim().toUpperCase();
+  if (userCountry && !allowedSet.has(userCountry)) {
+    return { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." };
+  }
 
   const now = new Date();
   let trialEnds = userRow.white_label_trial_ends_at ? new Date(userRow.white_label_trial_ends_at) : null;

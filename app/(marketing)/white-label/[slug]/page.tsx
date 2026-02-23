@@ -9,6 +9,7 @@ import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracke
 import DeferredSection from "@/components/white-label/DeferredSection";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
+import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -137,6 +138,15 @@ function getCountryCurrencyCode(
   return allowed.has(settlement) ? settlement : "NGN";
 }
 
+function parseEligibleCountries(raw?: string | null) {
+  const source = String(raw || "GB,CA");
+  return source
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+    .map((c) => (c === "UK" ? "GB" : c));
+}
+
 function fallbackSeoDescription(product: ProductRow) {
   return (
     product.seo_description ||
@@ -240,14 +250,22 @@ export default async function WhiteLabelMarketingDetailPage({
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
   let currencyCode = "NGN";
+  let amazonComparisonEnabled = false;
   try {
     await ensureCountryConfig(conn);
+    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     const currencyById = new Map<number, string>(
       (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
     );
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
     currencyCode = getCountryCurrencyCode(picked, currencyById);
+    const countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+    const [settingsRows]: any = await conn.query(
+      `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+    );
+    const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
+    amazonComparisonEnabled = Boolean(countryIso2) && eligible.has(countryIso2) && currencyCode !== "NGN";
 
     await ensureWhiteLabelProductsReady(conn);
 
@@ -445,20 +463,22 @@ export default async function WhiteLabelMarketingDetailPage({
                       )} for 1,000 units`
                     : "Pricing pending"}
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
-                    Amazon price
-                  </p>
-                  <div className="mt-1">
-                    <p className="text-[11px] text-neutral-500">Amazon price available</p>
-                    <Link
-                      href="/sign-in?next=/white-label/ideas"
-                      className="mt-2 inline-flex text-[11px] font-semibold text-[#2D3461]"
-                    >
-                      Sign in to compare Amazon prices
-                    </Link>
+                {amazonComparisonEnabled ? (
+                  <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+                      Amazon price
+                    </p>
+                    <div className="mt-1">
+                      <p className="text-[11px] text-neutral-500">Amazon price available</p>
+                      <Link
+                        href="/sign-in?next=/white-label/ideas"
+                        className="mt-2 inline-flex text-[11px] font-semibold text-[#2D3461]"
+                      >
+                        Sign in to compare Amazon prices
+                      </Link>
+                    </div>
                   </div>
-                </div>
+                ) : null}
                 <Link href="/white-label" className="text-sm font-semibold text-neutral-500 hover:text-neutral-700">
                   Back to ideas
                 </Link>

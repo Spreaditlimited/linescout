@@ -258,6 +258,7 @@ async function ensureRow(conn: mysql.PoolConnection) {
        ADD COLUMN white_label_yearly_price_gbp DECIMAL(10,2) NULL,
        ADD COLUMN white_label_monthly_price_cad DECIMAL(10,2) NULL,
        ADD COLUMN white_label_yearly_price_cad DECIMAL(10,2) NULL,
+       ADD COLUMN white_label_subscription_countries VARCHAR(64) NULL,
        ADD COLUMN white_label_paypal_product_id VARCHAR(64) NULL,
        ADD COLUMN white_label_paypal_plan_monthly_gbp VARCHAR(64) NULL,
        ADD COLUMN white_label_paypal_plan_yearly_gbp VARCHAR(64) NULL,
@@ -271,8 +272,8 @@ async function ensureRow(conn: mysql.PoolConnection) {
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10)`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals, white_label_subscription_countries)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10, 'GB,CA')`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -559,6 +560,19 @@ export async function POST(req: Request) {
   const white_label_yearly_price_gbp = num(body.white_label_yearly_price_gbp);
   const white_label_monthly_price_cad = num(body.white_label_monthly_price_cad);
   const white_label_yearly_price_cad = num(body.white_label_yearly_price_cad);
+  const white_label_subscription_countries_raw =
+    typeof body?.white_label_subscription_countries === "string"
+      ? body.white_label_subscription_countries.trim()
+      : "";
+  const white_label_subscription_countries = white_label_subscription_countries_raw
+    ? white_label_subscription_countries_raw
+        .split(",")
+        .map((part: string) => part.trim().toUpperCase())
+        .filter(Boolean)
+        .map((code: string) => (code === "UK" ? "GB" : code))
+        .filter((code: string, idx: number, arr: string[]) => arr.indexOf(code) === idx)
+        .join(",")
+    : "";
   const white_label_paypal_plan_monthly_gbp =
     typeof body?.white_label_paypal_plan_monthly_gbp === "string"
       ? body.white_label_paypal_plan_monthly_gbp.trim()
@@ -666,15 +680,16 @@ export async function POST(req: Request) {
            max_active_claims = ?,
            white_label_trial_days = ?,
            white_label_daily_reveals = ?,
-           white_label_monthly_price_gbp = ?,
-           white_label_yearly_price_gbp = ?,
-           white_label_monthly_price_cad = ?,
-           white_label_yearly_price_cad = ?,
-           white_label_paypal_product_id = ?,
-           white_label_paypal_plan_monthly_gbp = ?,
-           white_label_paypal_plan_yearly_gbp = ?,
-           white_label_paypal_plan_monthly_cad = ?,
-           white_label_paypal_plan_yearly_cad = ?,
+          white_label_monthly_price_gbp = ?,
+          white_label_yearly_price_gbp = ?,
+          white_label_monthly_price_cad = ?,
+          white_label_yearly_price_cad = ?,
+          white_label_subscription_countries = ?,
+          white_label_paypal_product_id = ?,
+          white_label_paypal_plan_monthly_gbp = ?,
+          white_label_paypal_plan_yearly_gbp = ?,
+          white_label_paypal_plan_monthly_cad = ?,
+          white_label_paypal_plan_yearly_cad = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
@@ -701,6 +716,7 @@ export async function POST(req: Request) {
         white_label_yearly_price_gbp,
         white_label_monthly_price_cad,
         white_label_yearly_price_cad,
+        white_label_subscription_countries || null,
         white_label_paypal_product_id || null,
         white_label_paypal_plan_monthly_gbp || null,
         white_label_paypal_plan_yearly_gbp || null,

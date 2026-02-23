@@ -13,6 +13,11 @@ type ProfileResponse = {
   phone?: string;
   country_id?: number | null;
   display_currency_code?: string | null;
+  white_label_trial_ends_at?: string | null;
+  white_label_plan?: string | null;
+  white_label_subscription_status?: string | null;
+  white_label_subscription_provider?: string | null;
+  white_label_subscription_id?: string | null;
   countries?: { id: number; name: string; iso2: string; default_currency_id?: number | null }[];
   currencies?: { id: number; code: string; symbol?: string | null }[];
   country_currencies?: { country_id: number; currency_id: number }[];
@@ -29,6 +34,11 @@ export default function ProfilePage() {
   const [currencies, setCurrencies] = useState<ProfileResponse["currencies"]>([]);
   const [countryId, setCountryId] = useState<number | "">("");
   const [displayCurrencyCode, setDisplayCurrencyCode] = useState("");
+  const [subscriptionPlan, setSubscriptionPlan] = useState("");
+  const [subscriptionStatus, setSubscriptionStatus] = useState("");
+  const [subscriptionProvider, setSubscriptionProvider] = useState("");
+  const [subscriptionId, setSubscriptionId] = useState("");
+  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -59,6 +69,11 @@ export default function ProfilePage() {
         setCurrencies(Array.isArray(json?.currencies) ? json.currencies : []);
         setCountryId(typeof json?.country_id === "number" ? json.country_id : "");
         setDisplayCurrencyCode(String(json?.display_currency_code || ""));
+        setSubscriptionPlan(String(json?.white_label_plan || ""));
+        setSubscriptionStatus(String(json?.white_label_subscription_status || ""));
+        setSubscriptionProvider(String(json?.white_label_subscription_provider || ""));
+        setSubscriptionId(String(json?.white_label_subscription_id || ""));
+        setTrialEndsAt(json?.white_label_trial_ends_at || null);
         setStatus("idle");
       }
     }
@@ -111,6 +126,11 @@ export default function ProfilePage() {
     setPhone(String(json?.phone || phone));
     setCountryId(typeof json?.country_id === "number" ? json.country_id : countryId);
     setDisplayCurrencyCode(String(json?.display_currency_code || displayCurrencyCode));
+    setSubscriptionPlan(String(json?.white_label_plan || subscriptionPlan));
+    setSubscriptionStatus(String(json?.white_label_subscription_status || subscriptionStatus));
+    setSubscriptionProvider(String(json?.white_label_subscription_provider || subscriptionProvider));
+    setSubscriptionId(String(json?.white_label_subscription_id || subscriptionId));
+    setTrialEndsAt(json?.white_label_trial_ends_at || trialEndsAt);
     setStatus("idle");
     setMessage("Profile updated.");
   }
@@ -130,6 +150,27 @@ export default function ProfilePage() {
     const currency = (currencies || []).find((c) => Number(c.id) === defaultCurrencyId);
     return currency?.code ? String(currency.code) : "";
   }
+
+  const trialActive = (() => {
+    if (!trialEndsAt) return false;
+    const end = new Date(trialEndsAt);
+    if (Number.isNaN(end.valueOf())) return false;
+    return new Date() <= end;
+  })();
+
+  const subscriptionActive =
+    subscriptionPlan.toLowerCase() === "paid" && subscriptionStatus.toLowerCase() === "active";
+  const subscriptionLabel = subscriptionActive
+    ? "Active"
+    : trialActive
+    ? "Trial"
+    : subscriptionStatus
+    ? subscriptionStatus.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
+    : "Not active";
+  const trialLabel = trialActive
+    ? `Trial ends ${new Date(trialEndsAt || "").toLocaleDateString()}`
+    : null;
+  const showManageLink = subscriptionProvider.toLowerCase() === "paypal" && Boolean(subscriptionId);
 
   return (
     <div className="px-6 py-10">
@@ -243,6 +284,38 @@ export default function ProfilePage() {
             {status === "saving" ? "Saving..." : "Save changes"}
           </button>
         </form>
+
+        <div className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+              White label subscription
+            </p>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                subscriptionActive
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : trialActive
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-neutral-200 bg-white text-neutral-600"
+              }`}
+            >
+              {subscriptionLabel}
+            </span>
+          </div>
+          <div className="mt-2 text-sm text-neutral-600">
+            {trialLabel ? <p>{trialLabel}</p> : <p>Manage your white label access and billing.</p>}
+          </div>
+          {showManageLink ? (
+            <a
+              href="https://www.paypal.com/myaccount/autopay"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+            >
+              Manage subscription
+            </a>
+          ) : null}
+        </div>
 
         <div className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Session</p>

@@ -12,6 +12,7 @@ import MarketingEventTracker from "@/components/marketing/MarketingEventTracker"
 import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountrySelector";
 import { currencyForCode } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
+import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -189,6 +190,15 @@ function getCountryCurrencyCode(
   return allowed.has(settlement) ? settlement : "NGN";
 }
 
+function parseEligibleCountries(raw?: string | null) {
+  const source = String(raw || "GB,CA");
+  return source
+    .split(",")
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean)
+    .map((c) => (c === "UK" ? "GB" : c));
+}
+
 export default async function WhiteLabelIdeasPage({
   searchParams,
 }: {
@@ -213,8 +223,10 @@ export default async function WhiteLabelIdeasPage({
   let countryOptions: { value: string; label: string }[] = [];
   let countryCode = "NG";
   let currencyCode = "NGN";
+  let amazonComparisonEnabled = false;
   try {
     await ensureCountryConfig(conn);
+    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     countries = (lists.countries || []) as typeof countries;
     const currencyById = new Map<number, string>(
@@ -224,6 +236,11 @@ export default async function WhiteLabelIdeasPage({
     countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
     currencyCode = getCountryCurrencyCode(picked, currencyById);
     countryOptions = countries.map((c) => ({ value: String(c.iso2 || "").toUpperCase(), label: c.name }));
+    const [settingsRows]: any = await conn.query(
+      `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+    );
+    const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
+    amazonComparisonEnabled = Boolean(countryCode) && eligible.has(countryCode) && currencyCode !== "NGN";
 
     await ensureWhiteLabelProductsReady(conn);
 
@@ -502,7 +519,12 @@ export default async function WhiteLabelIdeasPage({
       </div>
 
       <div className="mt-6">
-      <WhiteLabelCatalogClient items={items} detailBase="/white-label/ideas" currencyCode={currencyCode} />
+      <WhiteLabelCatalogClient
+        items={items}
+        detailBase="/white-label/ideas"
+        currencyCode={currencyCode}
+        amazonComparisonEnabled={amazonComparisonEnabled}
+      />
 
         <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-neutral-500">

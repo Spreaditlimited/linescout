@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 type RevealResult = {
   ok: true;
@@ -36,6 +37,7 @@ export default function WhiteLabelAmazonReveal({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [data, setData] = useState<RevealResult | null>(null);
 
   const revealed = Boolean(data?.ok);
@@ -95,6 +97,7 @@ export default function WhiteLabelAmazonReveal({
   async function reveal() {
     setLoading(true);
     setError(null);
+    setErrorCode(null);
     try {
       const res = await fetch("/api/white-label/amazon/reveal", {
         method: "POST",
@@ -110,6 +113,7 @@ export default function WhiteLabelAmazonReveal({
             ? "Daily reveal limit reached."
             : json?.error || "Failed to reveal Amazon price.";
         setError(msg);
+        setErrorCode(json?.code || null);
         return;
       }
       setData(json as RevealResult);
@@ -148,7 +152,19 @@ export default function WhiteLabelAmazonReveal({
           >
             {loading ? "Revealing..." : "Reveal Amazon price"}
           </button>
-          {error ? <p className="mt-1 text-[11px] text-amber-700">{error}</p> : null}
+          {error ? (
+            <div className="mt-1 text-[11px] text-amber-700">
+              {error}
+              {errorCode === "subscription_required" ? (
+                <Link
+                  href="/white-label/subscribe"
+                  className="ml-2 inline-flex font-semibold text-[var(--agent-blue)]"
+                >
+                  Subscribe now
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </>
       )}
     </div>
