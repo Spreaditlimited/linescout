@@ -90,6 +90,7 @@ export async function POST(req: Request) {
 
     const result = await refreshKeepaProducts(conn, rows || [], {
       marketplaces: marketplaces as any,
+      allowSearch: true,
     });
 
     return NextResponse.json({ ok: true, ...result });

@@ -99,13 +99,13 @@ export async function searchKeepaAsin(term: string, marketplace: KeepaMarketplac
   const domain = MARKET_CONFIG[marketplace].domain;
   const data = await keepaRequest("search", {
     domain,
+    type: "product",
     term: term.trim(),
+    "asins-only": 1,
+    page: 0,
+    history: 0,
   });
-  const asin =
-    data?.asinList?.[0] ||
-    data?.asin?.[0] ||
-    data?.products?.[0]?.asin ||
-    null;
+  const asin = data?.products?.[0]?.asin || data?.asinList?.[0] || data?.asin?.[0] || null;
   return asin ? String(asin).trim() : null;
 }
 

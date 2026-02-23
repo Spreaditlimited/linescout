@@ -21,6 +21,7 @@ type RefreshOptions = {
   marketplaces?: ("UK" | "CA")[];
   maxProducts?: number;
   force?: boolean;
+  allowSearch?: boolean;
 };
 
 function buildSearchTerm(row: KeepaProductRow) {
@@ -69,12 +70,14 @@ export async function refreshKeepaProducts(
   let errors = 0;
   let lastError: string | null = null;
 
+  const allowSearch = Boolean(options.allowSearch);
+
   for (const row of rows.slice(0, maxProducts)) {
     for (const market of marketplaces) {
       const cols = marketColumns(market);
       let asin = nextAsin(row, market);
       try {
-        if (!asin) {
+        if (!asin && allowSearch) {
           const term = buildSearchTerm(row);
           asin = await searchKeepaAsin(term, market);
         }

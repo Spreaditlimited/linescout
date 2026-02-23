@@ -19,15 +19,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
   }
 
+  const url = new URL(req.url);
+  const limitParam = Number(url.searchParams.get("limit") || "");
+  const offsetParam = Number(url.searchParams.get("offset") || "");
   const maxProductsEnv = Number(process.env.KEEPA_MAX_PRODUCTS_PER_RUN || "500");
-  const maxProducts = Number.isFinite(maxProductsEnv) ? Math.max(1, maxProductsEnv) : 500;
+  const maxProducts = Number.isFinite(limitParam)
+    ? Math.max(1, Math.min(limitParam, 500))
+    : Number.isFinite(maxProductsEnv)
+    ? Math.max(1, maxProductsEnv)
+    : 500;
+  const offset = Number.isFinite(offsetParam) && offsetParam > 0 ? Math.floor(offsetParam) : 200;
 
   const conn = await db.getConnection();
   try {
-    const rows = await listTopWhiteLabelProducts(conn, 500, 200);
+    const rows = await listTopWhiteLabelProducts(conn, 500, offset);
     const result = await refreshKeepaProducts(conn, rows, {
       maxProducts,
       marketplaces: ["UK", "CA"],
+      allowSearch: true,
     });
     return NextResponse.json({ ok: true, scope: "weekly", ...result });
   } catch (e: any) {
