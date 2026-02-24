@@ -18,6 +18,7 @@ import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
+// Keep in sync with social preview assets.
 
 const PAGE_SIZE = 20;
 const FX_RATE_NGN = 1500;
