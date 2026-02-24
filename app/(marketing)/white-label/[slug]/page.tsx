@@ -464,15 +464,20 @@ export default async function WhiteLabelMarketingDetailPage({
                     : "Pricing pending"}
                 </div>
                 {amazonComparisonEnabled ? (
-                  <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
+                  <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-3 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
                       Amazon price
                     </p>
-                    <div className="mt-1">
+                    <div className="mt-1 flex min-h-[70px] flex-col">
                       <p className="text-[11px] text-neutral-500">Amazon price available</p>
+                      <div className="mt-2">
+                        <span className="inline-flex rounded-full bg-[rgba(45,52,97,0.2)] px-4 py-1 text-[11px] font-semibold text-[rgba(45,52,97,0.55)] blur-sm">
+                          £129.99–£199.99
+                        </span>
+                      </div>
                       <Link
                         href="/sign-in?next=/white-label/ideas"
-                        className="mt-2 inline-flex text-[11px] font-semibold text-[#2D3461]"
+                        className="mt-auto inline-flex text-[11px] font-semibold text-[#2D3461]"
                       >
                         Sign in to compare Amazon prices
                       </Link>

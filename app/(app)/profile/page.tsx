@@ -291,7 +291,7 @@ export default function ProfilePage() {
               White label subscription
             </p>
             <span
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              className={`rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap ${
                 subscriptionActive
                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                   : trialActive

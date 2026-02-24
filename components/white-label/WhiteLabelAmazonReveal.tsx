@@ -125,7 +125,7 @@ export default function WhiteLabelAmazonReveal({
   }
 
   return (
-    <div className="rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-xs text-neutral-600">
+    <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-3 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
         Amazon price{labelSuffix}
       </p>
@@ -144,6 +144,11 @@ export default function WhiteLabelAmazonReveal({
       ) : (
         <>
           <p className="mt-1 text-[11px] text-neutral-500">Amazon price available</p>
+          <div className="mt-2">
+            <span className="inline-flex rounded-full bg-[rgba(45,52,97,0.2)] px-4 py-1 text-[11px] font-semibold text-[rgba(45,52,97,0.55)] blur-sm">
+              £129.99–£199.99
+            </span>
+          </div>
           <button
             type="button"
             onClick={reveal}

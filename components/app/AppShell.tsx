@@ -136,6 +136,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (!active) return;
         if (res.ok && json?.notice) {
           setStickyNotice(json.notice);
+        } else if (res.ok) {
+          setStickyNotice(null);
         }
       })();
     };

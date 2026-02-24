@@ -34,6 +34,19 @@ type SettingsSnapshot = {
   exchange_rate_rmb: number;
   payout_summary_email?: string | null;
   agent_otp_mode?: "phone" | "email" | null;
+  max_active_claims?: number;
+  white_label_trial_days?: number;
+  white_label_daily_reveals?: number;
+  white_label_monthly_price_gbp?: number | null;
+  white_label_yearly_price_gbp?: number | null;
+  white_label_monthly_price_cad?: number | null;
+  white_label_yearly_price_cad?: number | null;
+  white_label_subscription_countries?: string | null;
+  white_label_paypal_product_id?: string | null;
+  white_label_paypal_plan_monthly_gbp?: string | null;
+  white_label_paypal_plan_yearly_gbp?: string | null;
+  white_label_paypal_plan_monthly_cad?: string | null;
+  white_label_paypal_plan_yearly_cad?: string | null;
   sticky_notice_enabled?: number;
   sticky_notice_title?: string | null;
   sticky_notice_body?: string | null;
@@ -219,7 +232,7 @@ export default function InternalNotificationsPage() {
     }
   }
 
-  async function saveSticky(publish: boolean) {
+  async function saveSticky(publish: boolean, overrideEnabled?: boolean) {
     setStickyErr(null);
     setStickyOk(null);
     if (!settingsSnapshot) {
@@ -233,6 +246,7 @@ export default function InternalNotificationsPage() {
 
     setStickySaving(true);
     try {
+      const enabledValue = overrideEnabled ?? stickyEnabled;
       const payload = {
         commitment_due_ngn: Number(settingsSnapshot.commitment_due_ngn || 0),
         agent_percent: Number(settingsSnapshot.agent_percent || 0),
@@ -244,7 +258,24 @@ export default function InternalNotificationsPage() {
         exchange_rate_rmb: Number(settingsSnapshot.exchange_rate_rmb || 0),
         payout_summary_email: String(settingsSnapshot.payout_summary_email || "").trim(),
         agent_otp_mode: settingsSnapshot.agent_otp_mode === "email" ? "email" : "phone",
-        sticky_notice_enabled: publish ? true : stickyEnabled,
+        max_active_claims: Number(settingsSnapshot.max_active_claims || 3),
+        white_label_trial_days: Number(settingsSnapshot.white_label_trial_days || 0),
+        white_label_daily_reveals: Number(settingsSnapshot.white_label_daily_reveals || 0),
+        white_label_monthly_price_gbp:
+          settingsSnapshot.white_label_monthly_price_gbp != null ? Number(settingsSnapshot.white_label_monthly_price_gbp) : null,
+        white_label_yearly_price_gbp:
+          settingsSnapshot.white_label_yearly_price_gbp != null ? Number(settingsSnapshot.white_label_yearly_price_gbp) : null,
+        white_label_monthly_price_cad:
+          settingsSnapshot.white_label_monthly_price_cad != null ? Number(settingsSnapshot.white_label_monthly_price_cad) : null,
+        white_label_yearly_price_cad:
+          settingsSnapshot.white_label_yearly_price_cad != null ? Number(settingsSnapshot.white_label_yearly_price_cad) : null,
+        white_label_subscription_countries: String(settingsSnapshot.white_label_subscription_countries || "GB,CA"),
+        white_label_paypal_product_id: String(settingsSnapshot.white_label_paypal_product_id || ""),
+        white_label_paypal_plan_monthly_gbp: String(settingsSnapshot.white_label_paypal_plan_monthly_gbp || ""),
+        white_label_paypal_plan_yearly_gbp: String(settingsSnapshot.white_label_paypal_plan_yearly_gbp || ""),
+        white_label_paypal_plan_monthly_cad: String(settingsSnapshot.white_label_paypal_plan_monthly_cad || ""),
+        white_label_paypal_plan_yearly_cad: String(settingsSnapshot.white_label_paypal_plan_yearly_cad || ""),
+        sticky_notice_enabled: publish ? true : enabledValue,
         sticky_notice_title: stickyTitle.trim(),
         sticky_notice_body: stickyBody.trim(),
         sticky_notice_target: stickyTarget,
@@ -367,6 +398,17 @@ export default function InternalNotificationsPage() {
                 className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2 text-xs font-semibold text-neutral-100 hover:border-neutral-500 disabled:opacity-60"
               >
                 {stickySaving ? "Saving..." : "Save notice"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStickyEnabled(false);
+                  saveSticky(false, false);
+                }}
+                disabled={stickySaving}
+                className="rounded-xl border border-amber-400/60 bg-neutral-950 px-4 py-2 text-xs font-semibold text-amber-200 hover:border-amber-300 disabled:opacity-60"
+              >
+                {stickySaving ? "Disabling..." : "Disable notice"}
               </button>
               <button
                 type="button"
