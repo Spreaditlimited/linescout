@@ -177,62 +177,6 @@ export default function HomePage() {
           </section>
 
           <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--agent-blue)]">
-                    White Label
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-neutral-900 sm:text-3xl">
-                    Discover white label winners with market data.
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-neutral-600">
-                    Compare landed costs, Amazon pricing signals, and premium insights so you can validate demand
-                    before committing to inventory.
-                  </p>
-                </div>
-                <Link
-                  href="/white-label"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-4 py-2 text-xs font-semibold text-[var(--agent-blue)]"
-                >
-                  Explore white label ideas
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Curated product ideas</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    High-performing ideas ranked by demand signals and category momentum.
-                  </p>
-                </div>
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <BadgeCheck className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Amazon price comparison</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    Reveal Amazon prices for UK and Canada to validate margin opportunities.
-                  </p>
-                </div>
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Premium product insights</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    Trend deltas, competition signals, seasonality, and buy-box stability for paid users.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
             <div className="rounded-[28px] border border-[rgba(45,52,97,0.12)] bg-white/70 p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
@@ -304,55 +248,58 @@ export default function HomePage() {
           </section>
 
           <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-                  White label ideas
-                </p>
-                <h2 className="mt-3 text-2xl font-semibold text-neutral-900">
-                  Find market-ready products you can brand and sell.
-                </h2>
-                <p className="mt-2 text-sm text-neutral-600">
-                  Explore curated white label product ideas, compare pricing signals, and start sourcing with
-                  verified partners when you are ready.
-                </p>
-                <Link
-                  href="/white-label"
-                  className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)]"
-                >
-                  Explore white label ideas <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-              <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.06)] p-6 text-sm text-neutral-700 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-                  Built for your market
-                </p>
-                <p className="mt-3 text-sm text-neutral-600">
-                  Save time by starting with products that already have demand signals and a clear path to
-                  sourcing. We help you move from idea to supplier fast.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section id="app-download" className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="rounded-[28px] border border-[rgba(45,52,97,0.2)] bg-[var(--agent-blue)] px-6 py-8 text-white shadow-[0_25px_60px_rgba(45,52,97,0.35)] sm:px-8">
+            <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] sm:p-8">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[rgba(255,255,255,0.7)]">Mobile first</p>
-                  <h2 className="mt-3 text-2xl font-semibold">LineScout is best on the app</h2>
-                  <p className="mt-2 text-sm text-[rgba(255,255,255,0.75)]">
-                    Get instant access to AI clarity, sourcing specialists, and project tracking from your phone.
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--agent-blue)]">
+                    White Label
+                  </p>
+                  <h2 className="mt-3 text-2xl font-semibold text-neutral-900 sm:text-3xl">
+                    Discover white label winners with market data.
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm text-neutral-600">
+                    Compare landed costs, Amazon pricing signals, and premium insights so you can validate demand
+                    before committing to inventory.
                   </p>
                 </div>
                 <Link
-                  href="/sign-in"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/30 bg-white/10 px-4 py-2 text-xs font-semibold text-white"
+                  href="/white-label"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-4 py-2 text-xs font-semibold text-[var(--agent-blue)]"
                 >
-                  Continue on web <ArrowRight className="h-4 w-4" />
+                  Explore white label ideas
+                  <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
-              <HomeAppDownloadButtons />
+
+              <div className="mt-6 grid gap-4 md:grid-cols-3">
+                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Curated product ideas</h3>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    High-performing ideas ranked by demand signals and category momentum.
+                  </p>
+                </div>
+                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
+                    <BadgeCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Amazon price comparison</h3>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    Reveal Amazon prices for UK and Canada to validate margin opportunities.
+                  </p>
+                </div>
+                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
+                    <ShieldCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Premium product insights</h3>
+                  <p className="mt-2 text-sm text-neutral-600">
+                    Trend deltas, competition signals, seasonality, and buy-box stability for paid users.
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
