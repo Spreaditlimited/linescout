@@ -3,14 +3,24 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
 import { ensureReordersTable } from "@/lib/reorders";
+import { buildNoticeEmail } from "@/lib/otp-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const nodemailer = require("nodemailer");
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
 function isValidRouteType(v: any): v is RouteType {
   return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
+}
+
+function routeLabel(rt: RouteType) {
+  if (rt === "white_label") return "White Label";
+  if (rt === "simple_sourcing") return "Simple Sourcing";
+  return "Machine Sourcing";
 }
 
 function randomChunk(len: number) {
@@ -115,11 +125,126 @@ function buildProductSummaryFromItems(items: any[]) {
   return extras.join(" · ");
 }
 
+function formatCurrency(amount: number, code: string) {
+  if (!Number.isFinite(amount)) return "";
+  try {
+    return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${code} ${amount.toFixed(2)}`;
+  }
+}
+
+function buildCustomerEmail(params: {
+  firstName: string | null;
+  token: string;
+  amountText: string;
+  orderId: string;
+  handoffId: number;
+}) {
+  const greeting = params.firstName ? `Hi ${params.firstName},` : "Hi there,";
+  const deepLink = `linescout://paid-chat?handoff_id=${encodeURIComponent(String(params.handoffId))}`;
+  return buildNoticeEmail({
+    subject: "Payment Confirmed: Your LineScout Sourcing Project is Active",
+    title: "Payment confirmed",
+    lines: [
+      greeting,
+      "Your payment has been confirmed successfully. Your paid sourcing project is now active.",
+      `Token: ${params.token}`,
+      `Amount: ${params.amountText}`,
+      `PayPal Order: ${params.orderId}`,
+      "Open the LineScout app and tap the Open Paid Chat button below.",
+      "Share your requirements in one message if possible (specs, pictures, capacity, voltage, output, target country).",
+      "Your sourcing specialist will respond inside the paid chat thread.",
+      "Please keep conversations respectful. You can report issues directly inside paid chat.",
+      "If you did not authorize this payment, reply to this email immediately and we will investigate.",
+    ],
+    footerNote: "This email was sent because a payment was completed on your LineScout account.",
+  });
+}
+
+function firstNameFromUser(u: any) {
+  const candidates = [
+    u?.first_name,
+    u?.firstname,
+    u?.firstName,
+    u?.name,
+  ]
+    .map((x: any) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean);
+
+  if (!candidates.length) return null;
+  const raw = candidates[0];
+  const first = raw.split(" ")[0]?.trim();
+  return first || null;
+}
+
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST?.trim();
+  const port = Number(process.env.SMTP_PORT || 0);
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASS?.trim();
+  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+
+  if (!host || !port || !user || !pass) {
+    return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
+  }
+
+  return { ok: true as const, host, port, user, pass, from };
+}
+
+async function sendEmail(opts: { to: string; replyTo?: string; subject: string; text: string; html: string }) {
+  const cfg = getSmtpConfig();
+  if (!cfg.ok) return { ok: false as const, error: cfg.error };
+  const transporter = nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.port === 465,
+    auth: { user: cfg.user, pass: cfg.pass },
+  });
+  await transporter.sendMail({
+    from: cfg.from,
+    to: opts.to,
+    replyTo: opts.replyTo,
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  });
+  return { ok: true as const };
+}
+
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
+
 export async function POST(req: Request) {
   try {
     const u = await requireUser(req);
     const userId = Number((u as any)?.id || 0);
     const userEmail = String((u as any)?.email || "").trim();
+    const agentLabel = firstNameFromUser(u) || "Customer";
 
     const body = await req.json().catch(() => ({}));
     const orderId = String(body?.order_id || "").trim();
@@ -220,6 +345,8 @@ export async function POST(req: Request) {
 
         let finalRouteType: RouteType = routeType as RouteType;
         let assignedAgentId: number | null = null;
+        let assignedAgentEmail: string | null = null;
+        let agentEmailNotifications = false;
         let sourceConversationIdForContext = sourceConversationId;
         let sourceHandoffIdForContext: number | null = null;
         let sourceAgentId: number | null = null;
@@ -286,7 +413,7 @@ export async function POST(req: Request) {
         if (sourceAgentId) {
           const [agentRows]: any = await conn.query(
             `
-            SELECT u.id, u.is_active, ap.approval_status
+            SELECT u.id, u.is_active, ap.approval_status, ap.email, ap.email_notifications_enabled
             FROM internal_users u
             LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
             WHERE u.id = ?
@@ -297,6 +424,8 @@ export async function POST(req: Request) {
           const a = agentRows?.[0];
           if (a?.id && Number(a.is_active) === 1 && String(a.approval_status || "") === "approved") {
             assignedAgentId = Number(a.id);
+            assignedAgentEmail = String(a.email || "").trim() || null;
+            agentEmailNotifications = Number(a.email_notifications_enabled ?? 1) === 1;
           }
         }
 
@@ -488,12 +617,91 @@ export async function POST(req: Request) {
 
         await conn.commit();
 
+        let emailResult: any = null;
+        try {
+          if (assignedAgentId) {
+            const [trows]: any = await conn.query(
+              `
+              SELECT token
+              FROM linescout_agent_device_tokens
+              WHERE is_active = 1 AND agent_id = ?
+              `,
+              [assignedAgentId]
+            );
+            const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+            await sendExpoPush(tokens, {
+              title: "Re-order paid chat",
+              body: `${agentLabel} just paid to re-order a delivered project.`,
+              data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: finalRouteType },
+            });
+          }
+
+          if (assignedAgentId && assignedAgentEmail && agentEmailNotifications) {
+            const mail = buildNoticeEmail({
+              subject: "Re-order paid chat assigned to you",
+              title: "Re-order paid chat",
+              lines: [
+                `${agentLabel} just paid to re-order a delivered project.`,
+                `Route: ${routeLabel(finalRouteType)}`,
+                `Handoff ID: ${handoffId}`,
+                "Open the LineScout Agent app to follow up.",
+              ],
+              footerNote: "This email was sent because a re-order paid chat was assigned to you on LineScout.",
+            });
+            await sendEmail({
+              to: assignedAgentEmail,
+              replyTo: "hello@sureimports.com",
+              subject: mail.subject,
+              text: mail.text,
+              html: mail.html,
+            });
+          } else {
+            const adminMail = buildNoticeEmail({
+              subject: "Re-order needs assignment",
+              title: "Re-order pending assignment",
+              lines: [
+                `Route: ${routeLabel(finalRouteType)}`,
+                `Handoff ID: ${handoffId}`,
+                `Conversation ID: ${conversationId}`,
+                `Customer email: ${payEmail}`,
+                "Original agent is inactive or unavailable. Assign in admin.",
+              ],
+              footerNote: "This email was sent because a re-order needs admin assignment.",
+            });
+            await sendEmail({
+              to: "sureimporters@gmail.com",
+              replyTo: "hello@sureimports.com",
+              subject: adminMail.subject,
+              text: adminMail.text,
+              html: adminMail.html,
+            });
+          }
+          const amountText = formatCurrency(amountValue, currency) || `${currency} ${amountValue}`;
+          const customerMail = buildCustomerEmail({
+            firstName: firstNameFromUser(u),
+            token,
+            amountText,
+            orderId,
+            handoffId,
+          });
+          emailResult = await sendEmail({
+            to: payEmail,
+            replyTo: "hello@sureimports.com",
+            subject: customerMail.subject,
+            text: customerMail.text,
+            html: customerMail.html,
+          });
+        } catch {
+          // ignore email failures
+        }
+
         return NextResponse.json(
           {
             ok: true,
             conversation_id: conversationId,
             handoff_id: handoffId,
             route_type: finalRouteType,
+            email_sent: emailResult?.ok === true,
           },
           { status: 200 }
         );
@@ -678,12 +886,108 @@ export async function POST(req: Request) {
 
       await conn.commit();
 
+      let emailResult: any = null;
+      try {
+        const [trows]: any = await conn.query(
+          `
+          SELECT t.token
+          FROM linescout_agent_device_tokens t
+          JOIN internal_users u ON u.id = t.agent_id
+          JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+          WHERE t.is_active = 1
+            AND u.is_active = 1
+            AND ap.approval_status = 'approved'
+          `
+        );
+        const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+        await sendExpoPush(tokens, {
+          title: "New paid chat available",
+          body: `${agentLabel} just opened a paid chat. Tap to claim.`,
+          data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: routeType },
+        });
+
+        const [emailRows]: any = await conn.query(
+          `
+          SELECT ap.email
+          FROM linescout_agent_profiles ap
+          JOIN internal_users u ON u.id = ap.internal_user_id
+          WHERE u.is_active = 1
+            AND ap.approval_status = 'approved'
+            AND COALESCE(ap.email_notifications_enabled, 1) = 1
+            AND ap.email IS NOT NULL
+            AND ap.email <> ''
+          `
+        );
+        const emails = (emailRows || [])
+          .map((r: any) => String(r.email || "").trim())
+          .filter(Boolean);
+
+        for (const email of emails) {
+          const mail = buildNoticeEmail({
+            subject: "New paid chat available",
+            title: "New paid chat",
+            lines: [
+              `${agentLabel} just opened a paid chat.`,
+              `Route: ${routeLabel(routeType)}`,
+              `Handoff ID: ${handoffId}`,
+              "Open the LineScout Agent app to claim this project.",
+            ],
+            footerNote: "This email was sent because a new paid chat became available for LineScout agents.",
+          });
+          await sendEmail({
+            to: email,
+            replyTo: "hello@sureimports.com",
+            subject: mail.subject,
+            text: mail.text,
+            html: mail.html,
+          });
+        }
+
+        const adminMail = buildNoticeEmail({
+          subject: "New paid chat started",
+          title: "New paid chat started",
+          lines: [
+            `Route: ${routeLabel(routeType)}`,
+            `Handoff ID: ${handoffId}`,
+            `Conversation ID: ${conversationId}`,
+            `Customer email: ${payEmail}`,
+          ],
+          footerNote: "This email was sent because a paid chat was started on LineScout.",
+        });
+        await sendEmail({
+          to: "sureimporters@gmail.com",
+          replyTo: "hello@sureimports.com",
+          subject: adminMail.subject,
+          text: adminMail.text,
+          html: adminMail.html,
+        });
+
+        const amountText = formatCurrency(amountValue, currency) || `${currency} ${amountValue}`;
+        const customerMail = buildCustomerEmail({
+          firstName: firstNameFromUser(u),
+          token,
+          amountText,
+          orderId,
+          handoffId,
+        });
+        emailResult = await sendEmail({
+          to: payEmail,
+          replyTo: "hello@sureimports.com",
+          subject: customerMail.subject,
+          text: customerMail.text,
+          html: customerMail.html,
+        });
+      } catch {
+        // ignore email failures
+      }
+
       return NextResponse.json(
         {
           ok: true,
           conversation_id: conversationId,
           handoff_id: handoffId,
           route_type: routeType,
+          email_sent: emailResult?.ok === true,
         },
         { status: 200 }
       );

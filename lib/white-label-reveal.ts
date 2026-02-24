@@ -120,7 +120,7 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     maxProducts: 1,
   });
   if (refresh.errors > 0 && refresh.updated === 0) {
-    return { ok: false, error: refresh.lastError || "Keepa refresh failed" };
+    return { ok: false, error: refresh.lastError || "Price data refresh failed" };
   }
 
   await conn.query(

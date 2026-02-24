@@ -94,6 +94,15 @@ export default function WhiteLabelAmazonReveal({
     return `${toPct(lowMargin)}–${toPct(highMargin)}`;
   };
 
+  const insightLine = () => {
+    const landedLow = amazonCode === "GBP" ? landedGbpLow : landedCadLow;
+    const landedHigh = amazonCode === "GBP" ? landedGbpHigh : landedCadHigh;
+    if (landedLow == null || landedHigh == null || !Number.isFinite(landedLow) || !Number.isFinite(landedHigh)) {
+      return null;
+    }
+    return `Compare to your estimated landed cost (${fmt(landedLow, amazonCode)}–${fmt(landedHigh, amazonCode)}).`;
+  };
+
   async function reveal() {
     setLoading(true);
     setError(null);
@@ -125,7 +134,7 @@ export default function WhiteLabelAmazonReveal({
   }
 
   return (
-    <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-3 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
+    <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-4 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
         Amazon price{labelSuffix}
       </p>
@@ -135,6 +144,9 @@ export default function WhiteLabelAmazonReveal({
           {marginRange() ? (
             <p className="mt-1 text-[11px] text-neutral-500">Indicative margin: {marginRange()}</p>
           ) : null}
+          {insightLine() ? (
+            <p className="mt-1 text-[11px] text-neutral-500">{insightLine()}</p>
+          ) : null}
           {isCaUser && !hasCa && hasUk ? (
             <p className="mt-1 text-[11px] text-amber-700">
               Amazon CA price not available at this time for this product.
@@ -143,8 +155,15 @@ export default function WhiteLabelAmazonReveal({
         </>
       ) : (
         <>
-          <p className="mt-1 text-[11px] text-neutral-500">Amazon price available</p>
-          <div className="mt-2">
+          <p className="mt-1 text-[11px] text-neutral-500">Estimated retail range on Amazon.</p>
+          {insightLine() ? (
+            <p className="mt-1 text-[11px] text-neutral-500">{insightLine()}</p>
+          ) : null}
+          <div className="mt-3 rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white/80 px-3 py-2 text-[11px] text-neutral-600 shadow-[0_10px_22px_rgba(45,52,97,0.08)]">
+            <p className="font-semibold text-neutral-700">What this means</p>
+            <p className="mt-1">Use this range to sense retail demand and estimate your margin.</p>
+          </div>
+          <div className="mt-3">
             <span className="inline-flex rounded-full bg-[rgba(45,52,97,0.2)] px-4 py-1 text-[11px] font-semibold text-[rgba(45,52,97,0.55)] blur-sm">
               £129.99–£199.99
             </span>

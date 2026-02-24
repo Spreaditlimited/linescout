@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { ensurePaidChatMessageColumns } from "@/lib/paid-chat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      await ensurePaidChatMessageColumns(conn);
+
       // Load conversation + linked handoff (project)
       const [crows]: any = await conn.query(
         `
@@ -180,6 +183,10 @@ export async function GET(req: Request) {
             reply_to_message_id,
             reply_to_sender_type,
             reply_to_text,
+            edited_at,
+            deleted_at,
+            deleted_by_type,
+            deleted_by_id,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -207,6 +214,10 @@ export async function GET(req: Request) {
             reply_to_message_id,
             reply_to_sender_type,
             reply_to_text,
+            edited_at,
+            deleted_at,
+            deleted_by_type,
+            deleted_by_id,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -229,6 +240,10 @@ export async function GET(req: Request) {
             reply_to_message_id,
             reply_to_sender_type,
             reply_to_text,
+            edited_at,
+            deleted_at,
+            deleted_by_type,
+            deleted_by_id,
             created_at
           FROM linescout_messages
           WHERE conversation_id = ?
@@ -282,18 +297,37 @@ export async function GET(req: Request) {
         attachments = Array.isArray(attRows) ? attRows : [];
       }
 
+      const deletedIds = new Set(
+        (items || [])
+          .filter((row: any) => row?.deleted_at)
+          .map((row: any) => Number(row.id))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      );
+      if (deletedIds.size) {
+        attachments = attachments.filter((a) => !deletedIds.has(Number(a.message_id)));
+      }
+
       // Group attachments by message_id for easy UI rendering
       const attachmentsByMessageId: Record<string, any[]> = {};
       for (const a of attachments) {
+        if (deletedIds.has(Number(a.message_id))) continue;
         const mid = String(a.message_id);
         if (!attachmentsByMessageId[mid]) attachmentsByMessageId[mid] = [];
         attachmentsByMessageId[mid].push(a);
       }
 
+      const cleanedItems = (items || []).map((row: any) => {
+        if (!row?.deleted_at) return row;
+        return {
+          ...row,
+          message_text: null,
+        };
+      });
+
       return NextResponse.json({
         ok: true,
         conversation_id: Number(c.id),
-        items,
+        items: cleanedItems,
         last_id: lastId,
         has_more: hasMore,
 
@@ -325,7 +359,12 @@ export async function GET(req: Request) {
     } finally {
       conn.release();
     }
-  } catch {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.toLowerCase().includes("unauthorized")) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("GET /api/mobile/paid-chat/messages error:", msg || e);
+    return NextResponse.json({ ok: false, error: "Failed to load messages" }, { status: 500 });
   }
 }

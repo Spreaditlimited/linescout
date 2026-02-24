@@ -10,6 +10,7 @@ import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/l
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 import WhiteLabelAmazonReveal from "@/components/white-label/WhiteLabelAmazonReveal";
+import WhiteLabelInsights from "@/components/white-label/WhiteLabelInsights";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -105,6 +106,16 @@ function slugify(value?: string | null) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+function formatRegulatoryNote(note: string | null, countryIso2: string) {
+  const cleaned = String(note || "").trim();
+  if (!cleaned) return "Not specified.";
+  const isNg = String(countryIso2 || "").toUpperCase() === "NG";
+  if (!isNg && /nafdac/i.test(cleaned)) {
+    return "Regulatory requirements vary by market. We’ll guide you through local compliance for your country.";
+  }
+  return cleaned;
 }
 
 function pickCountryFromCookie(
@@ -243,6 +254,7 @@ export default async function WhiteLabelIdeaDetailPage({
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
   let currencyCode = "NGN";
+  let countryIso2 = "";
   let amazonComparisonEnabled = false;
   try {
     await ensureCountryConfig(conn);
@@ -253,7 +265,7 @@ export default async function WhiteLabelIdeaDetailPage({
     );
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
     currencyCode = getCountryCurrencyCode(picked, currencyById);
-    const countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+    countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
@@ -365,16 +377,16 @@ export default async function WhiteLabelIdeaDetailPage({
       <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
           <div className="mb-4 flex justify-end" />
-          <div className="flex items-start justify-between gap-6">
-            <div>
+          <div className="flex flex-col items-start gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="w-full min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
                 {product.category}
               </p>
               <h1 className="mt-2 text-3xl font-semibold text-neutral-900">{product.product_name}</h1>
               <p className="mt-3 text-sm text-neutral-600">{fallbackSeoDescription(product)}</p>
             </div>
-            <div className="hidden sm:block">
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-700">
+            <div className="shrink-0">
+              <div className="inline-flex whitespace-nowrap rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-700">
                 {formatPerUnitRange(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency) || "Pricing pending"}
               </div>
             </div>
@@ -419,20 +431,22 @@ export default async function WhiteLabelIdeaDetailPage({
             </div>
             <div className="rounded-2xl border border-neutral-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-neutral-900">Regulatory note</h3>
-              <p className="mt-2 text-sm text-neutral-600">{product.regulatory_note || "Not specified."}</p>
+              <p className="mt-2 text-sm text-neutral-600">
+                {formatRegulatoryNote(product.regulatory_note, countryIso2)}
+              </p>
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
-            <div className="flex min-w-[260px] flex-col gap-2">
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
-                {landedPicked.totalLow != null || landedPicked.totalHigh != null
-                  ? `${formatCurrency(landedPicked.totalLow, currency)}–${formatCurrency(
-                      landedPicked.totalHigh,
-                      currency
-                    )} for 1,000 units`
-                  : "Pricing pending"}
-              </div>
+          <div className="mt-6 space-y-4">
+            <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
+              {landedPicked.totalLow != null || landedPicked.totalHigh != null
+                ? `${formatCurrency(landedPicked.totalLow, currency)}–${formatCurrency(
+                    landedPicked.totalHigh,
+                    currency
+                  )} for 1,000 units`
+                : "Pricing pending"}
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
               {amazonComparisonEnabled ? (
                 <WhiteLabelAmazonReveal
                   productId={product.id}
@@ -443,19 +457,22 @@ export default async function WhiteLabelIdeaDetailPage({
                   landedCadHigh={landedCadHigh}
                 />
               ) : null}
+              <WhiteLabelInsights productId={product.id} />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Link
                 href="/white-label/ideas"
                 className="text-sm font-semibold text-neutral-500 hover:text-neutral-700"
               >
-                View all ideas
+                Go back to all products
+              </Link>
+              <Link
+                href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(product.id))}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(product.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency))}`}
+                className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3 text-sm font-semibold text-white"
+              >
+                Start sourcing
               </Link>
             </div>
-            <Link
-              href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(product.id))}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(product.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRange(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency))}`}
-              className="ml-auto inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3 text-sm font-semibold text-white"
-            >
-              Start sourcing
-            </Link>
           </div>
         </div>
 

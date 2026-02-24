@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { ensurePaidChatMessageColumns } from "@/lib/paid-chat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,7 @@ async function requireInternalAccess(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensurePaidChatMessageColumns(conn);
     const [rows]: any = await conn.query(
       `SELECT
          u.id,
@@ -217,6 +219,10 @@ export async function GET(req: Request) {
            reply_to_message_id,
            reply_to_sender_type,
            reply_to_text,
+           edited_at,
+           deleted_at,
+           deleted_by_type,
+           deleted_by_id,
            created_at
          FROM linescout_messages
          WHERE conversation_id = ?
@@ -242,6 +248,10 @@ export async function GET(req: Request) {
            reply_to_message_id,
            reply_to_sender_type,
            reply_to_text,
+           edited_at,
+           deleted_at,
+           deleted_by_type,
+           deleted_by_id,
            created_at
          FROM linescout_messages
          WHERE conversation_id = ?
@@ -262,6 +272,10 @@ export async function GET(req: Request) {
            reply_to_message_id,
            reply_to_sender_type,
            reply_to_text,
+           edited_at,
+           deleted_at,
+           deleted_by_type,
+           deleted_by_id,
            created_at
          FROM linescout_messages
          WHERE conversation_id = ?
@@ -315,13 +329,32 @@ export async function GET(req: Request) {
       attachments = attRows || [];
     }
 
+    const deletedIds = new Set(
+      (rows || [])
+        .filter((row: any) => row?.deleted_at)
+        .map((row: any) => Number(row.id))
+        .filter((id: number) => Number.isFinite(id) && id > 0)
+    );
+    if (deletedIds.size) {
+      attachments = attachments.filter((a) => !deletedIds.has(Number(a.message_id)));
+    }
+
     // Group attachments by message_id for easy UI rendering
     const attachmentsByMessageId: Record<string, any[]> = {};
     for (const a of attachments) {
+      if (deletedIds.has(Number(a.message_id))) continue;
       const mid = String(a.message_id);
       if (!attachmentsByMessageId[mid]) attachmentsByMessageId[mid] = [];
       attachmentsByMessageId[mid].push(a);
     }
+
+    const cleanedRows = (rows || []).map((row: any) => {
+      if (!row?.deleted_at) return row;
+      return {
+        ...row,
+        message_text: null,
+      };
+    });
 
     const agentIds = Array.from(
       new Set(
@@ -353,7 +386,7 @@ export async function GET(req: Request) {
       conversation_id: conversationId,
       assigned_agent_id: assignedAgentId,
       assigned_agent_username: assignedAgentUsername,
-      items: rows || [],
+      items: cleanedRows || [],
       last_id: lastId,
       has_more: hasMore,
       attachments,

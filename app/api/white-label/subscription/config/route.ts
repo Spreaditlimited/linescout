@@ -19,14 +19,18 @@ export async function GET(req: Request) {
          FROM linescout_settings ORDER BY id DESC LIMIT 1`
       );
       const row = rows?.[0] || {};
+      const toNum = (value: any) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+      };
       return NextResponse.json({
         ok: true,
         trial_days: Number(row.white_label_trial_days || 0),
         daily_reveals: Number(row.white_label_daily_reveals || 0),
-        monthly_price_gbp: row.white_label_monthly_price_gbp,
-        yearly_price_gbp: row.white_label_yearly_price_gbp,
-        monthly_price_cad: row.white_label_monthly_price_cad,
-        yearly_price_cad: row.white_label_yearly_price_cad,
+        monthly_price_gbp: toNum(row.white_label_monthly_price_gbp),
+        yearly_price_gbp: toNum(row.white_label_yearly_price_gbp),
+        monthly_price_cad: toNum(row.white_label_monthly_price_cad),
+        yearly_price_cad: toNum(row.white_label_yearly_price_cad),
       });
     } finally {
       conn.release();

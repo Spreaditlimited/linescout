@@ -109,6 +109,16 @@ function slugify(value?: string | null) {
     .slice(0, 64);
 }
 
+function formatRegulatoryNote(note: string | null, countryIso2: string) {
+  const cleaned = String(note || "").trim();
+  if (!cleaned) return "Not specified.";
+  const isNg = String(countryIso2 || "").toUpperCase() === "NG";
+  if (!isNg && /nafdac/i.test(cleaned)) {
+    return "Regulatory requirements vary by market. We’ll guide you through local compliance for your country.";
+  }
+  return cleaned;
+}
+
 function pickCountryFromCookie(
   cookieValue: string | undefined,
   countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
@@ -250,6 +260,7 @@ export default async function WhiteLabelMarketingDetailPage({
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
   let currencyCode = "NGN";
+  let countryIso2 = "";
   let amazonComparisonEnabled = false;
   try {
     await ensureCountryConfig(conn);
@@ -260,7 +271,7 @@ export default async function WhiteLabelMarketingDetailPage({
     );
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
     currencyCode = getCountryCurrencyCode(picked, currencyById);
-    const countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+    countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
@@ -447,10 +458,12 @@ export default async function WhiteLabelMarketingDetailPage({
                 <h3 className="text-sm font-semibold text-neutral-900">White-label angle</h3>
                 <p className="mt-2 text-sm text-neutral-600">{angle}</p>
               </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-neutral-900">Regulatory note</h3>
-                <p className="mt-2 text-sm text-neutral-600">{product.regulatory_note || "Not specified."}</p>
-              </div>
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-neutral-900">Regulatory note</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                {formatRegulatoryNote(product.regulatory_note, countryIso2)}
+              </p>
+            </div>
             </div>
 
             <div className="mt-6 flex flex-wrap items-start justify-between gap-4">

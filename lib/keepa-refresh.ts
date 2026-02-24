@@ -37,14 +37,20 @@ function nextAsin(row: KeepaProductRow, market: "UK" | "CA") {
 
 function marketColumns(market: "UK" | "CA") {
   if (market === "UK") {
-    return {
-      asin: "amazon_uk_asin",
-      url: "amazon_uk_url",
-      currency: "amazon_uk_currency",
-      priceLow: "amazon_uk_price_low",
-      priceHigh: "amazon_uk_price_high",
-      checkedAt: "amazon_uk_last_checked_at",
-    } as const;
+      return {
+        asin: "amazon_uk_asin",
+        url: "amazon_uk_url",
+        currency: "amazon_uk_currency",
+        priceLow: "amazon_uk_price_low",
+        priceHigh: "amazon_uk_price_high",
+        priceCurrent: "amazon_uk_price_current",
+        priceAvg30: "amazon_uk_price_avg30",
+        priceAvg90: "amazon_uk_price_avg90",
+        priceMin: "amazon_uk_price_min",
+        priceMax: "amazon_uk_price_max",
+        offerCount: "amazon_uk_offer_count",
+        checkedAt: "amazon_uk_last_checked_at",
+      } as const;
   }
   return {
     asin: "amazon_ca_asin",
@@ -52,6 +58,12 @@ function marketColumns(market: "UK" | "CA") {
     currency: "amazon_ca_currency",
     priceLow: "amazon_ca_price_low",
     priceHigh: "amazon_ca_price_high",
+    priceCurrent: "amazon_ca_price_current",
+    priceAvg30: "amazon_ca_price_avg30",
+    priceAvg90: "amazon_ca_price_avg90",
+    priceMin: "amazon_ca_price_min",
+    priceMax: "amazon_ca_price_max",
+    offerCount: "amazon_ca_offer_count",
     checkedAt: "amazon_ca_last_checked_at",
   } as const;
 }
@@ -109,6 +121,12 @@ export async function refreshKeepaProducts(
               ${cols.currency} = ?,
               ${cols.priceLow} = ?,
               ${cols.priceHigh} = ?,
+              ${cols.priceCurrent} = ?,
+              ${cols.priceAvg30} = ?,
+              ${cols.priceAvg90} = ?,
+              ${cols.priceMin} = ?,
+              ${cols.priceMax} = ?,
+              ${cols.offerCount} = ?,
               ${cols.checkedAt} = NOW()
           WHERE id = ?
           LIMIT 1
@@ -119,6 +137,12 @@ export async function refreshKeepaProducts(
             price.currency,
             price.price_low,
             price.price_high,
+            price.price_current,
+            price.price_avg30,
+            price.price_avg90,
+            price.price_min,
+            price.price_max,
+            price.offer_count,
             row.id,
           ]
         );

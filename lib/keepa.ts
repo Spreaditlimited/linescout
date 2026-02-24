@@ -57,6 +57,11 @@ function pickMax(values: any[]) {
   return Math.max(...cleaned);
 }
 
+function pickStatValue(stats: any, key: string) {
+  if (!stats || !stats[key]) return null;
+  return pickNumber([stats[key]?.[1], stats[key]?.[0]]);
+}
+
 function buildAmazonUrl(asin: string, marketplace: KeepaMarketplace) {
   const host = MARKET_CONFIG[marketplace].amazonHost;
   return `https://${host}/dp/${asin}`;
@@ -122,6 +127,14 @@ export async function fetchKeepaPrice(asin: string, marketplace: KeepaMarketplac
   if (!product) return null;
   const stats = product.stats || {};
 
+  const current = pickStatValue(stats, "current");
+  const avg30 = pickStatValue(stats, "avg30");
+  const avg90 = pickStatValue(stats, "avg90");
+  const minVal = pickMin([stats.min?.[1], stats.min?.[0]]);
+  const maxVal = pickMax([stats.max?.[1], stats.max?.[0]]);
+  const offerCountRaw = stats.offerCount ?? product.offerCount ?? null;
+  const offerCount = Number.isFinite(Number(offerCountRaw)) ? Number(offerCountRaw) : null;
+
   const low =
     pickMin([stats.min?.[1], stats.min?.[0]]) ??
     pickNumber([stats.current?.[1], stats.current?.[0], stats.avg30?.[1], stats.avg30?.[0]]);
@@ -139,6 +152,12 @@ export async function fetchKeepaPrice(asin: string, marketplace: KeepaMarketplac
     url: buildAmazonUrl(String(product.asin || asin), marketplace),
     price_low: safeLow ?? null,
     price_high: safeHigh ?? null,
+    price_current: current,
+    price_avg30: avg30,
+    price_avg90: avg90,
+    price_min: minVal,
+    price_max: maxVal,
+    offer_count: offerCount,
   };
 }
 

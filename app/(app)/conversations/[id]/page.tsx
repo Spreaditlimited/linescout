@@ -11,6 +11,13 @@ type MessageItem = {
   id: number;
   sender_type: "user" | "agent" | string;
   message_text: string | null;
+  reply_to_message_id?: number | null;
+  reply_to_sender_type?: "user" | "agent" | string | null;
+  reply_to_text?: string | null;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_by_type?: string | null;
+  deleted_by_id?: number | null;
   created_at: string;
 };
 
@@ -101,9 +108,14 @@ export default function ConversationThreadPage() {
   const [locked, setLocked] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadState, setUploadState] = useState<"idle" | "compressing" | "uploading" | "ready" | "error">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<any | null>(null);
   const [polling, setPolling] = useState(false);
-  const [typing, setTyping] = useState(false);
   const [shelfCollapsed, setShelfCollapsed] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<MessageItem | null>(null);
+  const [editingTarget, setEditingTarget] = useState<MessageItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MessageItem | null>(null);
   const [escalateOpen, setEscalateOpen] = useState(false);
   const [escalateKind, setEscalateKind] = useState<"report" | "escalate">("report");
   const [escalateReason, setEscalateReason] = useState("");
@@ -194,28 +206,104 @@ export default function ConversationThreadPage() {
     };
   }, [conversationId]);
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (sending) return;
-    if (!input.trim() && !selectedFile) return;
-    setSending(true);
-    let attachmentPayload: any = null;
-    if (selectedFile) {
+  async function reloadMessages() {
+    const refresh = await authFetch(`/api/mobile/paid-chat/messages?conversation_id=${conversationId}&limit=80`);
+    const refreshJson = await refresh.json().catch(() => ({}));
+    if (refresh.ok) setData(refreshJson as MessagesResponse);
+  }
+
+  async function compressImage(file: File): Promise<File> {
+    if (!file.type.startsWith("image/")) return file;
+    const maxDim = 1600;
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const width = Math.round(bitmap.width * scale);
+    const height = Math.round(bitmap.height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.7)
+    );
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+  }
+
+  async function uploadImage(file: File) {
+    setUploadState("compressing");
+    setUploadError(null);
+    try {
+      const compressed = await compressImage(file);
+      setUploadState("uploading");
       const form = new FormData();
       form.append("conversation_id", String(conversationId));
-      form.append("file", selectedFile);
+      form.append("file", compressed);
       const uploadRes = await authFetch("/api/mobile/paid-chat/upload", {
         method: "POST",
         body: form,
       });
       const uploadJson = await uploadRes.json().catch(() => ({}));
       if (!uploadRes.ok || !uploadJson?.ok) {
-        setMessage(uploadJson?.error || "Unable to upload image.");
+        throw new Error(uploadJson?.error || "Unable to upload image.");
+      }
+      const nextFile = uploadJson.file || null;
+      setUploadedFile(nextFile);
+      setUploadState("ready");
+      return nextFile;
+    } catch (e: any) {
+      setUploadError(e?.message || "Unable to upload image.");
+      setUploadState("error");
+      return null;
+    }
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    if (sending) return;
+    if (editingTarget) {
+      const next = input.trim();
+      if (!next) return;
+      setSending(true);
+      const res = await authFetch("/api/mobile/paid-chat/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_id: editingTarget.id,
+          message_text: next,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setMessage(json?.error || "Unable to edit message.");
         setSending(false);
         return;
       }
-      attachmentPayload = { file: uploadJson.file };
+      setInput("");
+      setEditingTarget(null);
+      setSending(false);
+      await reloadMessages();
+      return;
     }
+
+    if (!input.trim() && !selectedFile && !uploadedFile) return;
+    setReplyTarget(null);
+    setSending(true);
+    let attachmentPayload: any = null;
+      if (uploadedFile) {
+        attachmentPayload = { file: uploadedFile };
+      } else if (selectedFile) {
+        const nextFile = await uploadImage(selectedFile);
+        if (nextFile) attachmentPayload = { file: nextFile };
+        if (!attachmentPayload) {
+          setMessage(uploadError || "Unable to upload image.");
+          setSending(false);
+          return;
+        }
+      }
 
     const res = await authFetch("/api/mobile/paid-chat/send", {
       method: "POST",
@@ -223,6 +311,7 @@ export default function ConversationThreadPage() {
       body: JSON.stringify({
         conversation_id: conversationId,
         message_text: input.trim(),
+        reply_to_message_id: replyTarget?.id || null,
         ...(attachmentPayload || {}),
       }),
     });
@@ -235,12 +324,12 @@ export default function ConversationThreadPage() {
     setInput("");
     setSelectedFile(null);
     setPreviewUrl(null);
+    setUploadedFile(null);
+    setUploadState("idle");
+    setUploadError(null);
     setSending(false);
-    setTyping(false);
 
-    const refresh = await authFetch(`/api/mobile/paid-chat/messages?conversation_id=${conversationId}&limit=80`);
-    const refreshJson = await refresh.json().catch(() => ({}));
-    if (refresh.ok) setData(refreshJson as MessagesResponse);
+    await reloadMessages();
   }
 
   if (!conversationId) {
@@ -385,73 +474,194 @@ export default function ConversationThreadPage() {
           )}
         </div>
         <div ref={messagesRef} className="hide-scrollbar flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1 sm:max-h-[50vh]">
-          {(data?.items || []).map((item) => (
-            <div key={item.id} className={`flex ${item.sender_type === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                  item.sender_type === "user"
-                    ? "bg-[var(--agent-blue)] text-white"
-                    : "bg-neutral-100 text-neutral-900"
-                }`}
-              >
-                <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${item.sender_type === "user" ? "text-white/80" : "text-neutral-500"}`}>
-                  {item.sender_type === "user" ? customerName : agentName}
-                </p>
-                <div className="space-y-2 text-sm">
-                  {renderMessageText(item.message_text).map((chunk, idx) => {
-                    if ((chunk as any).type === "link") {
-                      const link = chunk as any;
-                      return (
+          {(data?.items || []).map((item) => {
+            const isUser = item.sender_type === "user";
+            const isDeleted = !!item.deleted_at;
+            const replyLabel =
+              item.reply_to_sender_type === "user" ? customerName : agentName || "Agent";
+            const replyText = String(item.reply_to_text || "").trim() || "Message deleted";
+            const attachments = attachmentsByMessage[String(item.id)] || [];
+            const canEdit = isUser && !isDeleted && !attachments.length;
+            const canDelete = isUser && !isDeleted;
+            const canReply = !isDeleted;
+            const timeLabel = `${shortDate.format(new Date(item.created_at))}${
+              item.edited_at ? " · Edited" : ""
+            }`;
+
+            return (
+              <div key={item.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+                    isUser ? "bg-[var(--agent-blue)] text-white" : "bg-neutral-100 text-neutral-900"
+                  }`}
+                >
+                  <p
+                    className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${
+                      isUser ? "text-white/80" : "text-neutral-500"
+                    }`}
+                  >
+                    {isUser ? customerName : agentName}
+                  </p>
+                  {item.reply_to_message_id ? (
+                    <div
+                      className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${
+                        isUser
+                          ? "border-white/30 bg-white/10 text-white/80"
+                          : "border-[rgba(45,52,97,0.2)] bg-white text-neutral-600"
+                      }`}
+                    >
+                      <p className="font-semibold">{replyLabel}</p>
+                      <p className="mt-1 line-clamp-2">{replyText}</p>
+                    </div>
+                  ) : null}
+                  <div className="space-y-2 text-sm">
+                    {isDeleted ? (
+                      <p className="whitespace-pre-wrap break-words italic opacity-80">Message deleted</p>
+                    ) : (
+                      renderMessageText(item.message_text).map((chunk, idx) => {
+                        if ((chunk as any).type === "link") {
+                          const link = chunk as any;
+                          return (
+                            <a
+                              key={`${item.id}-link-${idx}`}
+                              href={link.href}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`inline-flex w-fit max-w-full items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
+                                link.isQuote
+                                  ? "bg-white text-[var(--agent-blue)] shadow-sm"
+                                  : "bg-[var(--agent-blue)] text-white"
+                              }`}
+                            >
+                              {link.label}
+                            </a>
+                          );
+                        }
+                        return (
+                          <p key={`${item.id}-text-${idx}`} className="whitespace-pre-wrap break-words">
+                            {(chunk as any).value || ""}
+                          </p>
+                        );
+                      })
+                    )}
+                  </div>
+                  {!isDeleted && attachments.length ? (
+                    <div className="mt-2 space-y-2">
+                      {attachments.map((att) => (
                         <a
-                          key={`${item.id}-link-${idx}`}
-                          href={link.href}
+                          key={att.id}
+                          href={att.secure_url || "#"}
                           target="_blank"
                           rel="noreferrer"
-                          className={`inline-flex w-fit max-w-full items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
-                            link.isQuote ? "bg-white text-[var(--agent-blue)] shadow-sm" : "bg-[var(--agent-blue)] text-white"
-                          }`}
+                          className="block"
                         >
-                          {link.label}
+                          {att.secure_url ? (
+                            <img
+                              src={att.secure_url}
+                              alt={att.original_filename || "Attachment"}
+                              className="max-h-48 rounded-xl object-cover"
+                            />
+                          ) : (
+                            <span className="text-xs underline">{att.original_filename || "Attachment"}</span>
+                          )}
                         </a>
-                      );
-                    }
-                    return (
-                      <p key={`${item.id}-text-${idx}`} className="whitespace-pre-wrap break-words">
-                        {(chunk as any).value || ""}
-                      </p>
-                    );
-                  })}
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className={`mt-2 text-[10px] ${isUser ? "text-white/80" : "text-neutral-400"}`}>
+                    {timeLabel}
+                  </p>
+                  {canReply || canEdit || canDelete ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                      {canReply ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplyTarget(item);
+                            setEditingTarget(null);
+                          }}
+                          className={isUser ? "text-white/80" : "text-neutral-500"}
+                        >
+                          Reply
+                        </button>
+                      ) : null}
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTarget(item);
+                            setReplyTarget(null);
+                            setInput(String(item.message_text || "").trim());
+                            setSelectedFile(null);
+                            setPreviewUrl(null);
+                          }}
+                          className={isUser ? "text-white/80" : "text-neutral-500"}
+                        >
+                          Edit
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setDeleteTarget(item);
+                          }}
+                          className={isUser ? "text-white/80" : "text-neutral-500"}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-                {attachmentsByMessage[String(item.id)]?.length ? (
-                  <div className="mt-2 space-y-2">
-                    {attachmentsByMessage[String(item.id)].map((att) => (
-                      <a
-                        key={att.id}
-                        href={att.secure_url || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block"
-                      >
-                        {att.secure_url ? (
-                          <img
-                            src={att.secure_url}
-                            alt={att.original_filename || "Attachment"}
-                            className="max-h-48 rounded-xl object-cover"
-                          />
-                        ) : (
-                          <span className="text-xs underline">{att.original_filename || "Attachment"}</span>
-                        )}
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
-                <p className={`mt-2 text-[10px] ${item.sender_type === "user" ? "text-white/80" : "text-neutral-400"}`}>
-                  {shortDate.format(new Date(item.created_at))}
+              </div>
+            );
+          })}
+        </div>
+
+        {editingTarget ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold uppercase tracking-[0.2em]">Editing message</p>
+                <p className="mt-1 line-clamp-2 text-[11px] text-amber-700">
+                  {String(editingTarget.message_text || "").trim() || "Message"}
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingTarget(null);
+                  setInput("");
+                }}
+                className="text-xs font-semibold text-amber-700"
+              >
+                Cancel
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
+        ) : null}
+
+        {!editingTarget && replyTarget ? (
+          <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs text-neutral-700">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold uppercase tracking-[0.2em]">Replying to</p>
+                <p className="mt-1 line-clamp-2 text-[11px] text-neutral-600">
+                  {replyTarget.sender_type === "user" ? customerName : agentName} ·{" "}
+                  {String(replyTarget.message_text || replyTarget.reply_to_text || "").trim() || "Message"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReplyTarget(null)}
+                className="text-xs font-semibold text-neutral-600"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {previewUrl ? (
           <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3">
@@ -459,8 +669,20 @@ export default function ConversationThreadPage() {
               <div className="flex items-center gap-3">
                 <img src={previewUrl} alt="Upload preview" className="h-16 w-16 rounded-xl object-cover" />
                 <div>
-                  <p className="text-xs font-semibold text-neutral-700">Image ready</p>
-                  <p className="text-[10px] text-neutral-500">{selectedFile?.name || "attachment"}</p>
+                  <p className="text-xs font-semibold text-neutral-700">
+                    {uploadState === "compressing"
+                      ? "Optimizing image…"
+                      : uploadState === "uploading"
+                        ? "Uploading image…"
+                        : uploadState === "ready"
+                          ? "Image ready"
+                          : uploadState === "error"
+                            ? "Upload failed"
+                            : "Image selected"}
+                  </p>
+                  <p className="text-[10px] text-neutral-500">
+                    {uploadError || selectedFile?.name || "attachment"}
+                  </p>
                 </div>
               </div>
               <button
@@ -468,6 +690,9 @@ export default function ConversationThreadPage() {
                 onClick={() => {
                   setSelectedFile(null);
                   setPreviewUrl(null);
+                  setUploadedFile(null);
+                  setUploadState("idle");
+                  setUploadError(null);
                 }}
                 className="btn btn-ghost px-3 py-1 text-xs"
               >
@@ -493,8 +718,12 @@ export default function ConversationThreadPage() {
                   if (!file) return;
                   setSelectedFile(file);
                   setPreviewUrl(URL.createObjectURL(file));
+                  setUploadedFile(null);
+                  setUploadState("idle");
+                  setUploadError(null);
+                  void uploadImage(file);
                 }}
-                disabled={locked || sending}
+                disabled={locked || sending || !!editingTarget}
               />
             </label>
             <input
@@ -502,12 +731,14 @@ export default function ConversationThreadPage() {
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
-                if (!typing) setTyping(true);
-                if (typing) {
-                  // no-op: placeholder for future typing signal
-                }
               }}
-              placeholder={locked ? "Chat disabled for this project" : "Type your message"}
+              placeholder={
+                locked
+                  ? "Chat disabled for this project"
+                  : editingTarget
+                    ? "Edit your message"
+                    : "Type your message"
+              }
               className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               disabled={locked || sending}
             />
@@ -521,9 +752,6 @@ export default function ConversationThreadPage() {
             <Send className="h-4 w-4" />
           </button>
         </form>
-        {typing ? (
-          <p className="mt-3 text-xs text-neutral-500">Typing…</p>
-        ) : null}
       </div>
 
       {escalateOpen ? (
@@ -614,6 +842,72 @@ export default function ConversationThreadPage() {
                 disabled={escalateSending}
               >
                 {escalateSending ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close delete modal"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => setDeleteTarget(null)}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                    Delete message
+                  </p>
+                  <h2 className="mt-2 text-xl font-semibold text-neutral-900">Delete this message?</h2>
+                </div>
+                <button
+                  type="button"
+                  className="text-neutral-400 hover:text-neutral-600"
+                  onClick={() => setDeleteTarget(null)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="mt-3 text-sm text-neutral-600">
+                This message will be removed from the chat for both you and your agent.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="btn btn-outline px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = deleteTarget;
+                  setDeleteTarget(null);
+                  if (!target) return;
+                  const res = await authFetch("/api/mobile/paid-chat/delete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      conversation_id: conversationId,
+                      message_id: target.id,
+                    }),
+                  });
+                  const json = await res.json().catch(() => ({}));
+                  if (!res.ok || !json?.ok) {
+                    setMessage(json?.error || "Unable to delete message.");
+                    return;
+                  }
+                  await reloadMessages();
+                }}
+                className="btn btn-primary px-4 py-2 text-xs"
+              >
+                Delete
               </button>
             </div>
           </div>
