@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     try {
       await ensureWhiteLabelSettings(conn);
       const [rows]: any = await conn.query(
-        `SELECT white_label_trial_days, white_label_daily_reveals,
+        `SELECT white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit,
                 white_label_monthly_price_gbp, white_label_yearly_price_gbp,
                 white_label_monthly_price_cad, white_label_yearly_price_cad
          FROM linescout_settings ORDER BY id DESC LIMIT 1`
@@ -27,6 +27,7 @@ export async function GET(req: Request) {
         ok: true,
         trial_days: Number(row.white_label_trial_days || 0),
         daily_reveals: Number(row.white_label_daily_reveals || 0),
+        daily_insights: Number(row.white_label_insights_daily_limit || 0),
         monthly_price_gbp: toNum(row.white_label_monthly_price_gbp),
         yearly_price_gbp: toNum(row.white_label_yearly_price_gbp),
         monthly_price_cad: toNum(row.white_label_monthly_price_cad),

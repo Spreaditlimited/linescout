@@ -12,6 +12,7 @@ type Handoff = {
   customer_name?: string | null;
   email?: string | null;
   whatsapp_number?: string | null;
+  customer_phone?: string | null;
 
   status: string;
   created_at: string;
@@ -207,6 +208,7 @@ export default function AgentHandoffsPage() {
         h.handoff_type,
         h.customer_name,
         h.email,
+        h.customer_phone,
         h.whatsapp_number,
         h.status,
         h.claimed_by,
@@ -603,7 +605,7 @@ export default function AgentHandoffsPage() {
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Currency</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Customer</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Email</th>
-                  <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">WhatsApp</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">WhatsApp / Phone</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Owner</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Quote</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800 whitespace-nowrap">Status</th>
@@ -648,7 +650,7 @@ export default function AgentHandoffsPage() {
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap overflow-hidden text-ellipsis">
-                      {h.whatsapp_number || "N/A"}
+                      {h.customer_phone || h.whatsapp_number || "N/A"}
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300">

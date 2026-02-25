@@ -12,6 +12,7 @@ type AppUser = {
   country_name?: string | null;
   country_iso2?: string | null;
   display_currency_code?: string | null;
+  profile_phone?: string | null;
 
   last_seen_at: string | null;
   last_session_created_at: string | null;
@@ -146,9 +147,11 @@ export default function AdminAppUsersPage() {
         u.id,
         u.email,
         u.display_name,
+        u.profile_phone,
         u.country_name,
         u.country_iso2,
         u.display_currency_code,
+        u.profile_phone,
         u.active_sessions,
         u.conversations_count,
         u.white_label_projects_count,
@@ -214,7 +217,7 @@ export default function AdminAppUsersPage() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search email, name, ID..."
+                  placeholder="Search email, name, phone, ID..."
                   className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 pr-16 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                 />
                 {search.trim() ? (
@@ -307,6 +310,7 @@ export default function AdminAppUsersPage() {
                 <tr>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">User</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Name</th>
+                  <th className="px-3 py-2 text-left border-b border-neutral-800">WhatsApp / Phone</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Country</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Currency</th>
                   <th className="px-3 py-2 text-left border-b border-neutral-800">Created</th>
@@ -333,6 +337,10 @@ export default function AdminAppUsersPage() {
 
                     <td className="px-3 py-3 text-sm text-neutral-200">
                       {u.display_name ? u.display_name : "—"}
+                    </td>
+
+                    <td className="px-3 py-3 text-sm text-neutral-200 whitespace-nowrap">
+                      {u.profile_phone || "—"}
                     </td>
 
                     <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
@@ -395,7 +403,7 @@ export default function AdminAppUsersPage() {
 
                 {filtered.length === 0 ? (
                   <tr className="border-t border-neutral-800">
-                    <td colSpan={12} className="px-3 py-4 text-sm text-neutral-400">
+                    <td colSpan={13} className="px-3 py-4 text-sm text-neutral-400">
                       No matching users.
                     </td>
                   </tr>

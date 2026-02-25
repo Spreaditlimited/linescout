@@ -24,6 +24,21 @@ type Handoff = {
 
   claimed_by?: string | null;
   claimed_at?: string | null;
+  assigned_agent_id?: number | null;
+  assigned_agent_username?: string | null;
+
+  user_id?: number | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  user_created_at?: string | null;
+  user_last_seen_at?: string | null;
+  user_active_sessions?: number | null;
+  user_lead_name?: string | null;
+  user_whatsapp?: string | null;
+  user_country_name?: string | null;
+  user_country_iso2?: string | null;
+  user_display_currency_code?: string | null;
+  user_country_currency_code?: string | null;
 
   manufacturer_found_at?: string | null;
   manufacturer_name?: string | null;
@@ -120,6 +135,15 @@ type PaymentSummaryResponse =
         total_paid: number;
         balance: number;
       };
+      commitment_payment?: {
+        id: number;
+        purpose: string;
+        amount: number;
+        currency: string;
+        created_at?: string | null;
+        provider?: string | null;
+        reference?: string | null;
+      } | null;
       payments: Array<{
         id: number;
         amount: string;
@@ -137,6 +161,15 @@ type PaymentSummary = {
   total_paid: number;
   balance: number;
 };
+type CommitmentPayment = {
+  id: number;
+  purpose: string;
+  amount: number;
+  currency: string;
+  created_at?: string | null;
+  provider?: string | null;
+  reference?: string | null;
+} | null;
 
 type QuoteItem = {
   id: number;
@@ -263,6 +296,7 @@ export default function HandoffDetailPage() {
 
   const [paySummary, setPaySummary] = useState<PaymentSummary | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [commitmentPayment, setCommitmentPayment] = useState<CommitmentPayment>(null);
 
   const [quotes, setQuotes] = useState<QuoteItem[]>([]);
 
@@ -314,8 +348,9 @@ export default function HandoffDetailPage() {
   async function loadPaymentsOnce(): Promise<{
     summary: PaymentSummary | null;
     payments: PaymentRow[];
+    commitment: CommitmentPayment;
   }> {
-    if (!Number.isFinite(id) || id <= 0) return { summary: null, payments: [] };
+    if (!Number.isFinite(id) || id <= 0) return { summary: null, payments: [], commitment: null };
 
     try {
       const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${id}`, {
@@ -323,7 +358,7 @@ export default function HandoffDetailPage() {
       });
 
       const data = (await res.json().catch(() => null)) as PaymentSummaryResponse | null;
-      if (!data || !("ok" in data) || !data.ok) return { summary: null, payments: [] };
+      if (!data || !("ok" in data) || !data.ok) return { summary: null, payments: [], commitment: null };
 
       const summary: PaymentSummary = {
         currency: data.financials.currency,
@@ -332,9 +367,13 @@ export default function HandoffDetailPage() {
         balance: Number(data.financials.balance || 0),
       };
 
-      return { summary, payments: (data.payments || []) as PaymentRow[] };
+      return {
+        summary,
+        payments: (data.payments || []) as PaymentRow[],
+        commitment: data.commitment_payment || null,
+      };
     } catch {
-      return { summary: null, payments: [] };
+      return { summary: null, payments: [], commitment: null };
     }
   }
 
@@ -365,9 +404,10 @@ export default function HandoffDetailPage() {
     setLoading(true);
 
     try {
-      const { summary, payments } = await loadPaymentsOnce();
+      const { summary, payments, commitment } = await loadPaymentsOnce();
       setPaySummary(summary);
       setPayments(payments);
+      setCommitmentPayment(commitment);
 
       const h = await loadHandoffOnce(summary);
       setHandoff(h);
@@ -683,33 +723,55 @@ export default function HandoffDetailPage() {
           {/* Left */}
           <div className="space-y-4">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-              <div className="text-sm font-semibold text-neutral-100">Customer</div>
+              <div className="text-sm font-semibold text-neutral-100">User profile</div>
               <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <div className="text-xs text-neutral-500">Name</div>
-                  <div className="text-sm text-neutral-200">{handoff.customer_name || "N/A"}</div>
+                  <div className="text-xs text-neutral-500">User ID</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_id ?? "N/A"}</div>
                 </div>
                 <div>
                   <div className="text-xs text-neutral-500">Email</div>
-                  <div className="text-sm text-neutral-200">{handoff.email || "N/A"}</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_email || handoff.email || "N/A"}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-neutral-500">WhatsApp</div>
-                  <div className="text-sm text-neutral-200">{handoff.whatsapp_number || "N/A"}</div>
+                  <div className="text-xs text-neutral-500">Display name</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_display_name || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Lead name</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_lead_name || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Phone / WhatsApp</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_whatsapp || "N/A"}</div>
                 </div>
                 <div>
                   <div className="text-xs text-neutral-500">Country</div>
                   <div className="text-sm text-neutral-200">
-                    {handoff.country_name ? `${handoff.country_name} (${handoff.country_iso2 || ""})` : "—"}
+                    {handoff.user_country_name
+                      ? `${handoff.user_country_name} (${handoff.user_country_iso2 || ""})`
+                      : "N/A"}
                   </div>
                 </div>
                 <div>
                   <div className="text-xs text-neutral-500">Display currency</div>
-                  <div className="text-sm text-neutral-200">{handoff.display_currency_code || "—"}</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_display_currency_code || "N/A"}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-neutral-500">Created</div>
-                  <div className="text-sm text-neutral-200">{fmt(handoff.created_at)}</div>
+                  <div className="text-xs text-neutral-500">Country currency</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_country_currency_code || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">User created</div>
+                  <div className="text-sm text-neutral-200">{fmt(handoff.user_created_at)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Last seen</div>
+                  <div className="text-sm text-neutral-200">{fmt(handoff.user_last_seen_at)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-neutral-500">Active sessions</div>
+                  <div className="text-sm text-neutral-200">{handoff.user_active_sessions ?? "N/A"}</div>
                 </div>
               </div>
             </div>
@@ -974,6 +1036,22 @@ export default function HandoffDetailPage() {
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-sm font-semibold text-neutral-100">Payments</div>
 
+              {commitmentPayment ? (
+                <div className="mt-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+                  <div className="text-[11px] text-neutral-500">Commitment fee</div>
+                  <div className="mt-1 text-sm text-neutral-200">
+                    <span className="font-semibold">
+                      {fmtMoney(Number(commitmentPayment.amount || 0), commitmentPayment.currency || "NGN")}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-neutral-500">
+                    {commitmentPayment.provider ? `${commitmentPayment.provider} · ` : ""}
+                    {commitmentPayment.reference || "No reference"}
+                    {commitmentPayment.created_at ? ` · ${fmt(commitmentPayment.created_at)}` : ""}
+                  </div>
+                </div>
+              ) : null}
+
               {paySummary ? (
                 <div className="mt-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
                   <div className="text-[11px] text-neutral-500">Current financials</div>
@@ -1050,13 +1128,41 @@ export default function HandoffDetailPage() {
           {/* Right */}
           <div className="space-y-4">
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="text-sm font-semibold text-neutral-100">Agent handling</div>
+              <div className="mt-2 grid grid-cols-1 gap-3 text-xs text-neutral-300 sm:grid-cols-2">
+                <div>
+                  <div className="text-[11px] text-neutral-500">Claimed by</div>
+                  <div className="text-sm text-neutral-200">{handoff.claimed_by || "Unclaimed"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-neutral-500">Claimed at</div>
+                  <div className="text-sm text-neutral-200">{fmt(handoff.claimed_at)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-neutral-500">Assigned agent</div>
+                  <div className="text-sm text-neutral-200">{handoff.assigned_agent_username || "N/A"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-neutral-500">Assigned agent ID</div>
+                  <div className="text-sm text-neutral-200">{handoff.assigned_agent_id ?? "N/A"}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="text-sm font-semibold text-neutral-100">Operations</div>
               <div className="mt-1 text-xs text-neutral-500">
-                Owner: <span className="text-neutral-200">{handoff.claimed_by || "Unclaimed"}</span>{" "}
+                Owner: <span className="text-neutral-200">{handoff.claimed_by || "Unclaimed"}</span>
+                {handoff.assigned_agent_username ? (
+                  <>
+                    {" "}
+                    · Assigned:{" "}
+                    <span className="text-neutral-200">{handoff.assigned_agent_username}</span>
+                  </>
+                ) : null}
+                {" "}
                 · Claimed:{" "}
-                <span className="text-neutral-200">
-                  {handoff.claimed_at ? fmt(handoff.claimed_at) : "N/A"}
-                </span>
+                <span className="text-neutral-200">{handoff.claimed_at ? fmt(handoff.claimed_at) : "N/A"}</span>
               </div>
 
               <div className="mt-4">

@@ -240,6 +240,21 @@ async function ensureRow(conn: mysql.PoolConnection) {
       `ALTER TABLE linescout_settings ADD COLUMN white_label_daily_reveals INT NOT NULL DEFAULT 10`
     );
   }
+  const [wlInsightsCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'white_label_insights_daily_limit'
+    LIMIT 1
+    `
+  );
+  if (!wlInsightsCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN white_label_insights_daily_limit INT NOT NULL DEFAULT 2`
+    );
+  }
 
   const [wlPriceCols]: any = await conn.query(
     `
@@ -272,8 +287,8 @@ async function ensureRow(conn: mysql.PoolConnection) {
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals, white_label_subscription_countries)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10, 'GB,CA')`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit, white_label_subscription_countries)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10, 2, 'GB,CA')`
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -556,6 +571,7 @@ export async function POST(req: Request) {
   const max_active_claims = num(body.max_active_claims);
   const white_label_trial_days = num(body.white_label_trial_days);
   const white_label_daily_reveals = num(body.white_label_daily_reveals);
+  const white_label_insights_daily_limit = num(body.white_label_insights_daily_limit);
   const white_label_monthly_price_gbp = num(body.white_label_monthly_price_gbp);
   const white_label_yearly_price_gbp = num(body.white_label_yearly_price_gbp);
   const white_label_monthly_price_cad = num(body.white_label_monthly_price_cad);
@@ -623,6 +639,7 @@ export async function POST(req: Request) {
     max_active_claims,
     white_label_trial_days,
     white_label_daily_reveals,
+    white_label_insights_daily_limit,
     white_label_monthly_price_gbp,
     white_label_yearly_price_gbp,
     white_label_monthly_price_cad,
@@ -680,6 +697,7 @@ export async function POST(req: Request) {
            max_active_claims = ?,
            white_label_trial_days = ?,
            white_label_daily_reveals = ?,
+           white_label_insights_daily_limit = ?,
           white_label_monthly_price_gbp = ?,
           white_label_yearly_price_gbp = ?,
           white_label_monthly_price_cad = ?,
@@ -712,6 +730,7 @@ export async function POST(req: Request) {
         max_active_claims,
         white_label_trial_days,
         white_label_daily_reveals,
+        white_label_insights_daily_limit,
         white_label_monthly_price_gbp,
         white_label_yearly_price_gbp,
         white_label_monthly_price_cad,

@@ -112,7 +112,8 @@ export async function GET(req: Request) {
         -- Projects (source of truth = handoffs)
         COALESCE(hAgg.machine_sourcing_projects_count, 0) AS machine_sourcing_projects_count,
         COALESCE(hAgg.total_projects_count, 0) AS total_projects_count,
-        COALESCE(hAgg.last_project_at, NULL) AS last_project_at
+        COALESCE(hAgg.last_project_at, NULL) AS last_project_at,
+        NULLIF(TRIM(lAgg.whatsapp), '') AS profile_phone
 
       FROM users u
 
@@ -155,6 +156,16 @@ export async function GET(req: Request) {
         WHERE email IS NOT NULL AND TRIM(email) <> ''
         GROUP BY LOWER(TRIM(email))
       ) hAgg ON hAgg.email_norm = u.email_normalized
+      LEFT JOIN (
+        SELECT l1.email, l1.whatsapp, LOWER(TRIM(l1.email)) AS email_norm
+        FROM linescout_leads l1
+        JOIN (
+          SELECT LOWER(TRIM(email)) AS email_norm, MAX(id) AS max_id
+          FROM linescout_leads
+          WHERE email IS NOT NULL AND TRIM(email) <> ''
+          GROUP BY LOWER(TRIM(email))
+        ) latest ON latest.email_norm = LOWER(TRIM(l1.email)) AND latest.max_id = l1.id
+      ) lAgg ON lAgg.email_norm = u.email_normalized
       LEFT JOIN linescout_countries c ON c.id = u.country_id
 
       ORDER BY u.id DESC

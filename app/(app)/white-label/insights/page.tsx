@@ -143,9 +143,13 @@ export default function WhiteLabelInsightsInfoPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">Access</p>
-              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">Subscription required</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">
+                {blockedCode === "insights_limit_reached" ? "Daily limit reached" : "Subscription required"}
+              </h2>
               <p className="mt-2 max-w-xl text-sm text-neutral-600">
-                Premium insights are available only to active subscribers.
+                {blockedCode === "insights_limit_reached"
+                  ? "You've reached today's free premium insights limit. Try again tomorrow or subscribe for unlimited access."
+                  : "Premium insights are available only to active subscribers."}
               </p>
             </div>
             <div className="rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.05)] px-4 py-3 text-xs text-[var(--agent-blue)]">

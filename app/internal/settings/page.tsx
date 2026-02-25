@@ -50,6 +50,7 @@ type SettingsItem = {
   max_active_claims?: number;
   white_label_trial_days?: number;
   white_label_daily_reveals?: number;
+  white_label_insights_daily_limit?: number;
   white_label_monthly_price_gbp?: number | null;
   white_label_yearly_price_gbp?: number | null;
   white_label_monthly_price_cad?: number | null;
@@ -196,6 +197,7 @@ export default function InternalSettingsPage() {
   const [maxActiveClaims, setMaxActiveClaims] = useState("3");
   const [whiteLabelTrialDays, setWhiteLabelTrialDays] = useState("3");
   const [whiteLabelDailyReveals, setWhiteLabelDailyReveals] = useState("10");
+  const [whiteLabelDailyInsights, setWhiteLabelDailyInsights] = useState("2");
   const [whiteLabelMonthlyPriceGbp, setWhiteLabelMonthlyPriceGbp] = useState("");
   const [whiteLabelYearlyPriceGbp, setWhiteLabelYearlyPriceGbp] = useState("");
   const [whiteLabelMonthlyPriceCad, setWhiteLabelMonthlyPriceCad] = useState("");
@@ -283,6 +285,7 @@ export default function InternalSettingsPage() {
   const [currency, setCurrency] = useState("NGN");
   const [paymentSource, setPaymentSource] = useState<"paystack" | "paypal">("paystack");
   const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>("");
+  const [paymentRef, setPaymentRef] = useState("");
 
   // Optional financials + initial payment
   const [totalDue, setTotalDue] = useState<string>("");
@@ -354,6 +357,7 @@ export default function InternalSettingsPage() {
       setMaxActiveClaims(String(item.max_active_claims ?? 3));
       setWhiteLabelTrialDays(String(item.white_label_trial_days ?? 3));
       setWhiteLabelDailyReveals(String(item.white_label_daily_reveals ?? 10));
+      setWhiteLabelDailyInsights(String(item.white_label_insights_daily_limit ?? 2));
       setWhiteLabelMonthlyPriceGbp(
         item.white_label_monthly_price_gbp != null ? String(item.white_label_monthly_price_gbp) : ""
       );
@@ -630,6 +634,7 @@ export default function InternalSettingsPage() {
         max_active_claims: Number(maxActiveClaims),
         white_label_trial_days: Number(whiteLabelTrialDays),
         white_label_daily_reveals: Number(whiteLabelDailyReveals),
+        white_label_insights_daily_limit: Number(whiteLabelDailyInsights),
         white_label_monthly_price_gbp: whiteLabelMonthlyPriceGbp ? Number(whiteLabelMonthlyPriceGbp) : null,
         white_label_yearly_price_gbp: whiteLabelYearlyPriceGbp ? Number(whiteLabelYearlyPriceGbp) : null,
         white_label_monthly_price_cad: whiteLabelMonthlyPriceCad ? Number(whiteLabelMonthlyPriceCad) : null,
@@ -912,11 +917,12 @@ export default function InternalSettingsPage() {
     const emailOk = customerEmail.trim().includes("@");
     const statusOk = status.trim().length > 0;
     const sourceOk = paymentSource === "paystack" || paymentSource === "paypal";
+    const refOk = paymentRef.trim().length > 0;
     const paypalCurrency = currency.toUpperCase();
     const paypalCurrencyOk =
       paymentSource === "paystack" || paypalCurrency === "GBP" || paypalCurrency === "CAD";
 
-    if (!nameOk || !emailOk || !statusOk || !sourceOk || !paypalCurrencyOk) return false;
+    if (!nameOk || !emailOk || !statusOk || !sourceOk || !paypalCurrencyOk || !refOk) return false;
     if (!selectedUserId) return false;
 
     if (totalDue.trim()) {
@@ -932,6 +938,7 @@ export default function InternalSettingsPage() {
     totalDue,
     paymentSource,
     currency,
+    paymentRef,
     selectedUserId,
   ]);
 
@@ -949,6 +956,7 @@ export default function InternalSettingsPage() {
     const maxClaims = Number(maxActiveClaims);
     const trialDays = Number(whiteLabelTrialDays);
     const dailyReveals = Number(whiteLabelDailyReveals);
+    const dailyInsights = Number(whiteLabelDailyInsights);
     const monthlyGbp = whiteLabelMonthlyPriceGbp ? Number(whiteLabelMonthlyPriceGbp) : null;
     const yearlyGbp = whiteLabelYearlyPriceGbp ? Number(whiteLabelYearlyPriceGbp) : null;
     const monthlyCad = whiteLabelMonthlyPriceCad ? Number(whiteLabelMonthlyPriceCad) : null;
@@ -1015,6 +1023,9 @@ export default function InternalSettingsPage() {
     if (!Number.isFinite(dailyReveals) || dailyReveals < 1 || dailyReveals > 5000) {
       errors.push("White-label daily reveals must be between 1 and 5000.");
     }
+    if (!Number.isFinite(dailyInsights) || dailyInsights < 1 || dailyInsights > 5000) {
+      errors.push("White-label daily insights must be between 1 and 5000.");
+    }
     if (monthlyGbp != null && (!Number.isFinite(monthlyGbp) || monthlyGbp < 0)) {
       errors.push("White-label monthly price (GBP) must be 0 or more.");
     }
@@ -1051,6 +1062,7 @@ export default function InternalSettingsPage() {
     maxActiveClaims,
     whiteLabelTrialDays,
     whiteLabelDailyReveals,
+    whiteLabelDailyInsights,
     whiteLabelMonthlyPriceGbp,
     whiteLabelYearlyPriceGbp,
     whiteLabelMonthlyPriceCad,
@@ -1128,6 +1140,7 @@ export default function InternalSettingsPage() {
     setCurrency("NGN");
     setPaymentSource("paystack");
     setUserDisplayCurrency("");
+    setPaymentRef("");
     setRouteType("machine_sourcing");
     setTotalDue("");
     setResult(null);
@@ -1155,6 +1168,7 @@ export default function InternalSettingsPage() {
         route_type: routeType,
         total_due: totalDue.trim() ? Number(totalDue) : null,
         payment_source: paymentSource,
+        payment_ref: paymentRef.trim(),
       };
       if (selectedUserId) payload.user_id = selectedUserId;
 
@@ -1754,6 +1768,15 @@ export default function InternalSettingsPage() {
                 <input
                   value={whiteLabelDailyReveals}
                   onChange={(e) => setWhiteLabelDailyReveals(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-400">Daily insights</label>
+                <input
+                  value={whiteLabelDailyInsights}
+                  onChange={(e) => setWhiteLabelDailyInsights(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                   inputMode="numeric"
                 />
@@ -2672,6 +2695,19 @@ export default function InternalSettingsPage() {
                       PayPal currency must be GBP or CAD for this user.
                     </p>
                   ) : null}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-neutral-300">Payment reference</label>
+                  <input
+                    value={paymentRef}
+                    onChange={(e) => setPaymentRef(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    placeholder="Paystack reference or PayPal order ID"
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Required. Used to reconcile the payment and prevent duplicates.
+                  </p>
                 </div>
 
                 <div>

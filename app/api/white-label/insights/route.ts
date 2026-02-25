@@ -37,13 +37,18 @@ export async function GET(req: Request) {
       await ensureWhiteLabelProductsReady(conn);
 
       const [[settings]]: any = await conn.query(
-        `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+        `SELECT white_label_subscription_countries, white_label_trial_days, white_label_insights_daily_limit
+         FROM linescout_settings ORDER BY id DESC LIMIT 1`
       );
       const eligible = new Set(parseEligibleCountries(settings?.white_label_subscription_countries));
+      const trialDays = Number(settings?.white_label_trial_days || 0);
+      const dailyInsightsLimit = Math.max(1, Number(settings?.white_label_insights_daily_limit || 2));
 
       const [[userRow]]: any = await conn.query(
         `
         SELECT u.white_label_plan, u.white_label_subscription_status,
+               u.white_label_trial_ends_at,
+               u.white_label_insights_date, u.white_label_insights_used,
                c.iso2 AS country_iso2,
                cur.code AS currency_code
         FROM users u
@@ -70,11 +75,50 @@ export async function GET(req: Request) {
         );
       }
 
-      if (!allowLocal && !(plan === "paid" && status === "active")) {
-        return NextResponse.json(
-          { ok: false, code: "subscription_required", error: "Paid subscription required." },
-          { status: 402 }
-        );
+      let shouldIncrementInsights = false;
+      if (!allowLocal) {
+        const subscriptionActive = plan === "paid" && status === "active";
+        const now = new Date();
+        let trialEnds = userRow?.white_label_trial_ends_at ? new Date(userRow.white_label_trial_ends_at) : null;
+        if (!trialEnds && trialDays > 0) {
+          const next = new Date();
+          next.setDate(next.getDate() + trialDays);
+          trialEnds = next;
+          await conn.query(
+            `UPDATE users SET white_label_trial_ends_at = ? WHERE id = ? LIMIT 1`,
+            [trialEnds, user.id]
+          );
+        }
+        const trialActive = trialEnds ? now <= trialEnds : false;
+
+        if (!subscriptionActive && !trialActive) {
+          return NextResponse.json(
+            { ok: false, code: "subscription_required", error: "Paid subscription required." },
+            { status: 402 }
+          );
+        }
+
+        if (!subscriptionActive && trialActive) {
+          const todayKey = now.toISOString().slice(0, 10);
+          const insightsDate = userRow?.white_label_insights_date
+            ? String(userRow.white_label_insights_date).slice(0, 10)
+            : null;
+          let insightsUsed = Number(userRow?.white_label_insights_used || 0);
+          if (insightsDate !== todayKey) {
+            insightsUsed = 0;
+            await conn.query(
+              `UPDATE users SET white_label_insights_date = ?, white_label_insights_used = 0 WHERE id = ? LIMIT 1`,
+              [todayKey, user.id]
+            );
+          }
+          if (insightsUsed >= dailyInsightsLimit) {
+            return NextResponse.json(
+              { ok: false, code: "insights_limit_reached", error: "Daily insights limit reached." },
+              { status: 429 }
+            );
+          }
+          shouldIncrementInsights = true;
+        }
       }
 
       const [[product]]: any = await conn.query(
@@ -91,6 +135,12 @@ export async function GET(req: Request) {
       );
       if (!product?.id) {
         return NextResponse.json({ ok: false, error: "Product not found." }, { status: 404 });
+      }
+      if (shouldIncrementInsights) {
+        await conn.query(
+          `UPDATE users SET white_label_insights_used = white_label_insights_used + 1 WHERE id = ? LIMIT 1`,
+          [user.id]
+        );
       }
 
       const isCad = currencyCode === "CAD";

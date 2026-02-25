@@ -37,6 +37,22 @@ type HandoffItem = {
   tracking_number: string | null;
 
   conversation_id: number | null;
+  assigned_agent_id?: number | null;
+  assigned_agent_username?: string | null;
+
+  user_id?: number | null;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  user_created_at?: string | null;
+  user_last_seen_at?: string | null;
+  user_active_sessions?: number | null;
+  user_lead_name?: string | null;
+  user_whatsapp?: string | null;
+  user_country_id?: number | null;
+  user_country_name?: string | null;
+  user_country_iso2?: string | null;
+  user_display_currency_code?: string | null;
+  user_country_currency_code?: string | null;
 
   release_audit?: Array<{
     id: number;
@@ -52,6 +68,40 @@ type HandoffItem = {
 };
 
 type ApiResp = { ok: true; item: HandoffItem } | { ok: false; error: string };
+
+type PaymentsResp =
+  | {
+      ok: true;
+      financials?: {
+        currency?: string;
+        total_due?: number;
+        total_paid?: number;
+        balance?: number;
+        display_currency_code?: string;
+        display_total_due?: number;
+        display_total_paid?: number;
+        display_balance?: number;
+      };
+      commitment_payment?: {
+        id: number;
+        purpose: string;
+        amount: number;
+        currency: string;
+        created_at?: string | null;
+        provider?: string | null;
+        reference?: string | null;
+      } | null;
+      payments?: Array<{
+        id: number;
+        amount: number;
+        currency: string;
+        purpose: string;
+        note?: string | null;
+        paid_at?: string | null;
+        created_at?: string | null;
+      }>;
+    }
+  | { ok: false; error: string };
 
 function fmt(d?: string | null) {
   if (!d) return "N/A";
@@ -107,6 +157,9 @@ export default function InternalHandoffDetailPage() {
   const [data, setData] = useState<ApiResp | null>(null);
   const [loading, setLoading] = useState(true);
   const [banner, setBanner] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [payments, setPayments] = useState<PaymentsResp | null>(null);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsErr, setPaymentsErr] = useState<string | null>(null);
 
   const handoff = useMemo(() => (data && data.ok ? data.item : null), [data]);
 
@@ -115,19 +168,33 @@ export default function InternalHandoffDetailPage() {
 
     setLoading(true);
     setBanner(null);
+    setPaymentsLoading(true);
 
     try {
-      const res = await fetch(`/api/internal/handoffs/${id}`, { cache: "no-store" });
+      const [res, payRes] = await Promise.all([
+        fetch(`/api/internal/handoffs/${id}`, { cache: "no-store" }),
+        fetch(`/api/linescout-handoffs/payments?handoffId=${id}`, { cache: "no-store" }),
+      ]);
       const json = (await res.json().catch(() => null)) as ApiResp | null;
+      const payJson = (await payRes.json().catch(() => null)) as PaymentsResp | null;
       if (!res.ok || !json || !("ok" in json) || !json.ok) {
         setData(json || { ok: false, error: "Failed to load handoff" });
       } else {
         setData(json);
       }
+      if (!payRes.ok || !payJson || !("ok" in payJson) || !payJson.ok) {
+        setPayments(payJson || { ok: false, error: "Failed to load payments" });
+        setPaymentsErr((payJson as any)?.error || "Failed to load payments");
+      } else {
+        setPayments(payJson);
+        setPaymentsErr(null);
+      }
     } catch {
       setData({ ok: false, error: "Failed to load handoff" });
+      setPaymentsErr("Failed to load payments");
     } finally {
       setLoading(false);
+      setPaymentsLoading(false);
     }
   }
 
@@ -140,6 +207,21 @@ export default function InternalHandoffDetailPage() {
   const btn =
     "inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700";
   const btnDisabled = "opacity-60 cursor-not-allowed";
+  function fmtMoney(amount?: number | null, currency?: string | null) {
+    if (amount == null || !Number.isFinite(amount)) return "—";
+    const cur = String(currency || "").toUpperCase() || "NGN";
+    return `${cur} ${Number(amount).toLocaleString()}`;
+  }
+
+  function purposeLabel(purpose?: string | null) {
+    const p = String(purpose || "").toLowerCase();
+    if (p === "commitment_fee") return "Commitment fee";
+    if (p === "downpayment") return "Downpayment";
+    if (p === "full_payment") return "Full payment";
+    if (p === "shipping_payment") return "Shipping payment";
+    if (p === "additional_payment") return "Additional payment";
+    return purpose || "Payment";
+  }
 
   return (
     <div className="space-y-4">
@@ -251,6 +333,30 @@ export default function InternalHandoffDetailPage() {
               </div>
             </div>
 
+            {/* User profile */}
+            <div className={card}>
+              <div className="text-sm font-semibold text-neutral-100">User profile</div>
+
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {field("User ID", handoff.user_id ?? "N/A", { mono: true })}
+                {field("Email", handoff.user_email ?? handoff.email)}
+                {field("Display name", handoff.user_display_name || "N/A")}
+                {field("Lead name", handoff.user_lead_name || "N/A")}
+                {field("Phone / WhatsApp", handoff.user_whatsapp || "N/A", { mono: true })}
+                {field(
+                  "Country",
+                  handoff.user_country_name
+                    ? `${handoff.user_country_name} (${handoff.user_country_iso2 || ""})`
+                    : "N/A"
+                )}
+                {field("Display currency", handoff.user_display_currency_code || "N/A")}
+                {field("Country currency", handoff.user_country_currency_code || "N/A")}
+                {field("User created", fmt(handoff.user_created_at))}
+                {field("Last seen", fmt(handoff.user_last_seen_at))}
+                {field("Active sessions", handoff.user_active_sessions ?? "N/A")}
+              </div>
+            </div>
+
             {/* Context */}
             <div className={card}>
               <div className="flex items-center justify-between gap-3">
@@ -345,7 +451,91 @@ export default function InternalHandoffDetailPage() {
                 {field("Conversation ID", handoff.conversation_id ?? "N/A", { mono: true })}
                 {field("Bank ID", handoff.bank_id ?? "N/A", { mono: true })}
                 {field("Shipping company ID", handoff.shipping_company_id ?? "N/A", { mono: true })}
+                {field("Assigned agent ID", handoff.assigned_agent_id ?? "N/A", { mono: true })}
+                {field("Assigned agent", handoff.assigned_agent_username ?? "N/A")}
               </div>
+            </div>
+
+            {/* Payments */}
+            <div className={card}>
+              <div className="text-sm font-semibold text-neutral-100">Payments</div>
+              {paymentsErr ? <p className="mt-3 text-sm text-red-300">{paymentsErr}</p> : null}
+
+              {payments && "ok" in payments && payments.ok ? (
+                <div className="mt-3 space-y-3">
+                  {payments.financials ? (
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3 text-xs text-neutral-300">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-widest text-neutral-500">Total due</div>
+                          <div className="mt-1 text-sm text-neutral-100">
+                            {fmtMoney(payments.financials.display_total_due, payments.financials.display_currency_code)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-widest text-neutral-500">Total paid</div>
+                          <div className="mt-1 text-sm text-neutral-100">
+                            {fmtMoney(payments.financials.display_total_paid, payments.financials.display_currency_code)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-widest text-neutral-500">Balance</div>
+                          <div className="mt-1 text-sm text-neutral-100">
+                            {fmtMoney(payments.financials.display_balance, payments.financials.display_currency_code)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {payments.commitment_payment ? (
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+                      <div className="text-xs text-neutral-500">Commitment fee</div>
+                      <div className="mt-1 text-sm text-neutral-100">
+                        {fmtMoney(payments.commitment_payment.amount, payments.commitment_payment.currency)}
+                      </div>
+                      <div className="mt-1 text-xs text-neutral-500">
+                        {payments.commitment_payment.provider ? `${payments.commitment_payment.provider} • ` : ""}
+                        {payments.commitment_payment.reference || "No reference"}
+                        {payments.commitment_payment.created_at ? ` • ${fmt(payments.commitment_payment.created_at)}` : ""}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {payments.payments && payments.payments.length ? (
+                    <div className="rounded-xl border border-neutral-800 bg-neutral-950/40">
+                      <table className="w-full text-xs">
+                        <thead className="bg-neutral-900/70 text-neutral-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Purpose</th>
+                            <th className="px-3 py-2 text-left">Amount</th>
+                            <th className="px-3 py-2 text-left">Paid at</th>
+                            <th className="px-3 py-2 text-left">Note</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-neutral-950">
+                          {payments.payments.map((p) => (
+                            <tr key={p.id} className="border-t border-neutral-800">
+                              <td className="px-3 py-2 text-neutral-200">{purposeLabel(p.purpose)}</td>
+                              <td className="px-3 py-2 text-neutral-200">
+                                {fmtMoney(p.amount, p.currency)}
+                              </td>
+                              <td className="px-3 py-2 text-neutral-300">{fmt(p.paid_at || p.created_at)}</td>
+                              <td className="px-3 py-2 text-neutral-400">{p.note || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">No payment records yet.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-500">
+                  {paymentsLoading ? "Loading payments..." : "No payment data."}
+                </p>
+              )}
             </div>
 
             {/* Release audit */}

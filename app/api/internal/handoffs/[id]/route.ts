@@ -226,11 +226,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         ia.username AS assigned_agent_username,
         hc.name AS country_name,
         hc.iso2 AS country_iso2,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.display_name AS user_display_name,
+        u.created_at AS user_created_at,
         u.country_id AS user_country_id,
         uc.name AS user_country_name,
         uc.iso2 AS user_country_iso2,
         u.display_currency_code AS user_display_currency_code,
         ucc.code AS user_country_currency_code,
+        sAgg.last_seen_at AS user_last_seen_at,
+        sAgg.active_sessions AS user_active_sessions,
+        lprof.name AS lead_name,
+        lprof.whatsapp AS lead_whatsapp,
         COALESCE(
           NULLIF(TRIM(h.customer_name), ''),
           NULLIF(
@@ -250,7 +258,25 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       LEFT JOIN linescout_banks b ON b.id = h.bank_id
       LEFT JOIN linescout_shipping_companies sc ON sc.id = h.shipping_company_id
       LEFT JOIN linescout_conversations c ON c.handoff_id = h.id
-      LEFT JOIN users u ON u.id = c.user_id
+      LEFT JOIN users u ON u.id = c.user_id OR (c.user_id IS NULL AND h.email IS NOT NULL AND u.email_normalized = LOWER(TRIM(h.email)))
+      LEFT JOIN (
+        SELECT
+          user_id,
+          MAX(last_seen_at) AS last_seen_at,
+          SUM(CASE WHEN revoked_at IS NULL AND expires_at > NOW() THEN 1 ELSE 0 END) AS active_sessions
+        FROM linescout_user_sessions
+        GROUP BY user_id
+      ) sAgg ON sAgg.user_id = u.id
+      LEFT JOIN (
+        SELECT l1.email, l1.name, l1.whatsapp, LOWER(TRIM(l1.email)) AS email_norm
+        FROM linescout_leads l1
+        JOIN (
+          SELECT LOWER(TRIM(email)) AS email_norm, MAX(id) AS max_id
+          FROM linescout_leads
+          WHERE email IS NOT NULL AND TRIM(email) <> ''
+          GROUP BY LOWER(TRIM(email))
+        ) latest ON latest.email_norm = LOWER(TRIM(l1.email)) AND latest.max_id = l1.id
+      ) lprof ON lprof.email_norm = COALESCE(u.email_normalized, LOWER(TRIM(h.email)))
       LEFT JOIN internal_users ia ON ia.id = c.assigned_agent_id
       LEFT JOIN linescout_countries hc ON hc.id = h.country_id
       LEFT JOIN linescout_countries uc ON uc.id = u.country_id
@@ -344,6 +370,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         conversation_id: item.conversation_id ?? null,
         assigned_agent_id: item.assigned_agent_id ?? null,
         assigned_agent_username: item.assigned_agent_username ?? null,
+        user_id: item.user_id ?? null,
+        user_email: item.user_email ?? null,
+        user_display_name: item.user_display_name ?? null,
+        user_created_at: item.user_created_at ?? null,
+        user_last_seen_at: item.user_last_seen_at ?? null,
+        user_active_sessions: item.user_active_sessions ?? null,
+        user_lead_name: item.lead_name ?? null,
+        user_whatsapp: item.lead_whatsapp ?? null,
         user_country_id: item.user_country_id ?? null,
         user_country_name: item.user_country_name ?? null,
         user_country_iso2: item.user_country_iso2 ?? null,

@@ -91,6 +91,8 @@ export default function WhiteLabelInsights({ productId }: { productId: number })
             <p className="text-xs text-neutral-500">
               {code === "subscription_unavailable"
                 ? "Insights are not available in your country yet."
+                : code === "insights_limit_reached"
+                ? "Daily free insights limit reached. Try again tomorrow."
                 : "Plain‑English market signals for pricing and demand."}
             </p>
           </div>

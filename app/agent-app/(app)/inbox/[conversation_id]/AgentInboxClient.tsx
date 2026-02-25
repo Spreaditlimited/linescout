@@ -647,6 +647,8 @@ function AgentChatThreadInner() {
                       : agentLabel;
 
                   const attachments = isDeleted ? [] : attachmentsByMessageId[String(m.id)] || [];
+                  const createdMs = m.created_at ? new Date(m.created_at).getTime() : 0;
+                  const withinEditWindow = createdMs ? Date.now() - createdMs <= 24 * 60 * 60 * 1000 : false;
                   const replyLabel =
                     m.reply_to_sender_type === "user"
                       ? customerName || "Customer"
@@ -663,12 +665,14 @@ function AgentChatThreadInner() {
                     !isDeleted &&
                     !!m.message_text &&
                     (!assignedAgentId || Number(m.sender_id) === assignedAgentId) &&
-                    attachments.length === 0;
+                    attachments.length === 0 &&
+                    withinEditWindow;
                   const canDelete =
                     !isQuick &&
                     isAgent &&
                     !isDeleted &&
-                    (!assignedAgentId || Number(m.sender_id) === assignedAgentId);
+                    (!assignedAgentId || Number(m.sender_id) === assignedAgentId) &&
+                    withinEditWindow;
                   const timeLabel = `${fmtTime(m.created_at)}${m.edited_at ? " · Edited" : ""}`;
 
                   return (

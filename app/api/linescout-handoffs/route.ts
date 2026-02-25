@@ -86,9 +86,9 @@ export async function GET(req: Request) {
           NULLIF(TRIM(u.email), '')
         ) AS customer_name,
         COALESCE(
-          NULLIF(TRIM(h.whatsapp_number), ''),
-          NULLIF(TRIM(l.whatsapp), '')
-        ) AS customer_whatsapp
+          NULLIF(TRIM(l.whatsapp), ''),
+          NULLIF(TRIM(h.whatsapp_number), '')
+        ) AS customer_phone
       FROM linescout_handoffs h
       LEFT JOIN linescout_conversations c ON c.id = h.conversation_id
       LEFT JOIN users u ON u.id = c.user_id

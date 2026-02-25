@@ -23,6 +23,7 @@ async function ensureColumn(conn: PoolConnection, table: string, column: string,
 export async function ensureWhiteLabelSettings(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_settings", "white_label_trial_days", "INT NOT NULL DEFAULT 3");
   await ensureColumn(conn, "linescout_settings", "white_label_daily_reveals", "INT NOT NULL DEFAULT 10");
+  await ensureColumn(conn, "linescout_settings", "white_label_insights_daily_limit", "INT NOT NULL DEFAULT 2");
   await ensureColumn(conn, "linescout_settings", "white_label_monthly_price_gbp", "DECIMAL(10,2) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_yearly_price_gbp", "DECIMAL(10,2) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_monthly_price_cad", "DECIMAL(10,2) NULL");
@@ -43,4 +44,6 @@ export async function ensureWhiteLabelUserColumns(conn: PoolConnection) {
   await ensureColumn(conn, "users", "white_label_subscription_id", "VARCHAR(64) NULL");
   await ensureColumn(conn, "users", "white_label_reveals_date", "DATE NULL");
   await ensureColumn(conn, "users", "white_label_reveals_used", "INT NOT NULL DEFAULT 0");
+  await ensureColumn(conn, "users", "white_label_insights_date", "DATE NULL");
+  await ensureColumn(conn, "users", "white_label_insights_used", "INT NOT NULL DEFAULT 0");
 }

@@ -75,7 +75,7 @@ export async function POST(req: Request) {
 
       const [mrows]: any = await conn.query(
         `
-        SELECT id, sender_type, sender_id, deleted_at
+        SELECT id, sender_type, sender_id, deleted_at, created_at
         FROM linescout_messages
         WHERE id = ? AND conversation_id = ?
         LIMIT 1
@@ -94,6 +94,13 @@ export async function POST(req: Request) {
 
       if (m.deleted_at) {
         return NextResponse.json({ ok: true, deleted: true });
+      }
+      const createdAt = m.created_at ? new Date(m.created_at).getTime() : 0;
+      if (!createdAt || Date.now() - createdAt > 24 * 60 * 60 * 1000) {
+        return NextResponse.json(
+          { ok: false, error: "Delete window expired (24 hours)." },
+          { status: 403 }
+        );
       }
 
       await conn.query(

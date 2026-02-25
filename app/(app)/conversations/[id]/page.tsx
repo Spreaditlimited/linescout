@@ -477,12 +477,14 @@ export default function ConversationThreadPage() {
           {(data?.items || []).map((item) => {
             const isUser = item.sender_type === "user";
             const isDeleted = !!item.deleted_at;
+            const createdMs = item.created_at ? new Date(item.created_at).getTime() : 0;
+            const withinEditWindow = createdMs ? Date.now() - createdMs <= 24 * 60 * 60 * 1000 : false;
             const replyLabel =
               item.reply_to_sender_type === "user" ? customerName : agentName || "Agent";
             const replyText = String(item.reply_to_text || "").trim() || "Message deleted";
             const attachments = attachmentsByMessage[String(item.id)] || [];
-            const canEdit = isUser && !isDeleted && !attachments.length;
-            const canDelete = isUser && !isDeleted;
+            const canEdit = isUser && !isDeleted && !attachments.length && withinEditWindow;
+            const canDelete = isUser && !isDeleted && withinEditWindow;
             const canReply = !isDeleted;
             const timeLabel = `${shortDate.format(new Date(item.created_at))}${
               item.edited_at ? " · Edited" : ""

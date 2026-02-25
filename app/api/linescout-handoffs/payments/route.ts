@@ -151,7 +151,7 @@ export async function GET(req: Request) {
     const handoffDisplayCurrency = String(handoffRows?.[0]?.display_currency_code || "").trim();
     if (handoffToken) {
       const [commitRows]: any = await conn.query(
-        `SELECT id, amount, currency, created_at
+        `SELECT id, amount, currency, created_at, paystack_ref, metadata
          FROM linescout_tokens
          WHERE token = ?
            AND status = 'valid'
@@ -162,12 +162,27 @@ export async function GET(req: Request) {
       );
       const cp = commitRows?.[0];
       if (cp?.id) {
+        let meta: any = null;
+        try {
+          meta = cp.metadata ? JSON.parse(String(cp.metadata)) : null;
+        } catch {
+          meta = null;
+        }
+        const provider =
+          String(meta?.payment_source || meta?.provider || "").trim() ||
+          (cp.paystack_ref ? "paystack" : "");
+        const reference =
+          String(cp.paystack_ref || "").trim() ||
+          String(meta?.paystack?.reference || meta?.paystack_ref || meta?.reference || "").trim() ||
+          String(meta?.paypal?.order_id || meta?.paypal?.orderId || meta?.paypal_order_id || "").trim();
         commitmentPayment = {
           id: Number(cp.id),
           purpose: "commitment_fee",
           amount: Number(cp.amount || 0),
           currency: String(cp.currency || "NGN"),
           created_at: cp.created_at || null,
+          provider: provider || null,
+          reference: reference || null,
         };
       }
     }

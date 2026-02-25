@@ -148,6 +148,7 @@ async function notifyStatusEmail(payload: any) {
  *   route_type?: "machine_sourcing" | "white_label" | "simple_sourcing" (optional)
  *   total_due?: number | null      (optional)
  *   payment_source: "paystack" | "paypal" (required)
+ *   payment_ref: string (required)
  * }
  */
 export async function POST(req: Request) {
@@ -174,6 +175,7 @@ export async function POST(req: Request) {
     const total_due =
       body.total_due === null || body.total_due === undefined ? null : Number(body.total_due);
     const paymentSource = String(body.payment_source || "").trim().toLowerCase();
+    const paymentRef = String(body.payment_ref || "").trim();
 
     if (!customer_name) {
       return NextResponse.json({ ok: false, error: "customer_name is required" }, { status: 400 });
@@ -186,6 +188,9 @@ export async function POST(req: Request) {
     }
     if (paymentSource !== "paystack" && paymentSource !== "paypal") {
       return NextResponse.json({ ok: false, error: "payment_source must be paystack or paypal" }, { status: 400 });
+    }
+    if (!paymentRef) {
+      return NextResponse.json({ ok: false, error: "payment_ref is required" }, { status: 400 });
     }
 
     conn = await db();
@@ -234,6 +239,26 @@ export async function POST(req: Request) {
       customer_name = String(userRows[0].display_name || "").trim();
     }
 
+    // Block duplicate manual handoffs for same user in a short interval (10 minutes)
+    const [recentRows]: any = await conn.query(
+      `
+      SELECT id, created_at
+      FROM linescout_handoffs
+      WHERE email = ?
+        AND created_at >= (NOW() - INTERVAL 10 MINUTE)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [customer_email]
+    );
+    if (recentRows?.length) {
+      await conn.rollback();
+      return NextResponse.json(
+        { ok: false, error: "A handoff was created for this user recently. Please wait a few minutes and retry." },
+        { status: 409 }
+      );
+    }
+
     const userCountryId = Number(userRows?.[0]?.country_id || 0) || null;
     const userDisplayCurrency = String(userRows?.[0]?.display_currency_code || "")
       .trim()
@@ -267,6 +292,21 @@ export async function POST(req: Request) {
     const settlementCurrency = finalCurrency || defaults.settlement_currency_code;
     const countryId = userCountryId || defaults.country_id;
 
+    // Ensure payment ref isn't reused
+    if (paymentSource === "paystack") {
+      const [refRows]: any = await conn.query(
+        `SELECT id FROM linescout_tokens WHERE paystack_ref = ? LIMIT 1`,
+        [paymentRef]
+      );
+      if (refRows?.length) {
+        await conn.rollback();
+        return NextResponse.json(
+          { ok: false, error: "This Paystack reference has already been used." },
+          { status: 409 }
+        );
+      }
+    }
+
     // 3) Create token record matching production logic
     // type MUST be "sourcing"
     // token format MUST be SRC-XXXXXX-YYYYY
@@ -280,14 +320,15 @@ export async function POST(req: Request) {
       try {
         await conn.query(
           `INSERT INTO linescout_tokens
-           (token, type, email, amount, currency, status, metadata, expires_at, customer_name, customer_phone)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (token, type, email, amount, currency, paystack_ref, status, metadata, expires_at, customer_name, customer_phone)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             t,
             "sourcing",
             customer_email,
             paymentAmount,
             paymentCurrency,
+            paymentSource === "paystack" ? paymentRef : null,
             "valid",
             JSON.stringify({
               source: "manual_admin",
@@ -295,6 +336,8 @@ export async function POST(req: Request) {
               created_at: now.toISOString(),
               note: "Manual project creation after in-app payment",
               payment_source: paymentSource,
+              paystack: paymentSource === "paystack" ? { reference: paymentRef } : undefined,
+              paypal: paymentSource === "paypal" ? { order_id: paymentRef } : undefined,
             }),
             expiresAt,
             customer_name,

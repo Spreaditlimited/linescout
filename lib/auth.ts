@@ -57,9 +57,11 @@ export async function requireAgent(req: Request) {
   const auth = req.headers.get("authorization") || "";
   const headerToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   const cookieName = String(process.env.INTERNAL_AUTH_COOKIE_NAME || "").trim();
+  const agentCookieName = String(process.env.AGENT_AUTH_COOKIE_NAME || "").trim();
   const cookieHeader = req.headers.get("cookie");
   const cookieToken = cookieName ? readCookie(cookieHeader, cookieName) : "";
-  const token = headerToken || cookieToken;
+  const agentCookieToken = agentCookieName ? readCookie(cookieHeader, agentCookieName) : "";
+  const token = headerToken || cookieToken || agentCookieToken;
   if (!token) throw new Error("Unauthorized");
 
   const staff = await queryOne<StaffRow>(
