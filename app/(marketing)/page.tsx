@@ -1,10 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import crypto from "crypto";
 import { ArrowRight, BadgeCheck, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
 import Footer from "@/components/Footer";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import HomeHeroCta from "@/components/marketing/HomeHeroCta";
 import HomeAppDownloadButtons from "@/components/marketing/HomeAppDownloadButtons";
+import { queryOne } from "@/lib/db";
+import type { RowDataPacket } from "mysql2/promise";
 
 const features = [
   {
@@ -99,7 +104,27 @@ const testimonials = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("linescout_session")?.value || "";
+  if (token) {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const session = await queryOne<RowDataPacket & { id: number }>(
+      `
+      SELECT id
+      FROM linescout_user_sessions
+      WHERE refresh_token_hash = ?
+        AND revoked_at IS NULL
+        AND expires_at > NOW()
+      LIMIT 1
+      `,
+      [tokenHash]
+    );
+    if (session?.id) {
+      redirect("/projects/active");
+    }
+  }
+
   const brandBlue = "#2D3461";
   return (
     <div

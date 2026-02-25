@@ -13,6 +13,7 @@ type ManualHandoffResponse =
       ok: true;
       token: string;
       handoffId: number;
+      conversationId?: number;
       customer_email: string;
       customer_name: string | null;
       status: string;
@@ -23,6 +24,15 @@ type ManualHandoffResponse =
   | { ok: false; error: string };
 
 type BankItem = { id: number; name: string; is_active?: number };
+type UserSearchItem = {
+  id: number;
+  email: string;
+  display_name?: string | null;
+  customer_name?: string | null;
+  whatsapp_number?: string | null;
+  display_currency_code?: string | null;
+  payment_provider?: string | null;
+};
 
 type SettingsItem = {
   id: number;
@@ -147,6 +157,14 @@ export default function InternalSettingsPage() {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ManualHandoffResponse | null>(null);
+  const [routeType, setRouteType] = useState<"machine_sourcing" | "white_label" | "simple_sourcing">(
+    "machine_sourcing"
+  );
+  const [userQuery, setUserQuery] = useState("");
+  const [userSearch, setUserSearch] = useState<UserSearchItem[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = useState(false);
+  const [userSearchErr, setUserSearchErr] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
   // Banks (for dropdown + management)
   const [banks, setBanks] = useState<BankItem[]>([]);
@@ -253,9 +271,6 @@ export default function InternalSettingsPage() {
   const [editRateUnit, setEditRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [savingRate, setSavingRate] = useState(false);
 
-  // Selected bank for initial payment inside manual handoff modal
-  const [selectedBankId, setSelectedBankId] = useState<number | null>(null);
-
   // Form fields
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -266,15 +281,11 @@ export default function InternalSettingsPage() {
   // Handoff defaults
   const [status, setStatus] = useState("pending");
   const [currency, setCurrency] = useState("NGN");
+  const [paymentSource, setPaymentSource] = useState<"paystack" | "paypal">("paystack");
+  const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>("");
 
   // Optional financials + initial payment
   const [totalDue, setTotalDue] = useState<string>("");
-  const [recordInitialPayment, setRecordInitialPayment] = useState(false);
-  const [initialAmount, setInitialAmount] = useState<string>("");
-  const [initialPurpose, setInitialPurpose] = useState<
-    "downpayment" | "full_payment" | "shipping_payment" | "additional_payment"
-  >("downpayment");
-  const [initialNote, setInitialNote] = useState("");
 
   useEffect(() => {
     fetch("/internal/auth/me", { cache: "no-store" })
@@ -282,6 +293,15 @@ export default function InternalSettingsPage() {
       .then((d) => setMe(d))
       .catch(() => setMe({ ok: false, error: "Failed to load session" }));
   }, []);
+
+  useEffect(() => {
+    if (paymentSource === "paystack") {
+      setCurrency("NGN");
+      return;
+    }
+    const next = userDisplayCurrency || "GBP";
+    setCurrency(next);
+  }, [paymentSource, userDisplayCurrency]);
 
   const isAdmin = !!(me && "ok" in me && me.ok && me.user.role === "admin");
 
@@ -851,24 +871,57 @@ export default function InternalSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function searchUsers() {
+      const q = userQuery.trim();
+      if (q.length < 2) {
+        if (active) {
+          setUserSearch([]);
+          setUserSearchErr(null);
+        }
+        return;
+      }
+
+      setUserSearchLoading(true);
+      setUserSearchErr(null);
+      try {
+        const res = await fetch(`/api/internal/admin/app-users/search?q=${encodeURIComponent(q)}`, {
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to search users");
+        if (active) setUserSearch((data.items || []) as UserSearchItem[]);
+      } catch (e: any) {
+        if (active) setUserSearchErr(e?.message || "Failed to search users");
+      } finally {
+        if (active) setUserSearchLoading(false);
+      }
+    }
+
+    const t = setTimeout(searchUsers, 300);
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [userQuery]);
+
   const canSubmit = useMemo(() => {
     const nameOk = customerName.trim().length > 0;
     const emailOk = customerEmail.trim().includes("@");
     const statusOk = status.trim().length > 0;
+    const sourceOk = paymentSource === "paystack" || paymentSource === "paypal";
+    const paypalCurrency = currency.toUpperCase();
+    const paypalCurrencyOk =
+      paymentSource === "paystack" || paypalCurrency === "GBP" || paypalCurrency === "CAD";
 
-    if (!nameOk || !emailOk || !statusOk) return false;
+    if (!nameOk || !emailOk || !statusOk || !sourceOk || !paypalCurrencyOk) return false;
+    if (!selectedUserId) return false;
 
     if (totalDue.trim()) {
       const td = Number(totalDue);
       if (Number.isNaN(td) || td < 0) return false;
-    }
-
-    if (recordInitialPayment) {
-      const amt = Number(initialAmount);
-      if (!amt || Number.isNaN(amt) || amt <= 0) return false;
-
-      // require bank selection if recording payment
-      if (!selectedBankId) return false;
     }
 
     return true;
@@ -877,9 +930,9 @@ export default function InternalSettingsPage() {
     customerEmail,
     status,
     totalDue,
-    recordInitialPayment,
-    initialAmount,
-    selectedBankId,
+    paymentSource,
+    currency,
+    selectedUserId,
   ]);
 
   const settingsValidation = useMemo(() => {
@@ -1053,6 +1106,18 @@ export default function InternalSettingsPage() {
     });
   }
 
+  function selectUser(u: UserSearchItem) {
+    setSelectedUserId(u.id);
+    setCustomerName(String(u.customer_name || u.display_name || "").trim());
+    setCustomerEmail(String(u.email || "").trim());
+    setWhatsApp(String(u.whatsapp_number || "").trim());
+    setUserDisplayCurrency(String(u.display_currency_code || "").toUpperCase());
+    setCustomerPhone("");
+    setUserQuery(`${u.display_name || u.email || ""}`);
+    setUserSearch([]);
+    setUserSearchErr(null);
+  }
+
   function resetForm() {
     setCustomerName("");
     setCustomerEmail("");
@@ -1061,13 +1126,15 @@ export default function InternalSettingsPage() {
     setNotes("");
     setStatus("pending");
     setCurrency("NGN");
+    setPaymentSource("paystack");
+    setUserDisplayCurrency("");
+    setRouteType("machine_sourcing");
     setTotalDue("");
-    setRecordInitialPayment(false);
-    setInitialAmount("");
-    setInitialPurpose("downpayment");
-    setInitialNote("");
-    setSelectedBankId(null);
     setResult(null);
+    setUserQuery("");
+    setUserSearch([]);
+    setUserSearchErr(null);
+    setSelectedUserId(null);
   }
 
   async function submitManualHandoff() {
@@ -1085,19 +1152,11 @@ export default function InternalSettingsPage() {
         notes: notes.trim() || null,
         status: status.trim() || "pending",
         currency: currency.trim() || "NGN",
+        route_type: routeType,
         total_due: totalDue.trim() ? Number(totalDue) : null,
-        initial_payment: recordInitialPayment
-          ? {
-              amount: Number(initialAmount),
-              purpose: initialPurpose,
-              note: initialNote.trim() || null,
-              bank_id: selectedBankId, // key addition
-            }
-          : null,
+        payment_source: paymentSource,
       };
-
-      // Optional: also send bank_id at root (safe if backend ignores)
-      if (recordInitialPayment) payload.bank_id = selectedBankId;
+      if (selectedUserId) payload.user_id = selectedUserId;
 
       const res = await fetch("/api/linescout-handoffs/manual", {
         method: "POST",
@@ -2223,8 +2282,9 @@ export default function InternalSettingsPage() {
           <div>
             <h3 className="text-base font-semibold text-neutral-100">Manual onboarding</h3>
             <p className="mt-1 text-sm text-neutral-400">
-              For customers who paid via bank transfer. Creates a sourcing token (SRC-...) and a
-              sourcing handoff record. Optional: set total due and record an initial payment.
+              For customers who already paid in-app (Paystack or PayPal) but the project did not
+              create automatically. This creates the sourcing token (SRC-...) and handoff record,
+              and records the commitment payment in history.
             </p>
           </div>
           <button
@@ -2247,7 +2307,8 @@ export default function InternalSettingsPage() {
           <div>
             <h3 className="text-sm font-semibold text-neutral-100">Banks</h3>
             <p className="text-xs text-neutral-400">
-              Maintain the list of banks customers pay into. Used during manual onboarding and payment logging.
+              Legacy bank list. In-app payments use Paystack/PayPal, so this is no longer used for
+              onboarding.
             </p>
           </div>
 
@@ -2342,8 +2403,8 @@ export default function InternalSettingsPage() {
               <div>
                 <h3 className="text-lg font-semibold text-neutral-100">Create manual handoff</h3>
                 <p className="mt-1 text-sm text-neutral-400">
-                  This will generate a Request ID token and onboard the customer into the LineScout
-                  sourcing handoff system.
+                  This will generate a Request ID token, create the project, and record the
+                  commitment payment from Paystack or PayPal.
                 </p>
               </div>
 
@@ -2376,9 +2437,26 @@ export default function InternalSettingsPage() {
                       </p>
                       <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-neutral-400 sm:grid-cols-2">
                         <p>Handoff ID: {result.handoffId}</p>
+                        <p>Conversation ID: {result.conversationId ?? "—"}</p>
                         <p>Status: {result.status}</p>
                         <p>Type: {result.handoff_type}</p>
                         <p>Email: {result.customer_email}</p>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <a
+                          href={`/internal/handoffs/${result.handoffId}`}
+                          className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1 text-neutral-200 hover:border-neutral-500"
+                        >
+                          View handoff
+                        </a>
+                        {result.conversationId ? (
+                          <a
+                            href={`/internal/agent-handoffs/${result.handoffId}`}
+                            className="rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1 text-neutral-200 hover:border-neutral-500"
+                          >
+                            View agent handoff
+                          </a>
+                        ) : null}
                       </div>
                     </div>
                   ) : (
@@ -2397,13 +2475,85 @@ export default function InternalSettingsPage() {
                   </p>
                 </div>
 
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-neutral-300">Search user</label>
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={userQuery}
+                      onChange={(e) => {
+                        setUserQuery(e.target.value);
+                        setSelectedUserId(null);
+                        setCustomerName("");
+                        setCustomerEmail("");
+                        setCustomerPhone("");
+                        setWhatsApp("");
+                      }}
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                      placeholder="Search by name or email"
+                      inputMode="search"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserQuery("");
+                        setUserSearch([]);
+                        setSelectedUserId(null);
+                        setCustomerName("");
+                        setCustomerEmail("");
+                        setCustomerPhone("");
+                        setWhatsApp("");
+                      }}
+                      className="rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-800"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {userSearchLoading ? (
+                    <p className="mt-2 text-xs text-neutral-500">Searching…</p>
+                  ) : null}
+                  {userSearchErr ? (
+                    <p className="mt-2 text-xs text-red-300">{userSearchErr}</p>
+                  ) : null}
+                  {!userSearchLoading && !userSearchErr && userQuery.trim().length >= 2 ? (
+                    <div className="mt-2 max-h-44 overflow-auto rounded-xl border border-neutral-800 bg-neutral-950">
+                      {userSearch.length ? (
+                        userSearch.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => selectUser(u)}
+                            className="flex w-full items-center justify-between gap-3 border-b border-neutral-800 px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-900"
+                          >
+                            <span className="font-medium text-neutral-100">
+                              {u.display_name || u.customer_name || "Unnamed user"}
+                            </span>
+                            <span className="text-xs text-neutral-500">{u.email}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-neutral-500">No users found.</div>
+                      )}
+                    </div>
+                  ) : null}
+                  {selectedUserId ? (
+                    <p className="mt-2 text-xs text-emerald-300">
+                      Selected user ID: {selectedUserId}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Select a user before creating a handoff.
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-xs font-medium text-neutral-300">Customer name</label>
                   <input
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600 disabled:opacity-60"
                     placeholder="e.g. John Doe"
+                    disabled
                   />
                 </div>
 
@@ -2412,9 +2562,10 @@ export default function InternalSettingsPage() {
                   <input
                     value={customerEmail}
                     onChange={(e) => setCustomerEmail(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600 disabled:opacity-60"
                     placeholder="e.g. john@example.com"
                     inputMode="email"
+                    disabled
                   />
                 </div>
 
@@ -2425,9 +2576,10 @@ export default function InternalSettingsPage() {
                   <input
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600 disabled:opacity-60"
                     placeholder="e.g. 2348012345678"
                     inputMode="tel"
+                    disabled
                   />
                 </div>
 
@@ -2438,9 +2590,10 @@ export default function InternalSettingsPage() {
                   <input
                     value={whatsApp}
                     onChange={(e) => setWhatsApp(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600 disabled:opacity-60"
                     placeholder="e.g. 2348012345678"
                     inputMode="tel"
+                    disabled
                   />
                 </div>
 
@@ -2461,6 +2614,23 @@ export default function InternalSettingsPage() {
                 </div>
 
                 <div>
+                  <label className="text-xs font-medium text-neutral-300">Route type</label>
+                  <SearchableSelect
+                    className="mt-1"
+                    value={routeType}
+                    options={[
+                      { value: "machine_sourcing", label: "machine_sourcing" },
+                      { value: "white_label", label: "white_label" },
+                      { value: "simple_sourcing", label: "simple_sourcing" },
+                    ]}
+                    onChange={(next) => setRouteType(next as any)}
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Determines which project flow the customer sees.
+                  </p>
+                </div>
+
+                <div>
                   <label className="text-xs font-medium text-neutral-300">Initial status</label>
                   <input
                     value={status}
@@ -2477,10 +2647,31 @@ export default function InternalSettingsPage() {
                   <label className="text-xs font-medium text-neutral-300">Currency</label>
                   <input
                     value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="NGN"
+                    disabled
                   />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-neutral-300">Payment source</label>
+                  <SearchableSelect
+                    className="mt-1"
+                    value={paymentSource}
+                    options={[
+                      { value: "paystack", label: "Paystack" },
+                      { value: "paypal", label: "PayPal" },
+                    ]}
+                    onChange={(next) => setPaymentSource((next as any) || "paystack")}
+                  />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    Records the commitment payment source in history.
+                  </p>
+                  {paymentSource === "paypal" && currency && currency !== "GBP" && currency !== "CAD" ? (
+                    <p className="mt-1 text-xs text-red-300">
+                      PayPal currency must be GBP or CAD for this user.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>
@@ -2496,93 +2687,6 @@ export default function InternalSettingsPage() {
 
                 <div className="hidden sm:block" />
 
-                {/* Initial Payment */}
-                <div className="sm:col-span-2 mt-2 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-100">
-                        Initial payment (optional)
-                      </p>
-                      <p className="mt-1 text-xs text-neutral-400">
-                        If you want to record a bank transfer payment immediately, enable this.
-                      </p>
-                    </div>
-
-                    <label className="flex items-center gap-2 text-sm text-neutral-200">
-                      <input
-                        type="checkbox"
-                        checked={recordInitialPayment}
-                        onChange={(e) => {
-                          setRecordInitialPayment(e.target.checked);
-                          if (!e.target.checked) setSelectedBankId(null);
-                        }}
-                        className="h-4 w-4"
-                      />
-                      Record payment
-                    </label>
-                  </div>
-
-                  {recordInitialPayment && (
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="text-xs font-medium text-neutral-300">Amount</label>
-                        <input
-                          value={initialAmount}
-                          onChange={(e) => setInitialAmount(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                          placeholder="e.g. 500000"
-                          inputMode="decimal"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-medium text-neutral-300">Purpose</label>
-                        <SearchableSelect
-                          className="mt-1"
-                          value={initialPurpose}
-                          options={[
-                            { value: "downpayment", label: "downpayment" },
-                            { value: "full_payment", label: "full_payment" },
-                            { value: "shipping_payment", label: "shipping_payment" },
-                            { value: "additional_payment", label: "additional_payment" },
-                          ]}
-                          onChange={(next) => setInitialPurpose(next as any)}
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="text-xs font-medium text-neutral-300">Bank</label>
-                        <SearchableSelect
-                          className="mt-1"
-                          value={selectedBankId ? String(selectedBankId) : ""}
-                          options={[
-                            { value: "", label: "Select bank" },
-                            ...activeBanks.map((b) => ({ value: String(b.id), label: b.name })),
-                          ]}
-                          onChange={(next) => {
-                            const v = next ? Number(next) : null;
-                            setSelectedBankId(v);
-                          }}
-                        />
-                        <p className="mt-1 text-xs text-neutral-500">
-                          Required when recording a payment.
-                        </p>
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <label className="text-xs font-medium text-neutral-300">
-                          Payment note (optional)
-                        </label>
-                        <input
-                          value={initialNote}
-                          onChange={(e) => setInitialNote(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                          placeholder="e.g. Bank transfer ref: ABC123"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
 

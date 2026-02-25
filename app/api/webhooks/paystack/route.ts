@@ -7,6 +7,24 @@ import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function internalSecret() {
+  return (process.env.CRON_SECRET || process.env.PAYMENT_RECONCILE_SECRET || "").trim();
+}
+
+async function triggerSourcingVerify(req: Request, reference: string, purpose: string) {
+  const secret = internalSecret();
+  if (!secret || !reference) return;
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
+  await fetch(`${baseUrl}/api/payments/paystack/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-cron-secret": secret,
+    },
+    body: JSON.stringify({ reference, purpose }),
+  }).catch(() => {});
+}
+
 function toNaira(amount: any) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return null;
@@ -218,13 +236,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  // Do not treat project-start commitments as wallet top-ups.
-  // These are handled by the paystack verify flow that creates/updates project records.
+  // Project-start commitments should be reconciled via verify flow.
   const metadataPurpose = String(data?.metadata?.purpose || "")
     .trim()
     .toLowerCase();
-  if (metadataPurpose === "sourcing" || metadataPurpose === "business_plan") {
-    return NextResponse.json({ ok: true, ignored: true, reason: "project_start_payment" });
+  if (metadataPurpose === "sourcing" || metadataPurpose === "business_plan" || metadataPurpose === "reorder") {
+    const reference = String(data?.reference || data?.transaction_reference || data?.id || "").trim();
+    await triggerSourcingVerify(req, reference, metadataPurpose);
+    return NextResponse.json({ ok: true, queued: true, reason: "project_start_payment" });
   }
 
   if (String(data?.metadata?.payment_kind || "") === "quote" || data?.metadata?.quote_id) {

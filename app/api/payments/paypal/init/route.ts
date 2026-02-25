@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { paypalCreateOrder } from "@/lib/paypal";
 import { ensureCountryConfig, ensureUserCountryColumns, backfillUserDefaults } from "@/lib/country-config";
 import { convertAmount } from "@/lib/fx";
+import { recordPaymentAttempt } from "@/lib/payment-attempts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -137,6 +138,38 @@ export async function POST(req: Request) {
         { ok: false, error: "PayPal approval URL missing." },
         { status: 500 }
       );
+    }
+
+    try {
+      const saveConn = await db.getConnection();
+      try {
+        await recordPaymentAttempt(saveConn, {
+          provider: "paypal",
+          reference: order.id,
+          userId,
+          purpose,
+          routeType,
+          amount: Number.isFinite(Number(amount)) ? Number(amount) : null,
+          currency: "GBP",
+          meta: {
+            source_conversation_id: body?.source_conversation_id || null,
+            reorder_of_conversation_id: body?.reorder_of_conversation_id || null,
+            reorder_user_note: body?.reorder_user_note || null,
+            product_id: body?.product_id || null,
+            product_name: body?.product_name || null,
+            product_category: body?.product_category || null,
+            product_landed_ngn_per_unit: body?.product_landed_ngn_per_unit || null,
+            simple_product_name: body?.simple_product_name || null,
+            simple_quantity: body?.simple_quantity || null,
+            simple_destination: body?.simple_destination || null,
+            simple_notes: body?.simple_notes || null,
+          },
+        });
+      } finally {
+        saveConn.release();
+      }
+    } catch {
+      // Non-fatal: payment init should not fail on telemetry.
     }
 
     return NextResponse.json({

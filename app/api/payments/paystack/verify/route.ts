@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { ensureMarketingTables, recordMarketingEvent } from "@/lib/marketing-emails";
+import { updatePaymentAttempt } from "@/lib/payment-attempts";
 import type { Transporter } from "nodemailer";
 
 // Use require to avoid default-import interop issues in some TS setups
@@ -69,6 +70,25 @@ function formatNaira(amountNaira: number | null) {
 function normalizeText(value: any) {
   const s = String(value ?? "").replace(/\s+/g, " ").trim();
   return s || "N/A";
+}
+
+function isInternalRequest(req: Request) {
+  const header = req.headers.get("x-cron-secret") || req.headers.get("x-internal-secret") || "";
+  const secret = (process.env.CRON_SECRET || process.env.PAYMENT_RECONCILE_SECRET || "").trim();
+  return !!secret && header === secret;
+}
+
+async function loadUserById(conn: any, userId: number) {
+  const [rows]: any = await conn.query(
+    `
+    SELECT id, email, display_name, first_name, firstname, firstName, name
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
+  return rows?.[0] || null;
 }
 
 function formatQuantityTier(value: any) {
@@ -408,17 +428,17 @@ async function sendExpoPush(tokens: string[], payload: { title: string; body: st
 
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
-    const userId = Number((u as any).id || 0);
-    const userEmail = String((u as any).email || "").trim() || null;
+    const internal = isInternalRequest(req);
+    let u: any = null;
+    if (!internal) {
+      u = await requireUser(req);
+    }
+    const userId = Number((u as any)?.id || 0);
+    const userEmail = String((u as any)?.email || "").trim() || null;
 
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY?.trim();
     if (!paystackSecret) {
       return NextResponse.json({ ok: false, error: "Missing PAYSTACK_SECRET_KEY" }, { status: 500 });
-    }
-
-    if (!userId || !userEmail) {
-      return NextResponse.json({ ok: false, error: "User account is missing id/email." }, { status: 400 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -461,8 +481,12 @@ export async function POST(req: Request) {
     const metadata = data.metadata || {};
     const paidUserId = safeNum(metadata.user_id);
 
-    // Ensure payment belongs to signed-in user
-    if (!paidUserId || paidUserId !== userId) {
+    if (!paidUserId) {
+      return NextResponse.json({ ok: false, error: "Missing payment user_id metadata." }, { status: 400 });
+    }
+
+    // Ensure payment belongs to signed-in user (or resolve from metadata for internal reconcile)
+    if (!internal && paidUserId !== userId) {
       return NextResponse.json({ ok: false, error: "Payment does not belong to this account." }, { status: 403 });
     }
 
@@ -488,7 +512,6 @@ export async function POST(req: Request) {
 
     // Customer details from Paystack (may be null depending on payment method)
     const customer = data.customer || {};
-    const payEmail = String(customer.email || userEmail || "").trim() || userEmail;
 
     const customerFirst = String(customer.first_name || "").trim();
     const customerLast = String(customer.last_name || "").trim();
@@ -500,6 +523,18 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const payerUserId = internal ? paidUserId : userId;
+      let resolvedUser = u;
+      if (!resolvedUser) {
+        resolvedUser = await loadUserById(conn as any, payerUserId);
+      }
+      const resolvedEmail = String(resolvedUser?.email || userEmail || "").trim() || null;
+      if (!payerUserId || !resolvedEmail) {
+        return NextResponse.json({ ok: false, error: "User account is missing id/email." }, { status: 400 });
+      }
+
+      const payEmail = String(customer.email || resolvedEmail || "").trim() || resolvedEmail;
+
       await conn.beginTransaction();
 
       // 0) Store token in linescout_tokens (receipt + uniqueness + audit)
@@ -527,7 +562,7 @@ export async function POST(req: Request) {
             },
             app: metadata.app || "linescout_mobile",
             route_type: finalRouteType,
-            user_id: userId,
+            user_id: payerUserId,
             source_conversation_id: sourceConversationId || null,
             reorder_of_conversation_id: reorderOfConversationId || null,
             reorder_of_handoff_id: reorderOfHandoffId || null,
@@ -566,7 +601,7 @@ export async function POST(req: Request) {
           WHERE c.id = ? AND c.user_id = ?
           LIMIT 1
           `,
-          [sourceId, userId]
+          [sourceId, payerUserId]
         );
         const src = srcRows?.[0];
         if (!src?.id || !src?.handoff_id) {
@@ -639,7 +674,7 @@ export async function POST(req: Request) {
         VALUES
           (?, ?, 'paid_human', 0, 0, 'paid', 'active')
         `,
-        [userId, finalRouteType]
+        [payerUserId, finalRouteType]
       );
 
       const conversationId = Number(insConv?.insertId || 0);
@@ -701,7 +736,7 @@ export async function POST(req: Request) {
           ORDER BY id DESC
           LIMIT 1
           `,
-          [userId]
+          [payerUserId]
         );
 
         if (wlRows && wlRows.length) {
@@ -783,7 +818,7 @@ export async function POST(req: Request) {
           },
           app: metadata.app || "linescout_mobile",
           route_type: finalRouteType,
-          user_id: userId,
+          user_id: payerUserId,
           source_conversation_id: sourceConversationId || null,
           reorder_of_conversation_id: reorderOfConversationId || null,
           reorder_of_handoff_id: reorderOfHandoffId || null,
@@ -818,11 +853,11 @@ export async function POST(req: Request) {
         WHERE id = ? AND user_id = ?
         LIMIT 1
         `,
-        [handoffId, assignedAgentId, conversationId, userId]
+        [handoffId, assignedAgentId, conversationId, payerUserId]
       );
 
       // 4.1) Insert default agent welcome message for the paid chat
-      const firstName = firstNameFromUser(u) || (customerFirst || null);
+      const firstName = firstNameFromUser(resolvedUser) || (customerFirst || null);
       const agentWelcomeLines = [
         `Hello ${firstName ? firstName : "there"},`,
         "",
@@ -852,7 +887,7 @@ export async function POST(req: Request) {
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
           `,
           [
-            userId,
+            payerUserId,
             sourceConversationIdForContext || conversationId,
             sourceHandoffIdForContext || handoffId,
             sourceConversationIdForContext,
@@ -876,7 +911,7 @@ export async function POST(req: Request) {
       try {
         await ensureMarketingTables(conn);
         await recordMarketingEvent(conn, {
-          userId,
+          userId: payerUserId,
           eventType: "paystack_verified",
           relatedId: reference,
           meta: {
@@ -1053,6 +1088,16 @@ export async function POST(req: Request) {
 
       // We do not fail the whole request if email fails.
       // Payment and project creation are already committed.
+      try {
+        await updatePaymentAttempt(conn as any, {
+          provider: "paystack",
+          reference,
+          status: "verified",
+          verifiedAt: new Date(),
+          meta: { handoff_id: handoffId, conversation_id: conversationId },
+        });
+      } catch {}
+
       return NextResponse.json({
         ok: true,
         purpose,
@@ -1067,15 +1112,24 @@ export async function POST(req: Request) {
         email_sent: emailResult.ok === true,
         email_error: emailResult.ok ? null : emailResult,
       });
-    } catch (e: any) {
+    } catch (e) {
       try {
         await conn.rollback();
       } catch {}
-      console.error("paystack/verify error:", e?.message || e);
+      const msg = e instanceof Error ? e.message : String(e || "verify_failed");
+      console.error("paystack/verify error:", msg);
+      try {
+        await updatePaymentAttempt(conn as any, {
+          provider: "paystack",
+          reference,
+          status: "failed",
+          lastError: msg,
+        });
+      } catch {}
 
       // If insert failed due to duplicate paystack_ref, return a helpful message
-      const msg = String(e?.message || "");
-      if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("paystack_ref")) {
+      const dupMsg = e instanceof Error ? e.message : String(e || "");
+      if (dupMsg.toLowerCase().includes("duplicate") && dupMsg.toLowerCase().includes("paystack_ref")) {
         try {
           const [trows]: any = await conn.query(
             `

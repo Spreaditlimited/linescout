@@ -6,6 +6,24 @@ import { ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function internalSecret() {
+  return (process.env.CRON_SECRET || process.env.PAYMENT_RECONCILE_SECRET || "").trim();
+}
+
+async function triggerPayPalVerify(req: Request, orderId: string) {
+  const secret = internalSecret();
+  if (!secret || !orderId) return;
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
+  await fetch(`${baseUrl}/api/payments/paypal/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-cron-secret": secret,
+    },
+    body: JSON.stringify({ order_id: orderId }),
+  }).catch(() => {});
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -74,6 +92,15 @@ export async function POST(req: Request) {
         }
       } finally {
         conn.release();
+      }
+    }
+
+    if (eventType === "PAYMENT.CAPTURE.COMPLETED" || eventType === "CHECKOUT.ORDER.APPROVED") {
+      const orderId =
+        String(resource?.supplementary_data?.related_ids?.order_id || "").trim() ||
+        String(resource?.id || "").trim();
+      if (orderId) {
+        await triggerPayPalVerify(req, orderId);
       }
     }
 

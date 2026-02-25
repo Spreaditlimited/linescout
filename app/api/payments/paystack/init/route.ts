@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureMarketingTables, recordMarketingEvent } from "@/lib/marketing-emails";
+import { recordPaymentAttempt } from "@/lib/payment-attempts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -222,6 +223,31 @@ export async function POST(req: Request) {
     try {
       const conn = await db.getConnection();
       try {
+        await recordPaymentAttempt(conn, {
+          provider: "paystack",
+          reference,
+          userId,
+          purpose,
+          routeType,
+          amount: Number.isFinite(amount) ? amount / 100 : null,
+          currency: "NGN",
+          meta: {
+            source_conversation_id: sourceConversationId,
+            reorder_of_conversation_id: reorderOfConversationId,
+            reorder_of_handoff_id: reorderOfHandoffId,
+            reorder_original_agent_id: reorderOriginalAgentId,
+            reorder_user_note: reorderUserNote || null,
+            product_id: productId || null,
+            product_name: productName || null,
+            product_category: productCategory || null,
+            product_landed_ngn_per_unit: productLandedPerUnit || null,
+            simple_product_name: simpleProductName || null,
+            simple_quantity: simpleQuantity || null,
+            simple_destination: simpleDestination || null,
+            simple_notes: simpleNotes || null,
+          },
+        });
+
         await ensureMarketingTables(conn);
         await recordMarketingEvent(conn, {
           userId,
@@ -238,7 +264,7 @@ export async function POST(req: Request) {
         conn.release();
       }
     } catch {
-      // Non-fatal: payment init should not fail on marketing telemetry.
+      // Non-fatal: payment init should not fail on telemetry.
     }
 
     return NextResponse.json({

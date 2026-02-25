@@ -47,6 +47,22 @@ export default function EmailOtpForm() {
       return;
     }
 
+    let hasActiveProject = false;
+    try {
+      const res = await authFetch("/api/mobile/projects");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(json?.projects)) {
+        hasActiveProject = json.projects.some((p: any) => String(p?.conversation_status) === "active");
+      }
+    } catch {
+      hasActiveProject = false;
+    }
+
+    if (hasActiveProject) {
+      router.replace("/projects/active");
+      return;
+    }
+
     const aiRoutes = ["machine_sourcing", "white_label", "simple_sourcing"];
     let aiStarted = false;
     try {
@@ -69,23 +85,7 @@ export default function EmailOtpForm() {
       aiStarted = false;
     }
 
-    if (aiStarted) {
-      router.replace("/machine");
-      return;
-    }
-
-    let hasActiveProject = false;
-    try {
-      const res = await authFetch("/api/mobile/projects");
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(json?.projects)) {
-        hasActiveProject = json.projects.some((p: any) => String(p?.conversation_status) === "active");
-      }
-    } catch {
-      hasActiveProject = false;
-    }
-
-    router.replace(hasActiveProject ? "/projects/active" : "/machine");
+    router.replace(aiStarted ? "/machine" : "/machine");
   }
 
   useEffect(() => {

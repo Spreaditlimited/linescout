@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
 import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { findPaymentAttempt, updatePaymentAttempt } from "@/lib/payment-attempts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,6 +126,25 @@ function buildProductSummaryFromItems(items: any[]) {
   return extras.join(" · ");
 }
 
+function isInternalRequest(req: Request) {
+  const header = req.headers.get("x-cron-secret") || req.headers.get("x-internal-secret") || "";
+  const secret = (process.env.CRON_SECRET || process.env.PAYMENT_RECONCILE_SECRET || "").trim();
+  return !!secret && header === secret;
+}
+
+async function loadUserById(conn: any, userId: number) {
+  const [rows]: any = await conn.query(
+    `
+    SELECT id, email, display_name, first_name, firstname, firstName, name
+    FROM users
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
+  return rows?.[0] || null;
+}
+
 function formatCurrency(amount: number, code: string) {
   if (!Number.isFinite(amount)) return "";
   try {
@@ -241,24 +261,31 @@ async function sendExpoPush(tokens: string[], payload: { title: string; body: st
 
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
+    const internal = isInternalRequest(req);
+    let u: any = null;
+    if (!internal) {
+      u = await requireUser(req);
+    }
     const userId = Number((u as any)?.id || 0);
     const userEmail = String((u as any)?.email || "").trim();
-    const agentLabel = firstNameFromUser(u) || "Customer";
+    let agentLabel = firstNameFromUser(u) || "Customer";
 
     const body = await req.json().catch(() => ({}));
     const orderId = String(body?.order_id || "").trim();
     const purposeRaw = String(body?.purpose || "sourcing").trim();
-    const purpose = purposeRaw === "reorder" ? "reorder" : "sourcing";
-    const routeType = body?.route_type;
+    let purpose = purposeRaw === "reorder" ? "reorder" : "sourcing";
+    let routeType = body?.route_type;
     if (!orderId) {
       return NextResponse.json({ ok: false, error: "Missing order_id." }, { status: 400 });
     }
-    if (!isValidRouteType(routeType)) {
+    if (!isValidRouteType(routeType) && !internal) {
       return NextResponse.json({ ok: false, error: "Invalid route_type." }, { status: 400 });
     }
     if (purpose !== "sourcing" && purpose !== "reorder") {
-      return NextResponse.json({ ok: false, error: "Invalid payment purpose." }, { status: 400 });
+      if (!internal) {
+        return NextResponse.json({ ok: false, error: "Invalid payment purpose." }, { status: 400 });
+      }
+      purpose = "sourcing";
     }
 
     const capture = await paypalCaptureOrder(orderId);
@@ -278,14 +305,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "PayPal currency must be GBP." }, { status: 400 });
     }
 
-    const sourceConversationId = Number(body?.source_conversation_id || 0) || null;
-    const reorderOfConversationId = safeNum(body?.reorder_of_conversation_id);
-    const reorderUserNote = String(body?.reorder_user_note || "").trim();
-    const productId = normalizeText(body?.product_id);
-    const productName = normalizeText(body?.product_name);
-    const productCategory = normalizeText(body?.product_category);
-    const productLandedPerUnit = normalizeText(body?.product_landed_ngn_per_unit);
-    const simpleBrief =
+    let sourceConversationId = Number(body?.source_conversation_id || 0) || null;
+    let reorderOfConversationId = safeNum(body?.reorder_of_conversation_id);
+    let reorderUserNote = String(body?.reorder_user_note || "").trim();
+    let productId = normalizeText(body?.product_id);
+    let productName = normalizeText(body?.product_name);
+    let productCategory = normalizeText(body?.product_category);
+    let productLandedPerUnit = normalizeText(body?.product_landed_ngn_per_unit);
+    let simpleBrief =
       body?.simple_product_name || body?.simple_quantity || body?.simple_destination || body?.simple_notes
         ? {
             product_name: body?.simple_product_name || null,
@@ -296,12 +323,66 @@ export async function POST(req: Request) {
         : null;
 
     const token = `${tokenPrefix(purpose)}${randomChunk(6)}-${randomChunk(5)}`;
-    const payEmail = userEmail;
+    const conn = await db.getConnection();
+    try {
+      let payerUserId = userId;
+      let payEmail = userEmail;
 
-    if (purpose === "reorder") {
-      const conn = await db.getConnection();
-      try {
-        await conn.beginTransaction();
+      if (internal) {
+        const attempt = await findPaymentAttempt(conn as any, "paypal", orderId);
+        const meta = attempt?.meta_json
+          ? typeof attempt.meta_json === "string"
+            ? JSON.parse(attempt.meta_json)
+            : attempt.meta_json
+          : null;
+
+        payerUserId = Number(attempt?.user_id || 0) || 0;
+        if (!isValidRouteType(routeType) && attempt?.route_type) {
+          routeType = attempt.route_type;
+        }
+        if (attempt?.purpose) {
+          purpose = attempt.purpose === "reorder" ? "reorder" : "sourcing";
+        }
+        if (meta) {
+          sourceConversationId = Number(meta.source_conversation_id || 0) || sourceConversationId;
+          reorderOfConversationId = safeNum(meta.reorder_of_conversation_id) || reorderOfConversationId;
+          reorderUserNote = String(meta.reorder_user_note || reorderUserNote || "").trim();
+          productId = normalizeText(meta.product_id ?? productId);
+          productName = normalizeText(meta.product_name ?? productName);
+          productCategory = normalizeText(meta.product_category ?? productCategory);
+          productLandedPerUnit = normalizeText(meta.product_landed_ngn_per_unit ?? productLandedPerUnit);
+          if (
+            !simpleBrief &&
+            (meta.simple_product_name || meta.simple_quantity || meta.simple_destination || meta.simple_notes)
+          ) {
+            simpleBrief = {
+              product_name: meta.simple_product_name || null,
+              quantity: meta.simple_quantity || null,
+              destination: meta.simple_destination || null,
+              notes: meta.simple_notes || null,
+            };
+          }
+        }
+
+        const resolvedUser = payerUserId ? await loadUserById(conn as any, payerUserId) : null;
+        payEmail = String(resolvedUser?.email || userEmail || "").trim();
+        agentLabel = firstNameFromUser(resolvedUser) || agentLabel;
+      }
+
+      if (!payerUserId || !payEmail) {
+        return NextResponse.json({ ok: false, error: "User account is missing id/email." }, { status: 400 });
+      }
+
+      if (!isValidRouteType(routeType)) {
+        return NextResponse.json({ ok: false, error: "Invalid route_type." }, { status: 400 });
+      }
+      if (purpose !== "sourcing" && purpose !== "reorder") {
+        return NextResponse.json({ ok: false, error: "Invalid payment purpose." }, { status: 400 });
+      }
+
+      if (purpose === "reorder") {
+        try {
+          await conn.beginTransaction();
 
         await conn.query(
           `
@@ -322,7 +403,7 @@ export async function POST(req: Request) {
                 status,
               },
               route_type: routeType,
-              user_id: userId,
+              user_id: payerUserId,
               source_conversation_id: sourceConversationId || null,
               reorder_of_conversation_id: reorderOfConversationId || null,
               reorder_user_note: reorderUserNote || null,
@@ -365,7 +446,7 @@ export async function POST(req: Request) {
           WHERE c.id = ? AND c.user_id = ?
           LIMIT 1
           `,
-          [sourceId, userId]
+          [sourceId, payerUserId]
         );
         const src = srcRows?.[0];
         if (!src?.id || !src?.handoff_id) {
@@ -436,7 +517,7 @@ export async function POST(req: Request) {
           VALUES
             (?, ?, 'paid_human', 0, 0, 'paid', 'active')
           `,
-          [userId, finalRouteType]
+          [payerUserId, finalRouteType]
         );
         const conversationId = Number(insConv?.insertId || 0);
         if (!conversationId) throw new Error("Failed to create paid conversation");
@@ -452,7 +533,7 @@ export async function POST(req: Request) {
             ORDER BY id DESC
             LIMIT 1
             `,
-            [userId]
+            [payerUserId]
           );
           if (wlRows && wlRows.length) {
             whiteLabelBrief = buildWhiteLabelBrief(wlRows[0]);
@@ -522,7 +603,7 @@ export async function POST(req: Request) {
               status,
             },
             route_type: finalRouteType,
-            user_id: userId,
+            user_id: payerUserId,
             source_conversation_id: sourceConversationId || null,
             reorder_of_conversation_id: reorderOfConversationId || null,
             reorder_user_note: reorderUserNote || null,
@@ -563,7 +644,7 @@ export async function POST(req: Request) {
           WHERE id = ? AND user_id = ?
           LIMIT 1
           `,
-          [handoffId, assignedAgentId, conversationId, userId]
+          [handoffId, assignedAgentId, conversationId, payerUserId]
         );
 
         await conn.query(
@@ -597,7 +678,7 @@ export async function POST(req: Request) {
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)
           `,
           [
-            userId,
+            payerUserId,
             sourceConversationIdForContext || conversationId,
             sourceHandoffIdForContext || handoffId,
             sourceConversationIdForContext,
@@ -695,6 +776,16 @@ export async function POST(req: Request) {
           // ignore email failures
         }
 
+        try {
+          await updatePaymentAttempt(conn as any, {
+            provider: "paypal",
+            reference: orderId,
+            status: "verified",
+            verifiedAt: new Date(),
+            meta: { handoff_id: handoffId, conversation_id: conversationId },
+          });
+        } catch {}
+
         return NextResponse.json(
           {
             ok: true,
@@ -705,9 +796,17 @@ export async function POST(req: Request) {
           },
           { status: 200 }
         );
-      } catch (e: any) {
+      } catch (e) {
         await conn.rollback();
-        const msg = String(e?.message || "Payment verification failed");
+        const msg = e instanceof Error ? e.message : String(e || "Payment verification failed");
+        try {
+          await updatePaymentAttempt(conn as any, {
+            provider: "paypal",
+            reference: orderId,
+            status: "failed",
+            lastError: msg,
+          });
+        } catch {}
         if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("paystack_ref")) {
           return NextResponse.json(
             { ok: true, conversation_id: null, handoff_id: null, route_type: routeType },
@@ -715,12 +814,9 @@ export async function POST(req: Request) {
           );
         }
         throw e;
-      } finally {
-        conn.release();
       }
     }
 
-    const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
 
@@ -743,7 +839,7 @@ export async function POST(req: Request) {
               status,
             },
             route_type: routeType,
-            user_id: userId,
+            user_id: payerUserId,
             source_conversation_id: sourceConversationId || null,
             product: productId !== "N/A" || productName !== "N/A" || productCategory !== "N/A"
               ? {
@@ -763,7 +859,7 @@ export async function POST(req: Request) {
 
       const [convRows]: any = await conn.query(
         `SELECT * FROM linescout_conversations WHERE user_id = ? AND route_type = ? LIMIT 1`,
-        [userId, routeType]
+        [payerUserId, routeType]
       );
       let conversation = convRows?.[0] || null;
       if (!conversation) {
@@ -772,7 +868,7 @@ export async function POST(req: Request) {
             (user_id, route_type, chat_mode, human_message_limit, human_message_used, payment_status, project_status)
            VALUES
             (?, ?, 'ai_only', 0, 0, 'unpaid', 'active')`,
-          [userId, routeType]
+          [payerUserId, routeType]
         );
         const id = Number(ins?.insertId || 0);
         if (!id) throw new Error("Conversation could not be created.");
@@ -797,7 +893,7 @@ export async function POST(req: Request) {
           ORDER BY id DESC
           LIMIT 1
           `,
-          [userId]
+          [payerUserId]
         );
         if (wlRows && wlRows.length) {
           whiteLabelBrief = buildWhiteLabelBrief(wlRows[0]);
@@ -862,7 +958,7 @@ export async function POST(req: Request) {
         WHERE id = ? AND user_id = ?
         LIMIT 1
         `,
-        [handoffId, conversationId, userId]
+        [handoffId, conversationId, payerUserId]
       );
 
       await conn.query(
@@ -981,6 +1077,16 @@ export async function POST(req: Request) {
         // ignore email failures
       }
 
+      try {
+        await updatePaymentAttempt(conn as any, {
+          provider: "paypal",
+          reference: orderId,
+          status: "verified",
+          verifiedAt: new Date(),
+          meta: { handoff_id: handoffId, conversation_id: conversationId },
+        });
+      } catch {}
+
       return NextResponse.json(
         {
           ok: true,
@@ -991,9 +1097,17 @@ export async function POST(req: Request) {
         },
         { status: 200 }
       );
-    } catch (e: any) {
+    } catch (e) {
       await conn.rollback();
-      const msg = String(e?.message || "Payment verification failed");
+      const msg = e instanceof Error ? e.message : String(e || "Payment verification failed");
+      try {
+        await updatePaymentAttempt(conn as any, {
+          provider: "paypal",
+          reference: orderId,
+          status: "failed",
+          lastError: msg,
+        });
+      } catch {}
       if (msg.toLowerCase().includes("duplicate") && msg.toLowerCase().includes("paystack_ref")) {
         return NextResponse.json(
           { ok: true, conversation_id: null, handoff_id: null, route_type: routeType },
@@ -1001,10 +1115,12 @@ export async function POST(req: Request) {
         );
       }
       throw e;
+    }
     } finally {
       conn.release();
     }
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e || "Server error");
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }
