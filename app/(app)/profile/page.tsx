@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { authFetch } from "@/lib/auth-client";
 import SearchableSelect from "../../internal/_components/SearchableSelect";
 
@@ -18,6 +19,16 @@ type ProfileResponse = {
   white_label_subscription_status?: string | null;
   white_label_subscription_provider?: string | null;
   white_label_subscription_id?: string | null;
+  white_label_next_billing_at?: string | null;
+  white_label_trial_days?: number | null;
+  white_label_daily_reveals?: number | null;
+  white_label_insights_daily_limit?: number | null;
+  white_label_exempt?: {
+    starts_at: string;
+    ends_at: string;
+    source?: string | null;
+    notes?: string | null;
+  } | null;
   countries?: { id: number; name: string; iso2: string; default_currency_id?: number | null }[];
   currencies?: { id: number; code: string; symbol?: string | null }[];
   country_currencies?: { country_id: number; currency_id: number }[];
@@ -38,7 +49,12 @@ export default function ProfilePage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState("");
   const [subscriptionProvider, setSubscriptionProvider] = useState("");
   const [subscriptionId, setSubscriptionId] = useState("");
+  const [nextBillingAt, setNextBillingAt] = useState<string | null>(null);
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null);
+  const [trialDays, setTrialDays] = useState(0);
+  const [dailyReveals, setDailyReveals] = useState(0);
+  const [dailyInsights, setDailyInsights] = useState(0);
+  const [exemption, setExemption] = useState<ProfileResponse["white_label_exempt"]>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -73,7 +89,12 @@ export default function ProfilePage() {
         setSubscriptionStatus(String(json?.white_label_subscription_status || ""));
         setSubscriptionProvider(String(json?.white_label_subscription_provider || ""));
         setSubscriptionId(String(json?.white_label_subscription_id || ""));
+        setNextBillingAt(json?.white_label_next_billing_at || null);
         setTrialEndsAt(json?.white_label_trial_ends_at || null);
+        setTrialDays(Number(json?.white_label_trial_days || 0));
+        setDailyReveals(Number(json?.white_label_daily_reveals || 0));
+        setDailyInsights(Number(json?.white_label_insights_daily_limit || 0));
+        setExemption(json?.white_label_exempt || null);
         setStatus("idle");
       }
     }
@@ -130,7 +151,12 @@ export default function ProfilePage() {
     setSubscriptionStatus(String(json?.white_label_subscription_status || subscriptionStatus));
     setSubscriptionProvider(String(json?.white_label_subscription_provider || subscriptionProvider));
     setSubscriptionId(String(json?.white_label_subscription_id || subscriptionId));
+    setNextBillingAt(json?.white_label_next_billing_at || nextBillingAt);
     setTrialEndsAt(json?.white_label_trial_ends_at || trialEndsAt);
+    setTrialDays(Number(json?.white_label_trial_days || trialDays));
+    setDailyReveals(Number(json?.white_label_daily_reveals || dailyReveals));
+    setDailyInsights(Number(json?.white_label_insights_daily_limit || dailyInsights));
+    setExemption(json?.white_label_exempt || exemption);
     setStatus("idle");
     setMessage("Profile updated.");
   }
@@ -158,10 +184,24 @@ export default function ProfilePage() {
     return new Date() <= end;
   })();
 
+  const exemptionActive = (() => {
+    if (!exemption?.ends_at) return false;
+    const end = new Date(exemption.ends_at);
+    if (Number.isNaN(end.valueOf())) return false;
+    return new Date() <= end;
+  })();
+
   const subscriptionActive =
     subscriptionPlan.toLowerCase() === "paid" && subscriptionStatus.toLowerCase() === "active";
+  const cancelledActive =
+    subscriptionPlan.toLowerCase() === "paid" &&
+    subscriptionStatus.toLowerCase() === "cancelled" &&
+    nextBillingAt &&
+    new Date() <= new Date(nextBillingAt);
   const subscriptionLabel = subscriptionActive
     ? "Active"
+    : cancelledActive
+    ? "Canceling"
     : trialActive
     ? "Trial"
     : subscriptionStatus
@@ -171,6 +211,29 @@ export default function ProfilePage() {
     ? `Trial ends ${new Date(trialEndsAt || "").toLocaleDateString()}`
     : null;
   const showManageLink = subscriptionProvider.toLowerCase() === "paypal" && Boolean(subscriptionId);
+  const accessLabel = subscriptionActive
+    ? "Paid subscription"
+    : cancelledActive
+    ? "Paid (cancels soon)"
+    : exemptionActive
+    ? "Exempted access"
+    : trialActive
+    ? "Trial access"
+    : "No access";
+  const accessExpiresAt = subscriptionActive
+    ? null
+    : cancelledActive
+    ? nextBillingAt
+    : exemptionActive
+    ? exemption?.ends_at || null
+    : trialActive
+    ? trialEndsAt
+    : null;
+  const amazonRevealLabel =
+    subscriptionActive || exemptionActive || cancelledActive ? "Unlimited" : `${dailyReveals} per day`;
+  const insightsLabel =
+    subscriptionActive || exemptionActive || cancelledActive ? "Unlimited" : `${dailyInsights} per day`;
+
 
   return (
     <div className="px-6 py-10">
@@ -305,15 +368,74 @@ export default function ProfilePage() {
           <div className="mt-2 text-sm text-neutral-600">
             {trialLabel ? <p>{trialLabel}</p> : <p>Manage your white label access and billing.</p>}
           </div>
+          {(subscriptionActive || cancelledActive) && nextBillingAt ? (
+            <div className="mt-2 text-xs text-neutral-500">
+              {cancelledActive ? "Access ends" : "Next billing date"}:{" "}
+              {new Date(nextBillingAt).toLocaleDateString()}.
+            </div>
+          ) : null}
           {showManageLink ? (
-            <a
-              href="https://www.paypal.com/myaccount/autopay"
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Link
+                href="/white-label/subscribe"
+                className="inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+              >
+                Manage subscription
+              </Link>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+              White label access
+            </p>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap ${
+                subscriptionActive
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : exemptionActive
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : trialActive
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-neutral-200 bg-white text-neutral-600"
+              }`}
             >
-              Manage subscription
-            </a>
+              {accessLabel}
+            </span>
+          </div>
+          <div className="mt-2 text-sm text-neutral-600">
+            {accessExpiresAt ? (
+              <p>Access ends {new Date(accessExpiresAt).toLocaleDateString()}.</p>
+            ) : (
+              <p>Access details and limits for your account.</p>
+            )}
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-600">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
+                Amazon reveals
+              </p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{amazonRevealLabel}</p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-3 text-xs text-neutral-600">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-neutral-400">
+                Premium insights
+              </p>
+              <p className="mt-1 text-sm font-semibold text-neutral-900">{insightsLabel}</p>
+            </div>
+          </div>
+          {exemptionActive ? (
+            <div className="mt-3 text-xs text-neutral-500">
+              Exemption source: {exemption?.source || "manual"}
+              {exemption?.notes ? ` • ${exemption.notes}` : ""}
+            </div>
+          ) : null}
+          {!subscriptionActive && !exemptionActive && trialActive && trialDays ? (
+            <div className="mt-3 text-xs text-neutral-500">
+              Trial length: {trialDays} day{trialDays === 1 ? "" : "s"}.
+            </div>
           ) : null}
         </div>
 

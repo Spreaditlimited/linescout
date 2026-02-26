@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,11 @@ function parseEligibleCountries(raw?: string | null) {
 function pct(value: number | null) {
   if (value == null || !Number.isFinite(value)) return null;
   return Math.round(value * 100);
+}
+
+function toNum(value: any) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function GET(req: Request) {
@@ -49,6 +55,8 @@ export async function GET(req: Request) {
         SELECT u.white_label_plan, u.white_label_subscription_status,
                u.white_label_trial_ends_at,
                u.white_label_insights_date, u.white_label_insights_used,
+               u.email,
+               u.white_label_next_billing_at,
                c.iso2 AS country_iso2,
                cur.code AS currency_code
         FROM users u
@@ -67,6 +75,8 @@ export async function GET(req: Request) {
       const host = String(req.headers.get("x-forwarded-host") || req.headers.get("host") || "");
       const isLocalHost = /(^|:)(localhost|127\.0\.0\.1)$/i.test(host) || host.startsWith("localhost:") || host.startsWith("127.0.0.1:");
       const allowLocal = process.env.NODE_ENV !== "production" || isLocalHost;
+      const email = String(userRow?.email || "").trim();
+      const exemptActive = email ? Boolean(await findActiveWhiteLabelExemption(conn, email)) : false;
 
       if (!allowLocal && !eligible.has(countryIso2)) {
         return NextResponse.json(
@@ -77,7 +87,14 @@ export async function GET(req: Request) {
 
       let shouldIncrementInsights = false;
       if (!allowLocal) {
-        const subscriptionActive = plan === "paid" && status === "active";
+        const nextBilling = userRow?.white_label_next_billing_at
+          ? new Date(userRow.white_label_next_billing_at)
+          : null;
+        const paidThrough = nextBilling ? new Date() <= nextBilling : false;
+        const subscriptionActive =
+          (plan === "paid" && status === "active") ||
+          (plan === "paid" && status === "cancelled" && paidThrough) ||
+          exemptActive;
         const now = new Date();
         let trialEnds = userRow?.white_label_trial_ends_at ? new Date(userRow.white_label_trial_ends_at) : null;
         if (!trialEnds && trialDays > 0) {
@@ -126,7 +143,11 @@ export async function GET(req: Request) {
         SELECT id,
                product_name, category, short_desc, image_url,
                amazon_uk_price_current, amazon_uk_price_avg30, amazon_uk_price_avg90, amazon_uk_price_min, amazon_uk_price_max, amazon_uk_offer_count,
-               amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90, amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count
+               amazon_uk_price_low, amazon_uk_price_high, amazon_uk_last_checked_at,
+               amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90, amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count,
+               amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at,
+               landed_gbp_sea_per_unit_low, landed_gbp_sea_per_unit_high,
+               landed_cad_sea_per_unit_low, landed_cad_sea_per_unit_high
         FROM linescout_white_label_products
         WHERE id = ?
         LIMIT 1
@@ -157,16 +178,27 @@ export async function GET(req: Request) {
       const currency = market === "CA" ? "CAD" : "GBP";
       const note = isCad && !caHas && ukHas ? "Showing UK insights because CA data is still syncing." : null;
 
-      const current = Number(product[`amazon_${market.toLowerCase()}_price_current`] || 0) || null;
-      const avg30 = Number(product[`amazon_${market.toLowerCase()}_price_avg30`] || 0) || null;
-      const avg90 = Number(product[`amazon_${market.toLowerCase()}_price_avg90`] || 0) || null;
-      const min = Number(product[`amazon_${market.toLowerCase()}_price_min`] || 0) || null;
-      const max = Number(product[`amazon_${market.toLowerCase()}_price_max`] || 0) || null;
-      const offers = Number(product[`amazon_${market.toLowerCase()}_offer_count`] || 0) || null;
+      const current = toNum(product[`amazon_${market.toLowerCase()}_price_current`]);
+      const avg30 = toNum(product[`amazon_${market.toLowerCase()}_price_avg30`]);
+      const avg90 = toNum(product[`amazon_${market.toLowerCase()}_price_avg90`]);
+      const minVal = toNum(product[`amazon_${market.toLowerCase()}_price_min`]);
+      const maxVal = toNum(product[`amazon_${market.toLowerCase()}_price_max`]);
+      const lowVal = toNum(product[`amazon_${market.toLowerCase()}_price_low`]);
+      const highVal = toNum(product[`amazon_${market.toLowerCase()}_price_high`]);
+      const min = minVal ?? lowVal;
+      const max = maxVal ?? highVal;
+      const offersRaw = toNum(product[`amazon_${market.toLowerCase()}_offer_count`]);
+      const offers = offersRaw != null && offersRaw > 0 ? offersRaw : null;
+      const lastChecked = product[`amazon_${market.toLowerCase()}_last_checked_at`] || null;
+      const landedLow =
+        market === "CA" ? toNum(product.landed_cad_sea_per_unit_low) : toNum(product.landed_gbp_sea_per_unit_low);
+      const landedHigh =
+        market === "CA" ? toNum(product.landed_cad_sea_per_unit_high) : toNum(product.landed_gbp_sea_per_unit_high);
 
       const trend30 = current && avg30 ? (current - avg30) / avg30 : null;
       const trend90 = current && avg90 ? (current - avg90) / avg90 : null;
-      const volatility = avg90 && min != null && max != null ? (max - min) / avg90 : null;
+      const useMinMax = avg90 && minVal != null && maxVal != null;
+      const volatility = useMinMax ? (maxVal! - minVal!) / avg90! : null;
       const buyBoxStability =
         volatility == null
           ? null
@@ -192,15 +224,21 @@ export async function GET(req: Request) {
           trend_30: pct(trend30),
           trend_90: pct(trend90),
           offer_count: offers,
-          seasonality: pct(volatility),
+          seasonality: useMinMax ? pct(volatility) : null,
           buy_box_stability: buyBoxStability,
         },
         raw: {
-          current,
-          avg30,
-          avg90,
-          min,
-          max,
+          price_current: current,
+          price_avg30: avg30,
+          price_avg90: avg90,
+          price_min: minVal,
+          price_max: maxVal,
+          price_low: lowVal,
+          price_high: highVal,
+          offer_count: offersRaw,
+          last_checked_at: lastChecked,
+          landed_per_unit_low: landedLow,
+          landed_per_unit_high: landedHigh,
         },
       });
     } finally {

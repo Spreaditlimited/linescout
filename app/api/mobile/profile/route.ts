@@ -11,7 +11,8 @@ import {
   backfillUserDefaults,
   listActiveCountriesAndCurrencies,
 } from "@/lib/country-config";
-import { ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
+import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
+import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,15 +86,26 @@ export async function GET(req: Request) {
     await ensureCountryConfig();
     await ensureUserCountryColumns();
     await backfillUserDefaults();
+    const user = await requireUser(req);
+    let settingsRow: any = null;
+    let exemption: any = null;
     {
       const conn = await db.getConnection();
       try {
         await ensureWhiteLabelUserColumns(conn);
+        await ensureWhiteLabelSettings(conn);
+        const [settings]: any = await conn.query(
+          `SELECT white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit
+           FROM linescout_settings
+           ORDER BY id DESC
+           LIMIT 1`
+        );
+        settingsRow = settings?.[0] || null;
+        exemption = await findActiveWhiteLabelExemption(conn, user.email);
       } finally {
         conn.release();
       }
     }
-    const user = await requireUser(req);
 
     const userRow = await queryOne<
       RowDataPacket & {
@@ -104,6 +116,7 @@ export async function GET(req: Request) {
         white_label_subscription_status?: string | null;
         white_label_subscription_provider?: string | null;
         white_label_subscription_id?: string | null;
+        white_label_next_billing_at?: string | null;
       }
     >(
       `SELECT country_id, display_currency_code
@@ -112,6 +125,7 @@ export async function GET(req: Request) {
               , white_label_subscription_status
               , white_label_subscription_provider
               , white_label_subscription_id
+              , white_label_next_billing_at
        FROM users
        WHERE id = ?
        LIMIT 1`,
@@ -135,6 +149,18 @@ export async function GET(req: Request) {
       white_label_subscription_status: userRow?.white_label_subscription_status ?? null,
       white_label_subscription_provider: userRow?.white_label_subscription_provider ?? null,
       white_label_subscription_id: userRow?.white_label_subscription_id ?? null,
+      white_label_next_billing_at: userRow?.white_label_next_billing_at ?? null,
+      white_label_trial_days: Number(settingsRow?.white_label_trial_days ?? 0) || 0,
+      white_label_daily_reveals: Number(settingsRow?.white_label_daily_reveals ?? 0) || 0,
+      white_label_insights_daily_limit: Number(settingsRow?.white_label_insights_daily_limit ?? 0) || 0,
+      white_label_exempt: exemption
+        ? {
+            starts_at: exemption.starts_at,
+            ends_at: exemption.ends_at,
+            source: exemption.source,
+            notes: exemption.notes,
+          }
+        : null,
       countries: lists.countries,
       currencies: lists.currencies,
       country_currencies: lists.country_currencies,

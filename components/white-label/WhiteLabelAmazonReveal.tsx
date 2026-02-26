@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type RevealResult = {
@@ -39,14 +39,38 @@ export default function WhiteLabelAmazonReveal({
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [data, setData] = useState<RevealResult | null>(null);
+  const storageKey = `wl_amazon_reveal_${productId}`;
+  const revealTtlMs = 24 * 60 * 60 * 1000;
+  const isFresh = (payload: any) =>
+    payload?.revealed_at && Date.now() - Number(payload.revealed_at) < revealTtlMs;
+  const toNum = (value: any) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.ok && isFresh(parsed)) {
+        setData(parsed as RevealResult);
+      } else if (parsed?.ok) {
+        window.localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // Ignore invalid storage payloads.
+    }
+  }, [storageKey]);
 
   const revealed = Boolean(data?.ok);
   const isCaUser = currencyCode === "CAD";
 
-  const ukLow = data?.product?.amazon_uk_price_low ?? null;
-  const ukHigh = data?.product?.amazon_uk_price_high ?? null;
-  const caLow = data?.product?.amazon_ca_price_low ?? null;
-  const caHigh = data?.product?.amazon_ca_price_high ?? null;
+  const ukLow = toNum(data?.product?.amazon_uk_price_low);
+  const ukHigh = toNum(data?.product?.amazon_uk_price_high);
+  const caLow = toNum(data?.product?.amazon_ca_price_low);
+  const caHigh = toNum(data?.product?.amazon_ca_price_high);
   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
   const useCa = isCaUser && hasCa;
@@ -104,6 +128,23 @@ export default function WhiteLabelAmazonReveal({
   };
 
   async function reveal() {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(storageKey);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached?.ok && isFresh(cached)) {
+            setData(cached as RevealResult);
+            return;
+          }
+          if (cached?.ok) {
+            window.localStorage.removeItem(storageKey);
+          }
+        }
+      } catch {
+        // Ignore invalid storage payloads.
+      }
+    }
     setLoading(true);
     setError(null);
     setErrorCode(null);
@@ -125,7 +166,15 @@ export default function WhiteLabelAmazonReveal({
         setErrorCode(json?.code || null);
         return;
       }
-      setData(json as RevealResult);
+      const payload = { ...json, revealed_at: Date.now() };
+      setData(payload as RevealResult);
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(payload));
+        } catch {
+          // Ignore storage errors (quota, privacy mode).
+        }
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to reveal Amazon price.");
     } finally {
@@ -134,13 +183,15 @@ export default function WhiteLabelAmazonReveal({
   }
 
   return (
-    <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-4 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
+    <div className="rounded-[28px] border border-[rgba(45,52,97,0.2)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.08)] p-6 text-xs text-neutral-600 shadow-[0_18px_44px_rgba(45,52,97,0.15)]">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">
         Amazon price{labelSuffix}
       </p>
+      <h3 className="mt-2 text-lg font-semibold text-neutral-900">Amazon Retail Price</h3>
+      <p className="mt-1 text-xs text-neutral-500">See the current market price of this product on Amazon now.</p>
       {revealed ? (
         <>
-          <p className="mt-1 text-sm font-semibold text-neutral-800">{rangeText()}</p>
+          <p className="mt-3 text-sm font-semibold text-neutral-800">{rangeText()}</p>
           {marginRange() ? (
             <p className="mt-1 text-[11px] text-neutral-500">Indicative margin: {marginRange()}</p>
           ) : null}
@@ -155,42 +206,43 @@ export default function WhiteLabelAmazonReveal({
         </>
       ) : (
         <>
-          <p className="mt-1 text-[11px] text-neutral-500">Estimated retail range on Amazon.</p>
           {insightLine() ? (
             <p className="mt-1 text-[11px] text-neutral-500">{insightLine()}</p>
           ) : null}
-          <div className="mt-3 rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white/80 px-3 py-2 text-[11px] text-neutral-600 shadow-[0_10px_22px_rgba(45,52,97,0.08)]">
-            <p className="font-semibold text-neutral-700">What this means</p>
-            <p className="mt-1">Use this range to sense retail demand and estimate your margin.</p>
-          </div>
           <div className="mt-3">
             <span className="inline-flex rounded-full bg-[rgba(45,52,97,0.2)] px-4 py-1 text-[11px] font-semibold text-[rgba(45,52,97,0.55)] blur-sm">
               £129.99–£199.99
             </span>
           </div>
+        </>
+      )}
+      <div className="mt-5 rounded-2xl border border-[rgba(45,52,97,0.16)] bg-white/80 px-3 py-2 text-[11px] text-neutral-600 shadow-[0_10px_22px_rgba(45,52,97,0.08)]">
+        <p className="font-semibold text-neutral-700">What this means</p>
+        <p className="mt-1">Use this range to sense retail demand and estimate your margin.</p>
+        {!revealed ? (
           <button
             type="button"
             onClick={reveal}
             disabled={loading}
-            className="mt-2 inline-flex text-[11px] font-semibold text-[var(--agent-blue)] disabled:opacity-60"
+            className="btn btn-primary mt-3 px-4 py-2 text-xs disabled:opacity-60"
           >
-            {loading ? "Revealing..." : "Reveal Amazon price"}
+            {loading ? "Revealing..." : "Reveal Price"}
           </button>
-          {error ? (
-            <div className="mt-1 text-[11px] text-amber-700">
-              {error}
-              {errorCode === "subscription_required" ? (
-                <Link
-                  href="/white-label/subscribe"
-                  className="ml-2 inline-flex font-semibold text-[var(--agent-blue)]"
-                >
-                  Subscribe now
-                </Link>
-              ) : null}
-            </div>
+        ) : null}
+      </div>
+      {!revealed && error ? (
+        <div className="mt-1 text-[11px] text-amber-700">
+          {error}
+          {errorCode === "subscription_required" ? (
+            <Link
+              href="/white-label/subscribe"
+              className="ml-2 inline-flex font-semibold text-[var(--agent-blue)]"
+            >
+              Subscribe now
+            </Link>
           ) : null}
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

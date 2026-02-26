@@ -208,7 +208,20 @@ export default function InternalSettingsPage() {
   const [whiteLabelPaypalYearlyGbp, setWhiteLabelPaypalYearlyGbp] = useState("");
   const [whiteLabelPaypalMonthlyCad, setWhiteLabelPaypalMonthlyCad] = useState("");
   const [whiteLabelPaypalYearlyCad, setWhiteLabelPaypalYearlyCad] = useState("");
-  
+
+  const [wlExemptions, setWlExemptions] = useState<any[]>([]);
+  const [wlExemptionsLoading, setWlExemptionsLoading] = useState(false);
+  const [wlExemptionsErr, setWlExemptionsErr] = useState<string | null>(null);
+  const [wlExemptionsSearch, setWlExemptionsSearch] = useState("");
+  const [wlExemptionsDebounced, setWlExemptionsDebounced] = useState("");
+  const [wlExemptionsEmail, setWlExemptionsEmail] = useState("");
+  const [wlExemptionsMonths, setWlExemptionsMonths] = useState("3");
+  const [wlExemptionsNotes, setWlExemptionsNotes] = useState("");
+  const [wlExemptionsCsvName, setWlExemptionsCsvName] = useState<string | null>(null);
+  const [wlExemptionsCsvText, setWlExemptionsCsvText] = useState("");
+  const [wlExemptionsCsvMsg, setWlExemptionsCsvMsg] = useState<string | null>(null);
+  const [wlExemptionsCsvUploading, setWlExemptionsCsvUploading] = useState(false);
+
   const [paypalPlanLoading, setPaypalPlanLoading] = useState(false);
   const [paypalPlanMsg, setPaypalPlanMsg] = useState<string | null>(null);
   const [paypalPlanErr, setPaypalPlanErr] = useState<string | null>(null);
@@ -307,6 +320,11 @@ export default function InternalSettingsPage() {
   }, [paymentSource, userDisplayCurrency]);
 
   const isAdmin = !!(me && "ok" in me && me.ok && me.user.role === "admin");
+
+  useEffect(() => {
+    const t = setTimeout(() => setWlExemptionsDebounced(wlExemptionsSearch), 200);
+    return () => clearTimeout(t);
+  }, [wlExemptionsSearch]);
 
   async function loadSettings() {
     setSettingsLoading(true);
@@ -417,6 +435,95 @@ export default function InternalSettingsPage() {
     } finally {
       setSettingsLoading(false);
     }
+  }
+
+  async function loadWhiteLabelExemptions() {
+    setWlExemptionsLoading(true);
+    setWlExemptionsErr(null);
+    try {
+      const qs = new URLSearchParams();
+      if (wlExemptionsDebounced.trim()) qs.set("q", wlExemptionsDebounced.trim());
+      const res = await fetch(`/api/internal/admin/white-label-exemptions?${qs.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load exemptions");
+      setWlExemptions(Array.isArray(data.items) ? data.items : []);
+    } catch (e: any) {
+      setWlExemptionsErr(e?.message || "Failed to load exemptions");
+    } finally {
+      setWlExemptionsLoading(false);
+    }
+  }
+
+  async function createWhiteLabelExemption() {
+    setWlExemptionsErr(null);
+    try {
+      const res = await fetch("/api/internal/admin/white-label-exemptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: wlExemptionsEmail.trim(),
+          months: Number(wlExemptionsMonths),
+          notes: wlExemptionsNotes.trim(),
+          source: "manual",
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create exemption");
+      setWlExemptionsEmail("");
+      setWlExemptionsMonths("3");
+      setWlExemptionsNotes("");
+      await loadWhiteLabelExemptions();
+    } catch (e: any) {
+      setWlExemptionsErr(e?.message || "Failed to create exemption");
+    }
+  }
+
+  async function handleWlExemptionsCsvFile(file: File) {
+    setWlExemptionsCsvMsg(null);
+    setWlExemptionsCsvName(file.name);
+    const text = await file.text();
+    setWlExemptionsCsvText(text);
+  }
+
+  async function uploadWlExemptionsCsv() {
+    if (!wlExemptionsCsvText.trim()) {
+      setWlExemptionsCsvMsg("Select a CSV file first.");
+      return;
+    }
+    setWlExemptionsCsvUploading(true);
+    setWlExemptionsCsvMsg(null);
+    try {
+      const res = await fetch("/api/internal/admin/white-label-exemptions/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: wlExemptionsCsvText }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Import failed.");
+      setWlExemptionsCsvMsg(`Imported. Added ${data.inserted || 0}, skipped ${data.skipped || 0}.`);
+      await loadWhiteLabelExemptions();
+    } catch (e: any) {
+      setWlExemptionsCsvMsg(e?.message || "Import failed.");
+    } finally {
+      setWlExemptionsCsvUploading(false);
+    }
+  }
+
+  function downloadWlExemptionsTemplate() {
+    const header = ["email", "months", "notes"].join(",");
+    const sample = ["student@example.com", "6", "Course cohort A"].join(",");
+    const csv = `${header}\n${sample}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "white-label-exemptions-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   async function adminAction(action: string, payload: Record<string, any>) {
@@ -873,8 +980,14 @@ export default function InternalSettingsPage() {
   useEffect(() => {
     loadSettings();
     loadShippingData();
+    loadWhiteLabelExemptions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    loadWhiteLabelExemptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wlExemptionsDebounced]);
 
   useEffect(() => {
     let active = true;
@@ -1230,6 +1343,7 @@ export default function InternalSettingsPage() {
   }
 
   const activeBanks = banks.filter((b) => b.is_active !== 0);
+  const wlExemptionsNow = Date.now();
 
   return (
     <div className="space-y-5">
@@ -1891,6 +2005,135 @@ export default function InternalSettingsPage() {
             <p className="mt-2 text-[11px] text-neutral-500">
               If empty, the helper will create a product and fill this automatically.
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 lg:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-neutral-100">White label exemptions</div>
+                <div className="text-xs text-neutral-500">
+                  Grant time‑boxed access by email (1–12 months). Use CSV for cohorts.
+                </div>
+              </div>
+              <button
+                onClick={downloadWlExemptionsTemplate}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Download template
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-[2fr_1fr_2fr_auto]">
+              <input
+                value={wlExemptionsEmail}
+                onChange={(e) => setWlExemptionsEmail(e.target.value)}
+                placeholder="user@domain.com"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+              />
+              <input
+                value={wlExemptionsMonths}
+                onChange={(e) => setWlExemptionsMonths(e.target.value)}
+                placeholder="Months"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+              />
+              <input
+                value={wlExemptionsNotes}
+                onChange={(e) => setWlExemptionsNotes(e.target.value)}
+                placeholder="Notes (optional)"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+              />
+              <button
+                onClick={createWhiteLabelExemption}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleWlExemptionsCsvFile(file);
+                }}
+                className="w-full text-xs text-neutral-300"
+              />
+              <button
+                onClick={uploadWlExemptionsCsv}
+                disabled={wlExemptionsCsvUploading}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+              >
+                {wlExemptionsCsvUploading ? "Uploading..." : "Upload CSV"}
+              </button>
+            </div>
+            {wlExemptionsCsvName ? (
+              <div className="mt-2 text-xs text-neutral-400">Selected: {wlExemptionsCsvName}</div>
+            ) : null}
+            {wlExemptionsCsvMsg ? (
+              <div className="mt-2 text-xs text-neutral-400">{wlExemptionsCsvMsg}</div>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                Current exemptions
+              </div>
+              <input
+                value={wlExemptionsSearch}
+                onChange={(e) => setWlExemptionsSearch(e.target.value)}
+                placeholder="Search by email or notes"
+                className="w-full max-w-xs rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+              />
+            </div>
+
+            {wlExemptionsErr ? (
+              <div className="mt-3 text-xs text-amber-400">{wlExemptionsErr}</div>
+            ) : null}
+            {wlExemptionsLoading ? (
+              <div className="mt-3 text-xs text-neutral-500">Loading exemptions…</div>
+            ) : null}
+
+            {!wlExemptionsLoading && !wlExemptions.length ? (
+              <div className="mt-3 text-xs text-neutral-500">No exemptions found.</div>
+            ) : null}
+
+            <div className="mt-4 grid gap-3">
+              {wlExemptions.map((item) => {
+                const endsAt = Date.parse(item.ends_at);
+                const active =
+                  !item.revoked_at && Number.isFinite(endsAt) && endsAt >= wlExemptionsNow;
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-xs text-neutral-300"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-neutral-100">{item.email}</div>
+                      <div
+                        className={`rounded-full px-2 py-1 text-[11px] ${
+                          active
+                            ? "bg-emerald-900/40 text-emerald-200"
+                            : item.revoked_at
+                            ? "bg-neutral-800 text-neutral-300"
+                            : "bg-neutral-800 text-neutral-300"
+                        }`}
+                      >
+                        {active ? "Active" : item.revoked_at ? "Revoked" : "Expired"}
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-neutral-400">
+                      <div>Starts: {new Date(item.starts_at).toLocaleDateString()}</div>
+                      <div>Ends: {new Date(item.ends_at).toLocaleDateString()}</div>
+                      {item.source ? <div>Source: {item.source}</div> : null}
+                    </div>
+                    {item.notes ? (
+                      <div className="mt-2 text-[11px] text-neutral-400">{item.notes}</div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 

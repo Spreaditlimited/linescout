@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   currencyForCode,
@@ -140,8 +140,54 @@ export default function WhiteLabelCatalogClient({
       { loading?: boolean; error?: string | null; code?: string | null; data?: any }
     >
   >({});
+  const storageKey = (productId: number) => `wl_amazon_reveal_${productId}`;
+  const revealTtlMs = 24 * 60 * 60 * 1000;
+  const isFresh = (payload: any) =>
+    payload?.revealed_at && Date.now() - Number(payload.revealed_at) < revealTtlMs;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next: Record<number, { loading?: boolean; error?: string | null; code?: string | null; data?: any }> = {};
+    items.forEach((item) => {
+      try {
+        const raw = window.localStorage.getItem(storageKey(item.id));
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed?.ok && isFresh(parsed)) {
+          next[item.id] = { data: parsed, loading: false, error: null, code: null };
+        } else if (parsed?.ok) {
+          window.localStorage.removeItem(storageKey(item.id));
+        }
+      } catch {
+        // Ignore invalid storage payloads.
+      }
+    });
+    if (Object.keys(next).length) {
+      setReveals((prev) => ({ ...next, ...prev }));
+    }
+  }, [items]);
 
   async function handleReveal(productId: number) {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(storageKey(productId));
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (cached?.ok && isFresh(cached)) {
+            setReveals((prev) => ({
+              ...prev,
+              [productId]: { loading: false, error: null, code: null, data: cached },
+            }));
+            return;
+          }
+          if (cached?.ok) {
+            window.localStorage.removeItem(storageKey(productId));
+          }
+        }
+      } catch {
+        // Ignore invalid storage payloads.
+      }
+    }
     setReveals((prev) => ({
       ...prev,
       [productId]: { ...(prev[productId] || {}), loading: true, error: null },
@@ -166,10 +212,18 @@ export default function WhiteLabelCatalogClient({
         }));
         return;
       }
+      const payload = { ...json, revealed_at: Date.now() };
       setReveals((prev) => ({
         ...prev,
-        [productId]: { loading: false, error: null, code: null, data: json },
+        [productId]: { loading: false, error: null, code: null, data: payload },
       }));
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.setItem(storageKey(productId), JSON.stringify(payload));
+        } catch {
+          // Ignore storage errors (quota, privacy mode).
+        }
+      }
     } catch (e: any) {
       setReveals((prev) => ({
         ...prev,

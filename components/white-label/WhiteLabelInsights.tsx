@@ -236,7 +236,7 @@ export default function WhiteLabelInsights({ productId }: { productId: number })
         </p>
         <Link
           href={`/white-label/insights?product_id=${encodeURIComponent(String(productId))}`}
-          className="mt-4 inline-flex rounded-2xl bg-[var(--agent-blue)] px-5 py-2 text-xs font-semibold text-white"
+          className="btn btn-primary mt-4 px-5 py-2 text-xs"
         >
           View insights
         </Link>

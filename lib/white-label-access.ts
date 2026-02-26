@@ -42,6 +42,7 @@ export async function ensureWhiteLabelUserColumns(conn: PoolConnection) {
   await ensureColumn(conn, "users", "white_label_subscription_status", "VARCHAR(16) NULL");
   await ensureColumn(conn, "users", "white_label_subscription_provider", "VARCHAR(16) NULL");
   await ensureColumn(conn, "users", "white_label_subscription_id", "VARCHAR(64) NULL");
+  await ensureColumn(conn, "users", "white_label_next_billing_at", "DATETIME NULL");
   await ensureColumn(conn, "users", "white_label_reveals_date", "DATE NULL");
   await ensureColumn(conn, "users", "white_label_reveals_used", "INT NOT NULL DEFAULT 0");
   await ensureColumn(conn, "users", "white_label_insights_date", "DATE NULL");

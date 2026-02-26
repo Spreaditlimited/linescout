@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Activity, ShieldCheck, TrendingUp, Users } from "lucide-react";
 
@@ -24,6 +24,19 @@ type InsightsResponse =
         seasonality: number | null;
         buy_box_stability: string | null;
       };
+      raw: {
+        price_current: number | null;
+        price_avg30: number | null;
+        price_avg90: number | null;
+        price_min: number | null;
+        price_max: number | null;
+        price_low: number | null;
+        price_high: number | null;
+        offer_count: number | null;
+        last_checked_at: string | null;
+        landed_per_unit_low: number | null;
+        landed_per_unit_high: number | null;
+      };
     }
   | { ok: false; code?: string; error?: string };
 
@@ -33,6 +46,9 @@ export default function WhiteLabelInsightsInfoPage() {
   const [data, setData] = useState<InsightsResponse | null>(null);
   const [productId, setProductId] = useState<number | null>(null);
   const [allowLocal, setAllowLocal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updateStalled, setUpdateStalled] = useState(false);
+  const refreshRequestedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -48,6 +64,8 @@ export default function WhiteLabelInsightsInfoPage() {
 
   useEffect(() => {
     if (!productId) return;
+    refreshRequestedRef.current = false;
+    setUpdateStalled(false);
     let live = true;
     setLoading(true);
     fetch(`/api/white-label/insights?product_id=${encodeURIComponent(String(productId))}`, {
@@ -95,6 +113,100 @@ export default function WhiteLabelInsightsInfoPage() {
       data.metrics.offer_count == null ||
       data.metrics.seasonality == null ||
       data.metrics.buy_box_stability == null);
+  const updatingLabel = updateStalled ? "Not enough data yet" : "Updating";
+  const raw = data && data.ok ? data.raw : null;
+
+  const fmtMoney = (value: number | null) => {
+    if (value == null || !Number.isFinite(value)) return "—";
+    const currency = data && data.ok ? data.currency : "GBP";
+    try {
+      return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-GB", {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 2,
+      }).format(value);
+    } catch {
+      const symbol = currency === "CAD" ? "CA$" : "£";
+      return `${symbol}${value.toFixed(2)}`;
+    }
+  };
+
+  const fmtNumber = (value: number | null) => {
+    if (value == null || !Number.isFinite(value)) return "—";
+    return String(value);
+  };
+
+  const fmtRange = (low: number | null, high: number | null) => {
+    const lowText = fmtMoney(low);
+    const highText = fmtMoney(high);
+    if (lowText !== "—" && highText !== "—" && low === high) return lowText;
+    if (lowText !== "—" && highText !== "—") return `${lowText}–${highText}`;
+    if (lowText !== "—") return lowText;
+    if (highText !== "—") return highText;
+    return "—";
+  };
+
+  const fmtDate = (value: string | null) => {
+    if (!value) return "—";
+    const ts = Date.parse(value);
+    if (!Number.isFinite(ts)) return value;
+    return new Date(ts).toLocaleString();
+  };
+
+  useEffect(() => {
+    if (!productId || !data || !data.ok || !hasUpdating) return;
+    if (refreshRequestedRef.current) return;
+    refreshRequestedRef.current = true;
+    setRefreshing(true);
+    fetch("/api/white-label/insights/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_id: productId }),
+    })
+      .catch(() => null)
+      .finally(() => setRefreshing(false));
+  }, [productId, data, hasUpdating]);
+
+  useEffect(() => {
+    if (!productId || !hasUpdating) return;
+    let cancelled = false;
+    let attempts = 0;
+    const interval = setInterval(() => {
+      if (cancelled) return;
+      attempts += 1;
+      if (attempts > 18) {
+        clearInterval(interval);
+        if (!cancelled) setUpdateStalled(true);
+        return;
+      }
+      fetch(`/api/white-label/insights?product_id=${encodeURIComponent(String(productId))}`, {
+        cache: "no-store",
+      })
+        .then((r) => r.json())
+        .then((json: InsightsResponse) => {
+          if (cancelled) return;
+          setData(json);
+          if (json && (json as any).ok) {
+            const metrics = (json as any).metrics || {};
+            const stillUpdating =
+              metrics.trend_30 == null ||
+              metrics.trend_90 == null ||
+              metrics.offer_count == null ||
+              metrics.seasonality == null ||
+              metrics.buy_box_stability == null;
+            if (!stillUpdating) {
+              setUpdateStalled(false);
+              clearInterval(interval);
+            }
+          }
+        })
+        .catch(() => null);
+    }, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [productId, hasUpdating]);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -209,8 +321,13 @@ export default function WhiteLabelInsightsInfoPage() {
               </p>
               {hasUpdating ? (
                 <p className="mt-3 text-xs text-neutral-500">
-                  Updating means our data refresh is still in progress. Check back shortly for the latest signals.
+                  {updateStalled
+                    ? "Some signals are not available yet for this product."
+                    : "Updating means our data refresh is still in progress. Check back shortly for the latest signals."}
                 </p>
+              ) : null}
+              {refreshing ? (
+                <p className="mt-2 text-xs font-semibold text-[var(--agent-blue)]">Refreshing data now…</p>
               ) : null}
               {data.note ? (
                 <p className="mt-3 text-xs font-semibold text-amber-700">{data.note}</p>
@@ -218,6 +335,32 @@ export default function WhiteLabelInsightsInfoPage() {
             </div>
 
             <div className="grid gap-4">
+              <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)] lg:w-fit lg:max-w-full lg:justify-self-start">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
+                    <TrendingUp className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--agent-blue)]">
+                      Amazon price vs landed cost
+                    </p>
+                    <div className="mt-3 grid gap-2 text-sm text-neutral-700 sm:grid-cols-2">
+                      <div>
+                        <p className="text-[11px] text-neutral-500">Amazon price range</p>
+                        <p className="font-semibold text-neutral-900">
+                          {fmtRange(raw?.price_low ?? null, raw?.price_high ?? null)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-neutral-500">Estimated landed cost</p>
+                        <p className="font-semibold text-neutral-900">
+                          {fmtRange(raw?.landed_per_unit_low ?? null, raw?.landed_per_unit_high ?? null)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)]">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
@@ -245,6 +388,17 @@ export default function WhiteLabelInsightsInfoPage() {
                     </div>
                   </div>
                 </div>
+                <details className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[11px] text-neutral-600">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
+                    Price trend details
+                  </summary>
+                  <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+                    <div>Current price: {fmtMoney(raw?.price_current ?? null)}</div>
+                    <div>30‑day average: {fmtMoney(raw?.price_avg30 ?? null)}</div>
+                    <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
+                    <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
+                  </div>
+                </details>
               </div>
 
               <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)]">
@@ -257,13 +411,24 @@ export default function WhiteLabelInsightsInfoPage() {
                       Competition
                     </p>
                     <p className="mt-3 text-sm font-semibold text-neutral-900">
-                      {data.metrics.offer_count != null ? `${data.metrics.offer_count} active offers` : "Updating"}
+                      {data.metrics.offer_count != null
+                        ? `${data.metrics.offer_count} active offers`
+                        : updatingLabel}
                     </p>
                     <p className="mt-2 text-[11px] text-neutral-500">
                       More sellers usually means tougher competition.
                     </p>
                   </div>
                 </div>
+                <details className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[11px] text-neutral-600">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
+                    Competition details
+                  </summary>
+                  <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+                    <div>Offer count: {fmtNumber(raw?.offer_count ?? null)}</div>
+                    <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
+                  </div>
+                </details>
               </div>
 
               <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)]">
@@ -276,13 +441,26 @@ export default function WhiteLabelInsightsInfoPage() {
                       Seasonality
                     </p>
                     <p className="mt-3 text-sm font-semibold text-neutral-900">
-                      {volatilityLabel(data.metrics.seasonality)}
+                      {data.metrics.seasonality != null
+                        ? volatilityLabel(data.metrics.seasonality)
+                        : updatingLabel}
                     </p>
                     <p className="mt-2 text-[11px] text-neutral-500">
                       High swings mean demand changes more by season.
                     </p>
                   </div>
                 </div>
+                <details className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[11px] text-neutral-600">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
+                    Seasonality details
+                  </summary>
+                  <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+                    <div>Min price: {fmtMoney(raw?.price_min ?? null)}</div>
+                    <div>Max price: {fmtMoney(raw?.price_max ?? null)}</div>
+                    <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
+                    <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
+                  </div>
+                </details>
               </div>
 
               <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)]">
@@ -295,13 +473,24 @@ export default function WhiteLabelInsightsInfoPage() {
                       Buy‑box stability
                     </p>
                     <p className="mt-3 text-sm font-semibold text-neutral-900">
-                      {data.metrics.buy_box_stability || "Updating"}
+                      {data.metrics.buy_box_stability || updatingLabel}
                     </p>
                     <p className="mt-2 text-[11px] text-neutral-500">
                       Stable means pricing stays steady. Volatile means it changes often.
                     </p>
                   </div>
                 </div>
+                <details className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[11px] text-neutral-600">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
+                    Buy‑box stability details
+                  </summary>
+                  <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+                    <div>Min price: {fmtMoney(raw?.price_min ?? null)}</div>
+                    <div>Max price: {fmtMoney(raw?.price_max ?? null)}</div>
+                    <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
+                    <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
+                  </div>
+                </details>
               </div>
             </div>
           </div>

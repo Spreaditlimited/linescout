@@ -45,6 +45,7 @@ export async function POST(req: Request) {
     const resource = body?.resource || {};
     const subscriptionId = String(resource?.id || "");
     const customId = String(resource?.custom_id || "");
+    const nextBillingAt = resource?.billing_info?.next_billing_time || null;
 
     const userIdMatch = customId.match(/LS_USER_(\d+)/);
     const userId = userIdMatch ? Number(userIdMatch[1]) : null;
@@ -59,10 +60,11 @@ export async function POST(req: Request) {
              SET white_label_plan = 'paid',
                  white_label_subscription_provider = 'paypal',
                  white_label_subscription_id = ?,
-                 white_label_subscription_status = 'active'
+                 white_label_subscription_status = 'active',
+                 white_label_next_billing_at = COALESCE(?, white_label_next_billing_at)
              WHERE id = ?
              LIMIT 1`,
-            [subscriptionId, userId]
+            [subscriptionId, nextBillingAt, userId]
           );
 
         const setStatus = (status: string, plan: string) =>
@@ -71,10 +73,11 @@ export async function POST(req: Request) {
              SET white_label_plan = ?,
                  white_label_subscription_provider = 'paypal',
                  white_label_subscription_id = ?,
-                 white_label_subscription_status = ?
+                 white_label_subscription_status = ?,
+                 white_label_next_billing_at = COALESCE(?, white_label_next_billing_at)
              WHERE id = ?
              LIMIT 1`,
-            [plan, subscriptionId, status, userId]
+            [plan, subscriptionId, status, nextBillingAt, userId]
           );
 
         if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {

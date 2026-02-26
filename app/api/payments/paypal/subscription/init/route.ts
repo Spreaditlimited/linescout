@@ -114,6 +114,7 @@ export async function POST(req: Request) {
       );
     }
 
+    const nextBillingAt = (subscription as any)?.raw?.billing_info?.next_billing_time || null;
     const saveConn = await db.getConnection();
     try {
       await ensureWhiteLabelUserColumns(saveConn);
@@ -122,10 +123,11 @@ export async function POST(req: Request) {
          SET white_label_plan = 'paid',
              white_label_subscription_provider = 'paypal',
              white_label_subscription_id = ?,
-             white_label_subscription_status = 'pending'
+             white_label_subscription_status = 'pending',
+             white_label_next_billing_at = ?
          WHERE id = ?
          LIMIT 1`,
-        [subscription.id, userId]
+        [subscription.id, nextBillingAt, userId]
       );
     } finally {
       saveConn.release();

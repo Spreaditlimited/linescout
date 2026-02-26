@@ -209,6 +209,47 @@ export async function paypalCaptureOrder(orderId: string) {
   return json;
 }
 
+export async function paypalGetSubscription(subscriptionId: string) {
+  const token = await paypalAccessToken();
+  const res = await fetch(
+    `${paypalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json?.message || "PayPal subscription lookup failed");
+  }
+  return json;
+}
+
+export async function paypalCancelSubscription(subscriptionId: string, reason?: string) {
+  const token = await paypalAccessToken();
+  const res = await fetch(
+    `${paypalBaseUrl()}/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        reason: reason || "User requested cancellation.",
+      }),
+    }
+  );
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json?.message || "PayPal subscription cancel failed");
+  }
+  return { ok: true };
+}
+
 export async function paypalVerifyWebhookSignature(params: {
   body: any;
   headers: Record<string, string | null>;

@@ -2,6 +2,7 @@ import type { PoolConnection } from "mysql2/promise";
 import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 
 type RevealResult =
   | {
@@ -47,6 +48,7 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   const [[userRow]]: any = await conn.query(
     `SELECT u.id, u.white_label_trial_ends_at, u.white_label_plan, u.white_label_subscription_status,
             u.white_label_reveals_used, u.white_label_reveals_date,
+            u.email, u.white_label_next_billing_at,
             c.iso2 AS country_iso2,
             cur.code AS currency_code
      FROM users u
@@ -77,7 +79,16 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
 
   const plan = String(userRow.white_label_plan || "").toLowerCase();
   const status = String(userRow.white_label_subscription_status || "").toLowerCase();
-  const subscriptionActive = plan === "paid" && status === "active";
+  const email = String(userRow?.email || "").trim();
+  const exemptActive = email ? Boolean(await findActiveWhiteLabelExemption(conn, email)) : false;
+  const nextBilling = userRow?.white_label_next_billing_at
+    ? new Date(userRow.white_label_next_billing_at)
+    : null;
+  const paidThrough = nextBilling ? new Date() <= nextBilling : false;
+  const subscriptionActive =
+    (plan === "paid" && status === "active") ||
+    (plan === "paid" && status === "cancelled" && paidThrough) ||
+    exemptActive;
   const trialActive = trialEnds ? now <= trialEnds : false;
   if (!subscriptionActive && !trialActive) {
     return { ok: false, code: "subscription_required", error: "Subscription required" };
@@ -97,7 +108,8 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     );
   }
 
-  if (revealsUsed >= dailyLimit) {
+  const enforceLimit = !subscriptionActive;
+  if (enforceLimit && revealsUsed >= dailyLimit) {
     return {
       ok: false,
       code: "limit_reached",
@@ -123,11 +135,13 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     return { ok: false, error: refresh.lastError || "Price data refresh failed" };
   }
 
-  await conn.query(
-    `UPDATE users SET white_label_reveals_used = white_label_reveals_used + 1 WHERE id = ? LIMIT 1`,
-    [userId]
-  );
-  revealsUsed += 1;
+  if (enforceLimit) {
+    await conn.query(
+      `UPDATE users SET white_label_reveals_used = white_label_reveals_used + 1 WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    revealsUsed += 1;
+  }
 
   const [[updatedRow]]: any = await conn.query(
     `SELECT id, product_name, category,
@@ -155,7 +169,7 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     product: updatedRow,
     reveal_limit: dailyLimit,
     reveals_used: revealsUsed,
-    reveals_left: Math.max(0, dailyLimit - revealsUsed),
+    reveals_left: enforceLimit ? Math.max(0, dailyLimit - revealsUsed) : dailyLimit,
     display: {
       marketplace: useCa ? "CA" : useUk ? "UK" : null,
       currency: useCa ? "CAD" : useUk ? "GBP" : null,
