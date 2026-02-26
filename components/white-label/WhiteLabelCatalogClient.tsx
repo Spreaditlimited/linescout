@@ -43,6 +43,11 @@ type ProductItem = {
   amazon_ca_currency?: string | null;
   amazon_ca_price_low?: number | null;
   amazon_ca_price_high?: number | null;
+  amazon_us_asin?: string | null;
+  amazon_us_url?: string | null;
+  amazon_us_currency?: string | null;
+  amazon_us_price_low?: number | null;
+  amazon_us_price_high?: number | null;
 };
 
 function formatPerUnitRange(
@@ -308,39 +313,57 @@ export default function WhiteLabelCatalogClient({
                   const reveal = reveals[item.id];
                   const revealed = Boolean(reveal?.data?.ok);
                   const isCaUser = currencyCode === "CAD";
+                  const isUsUser = currencyCode === "USD";
                   const dataRow = revealed ? reveal?.data?.product || {} : item;
                   const ukLow = dataRow.amazon_uk_price_low != null ? Number(dataRow.amazon_uk_price_low) : null;
                   const ukHigh = dataRow.amazon_uk_price_high != null ? Number(dataRow.amazon_uk_price_high) : null;
                   const caLow = dataRow.amazon_ca_price_low != null ? Number(dataRow.amazon_ca_price_low) : null;
                   const caHigh = dataRow.amazon_ca_price_high != null ? Number(dataRow.amazon_ca_price_high) : null;
+                  const usLow = dataRow.amazon_us_price_low != null ? Number(dataRow.amazon_us_price_low) : null;
+                  const usHigh = dataRow.amazon_us_price_high != null ? Number(dataRow.amazon_us_price_high) : null;
                   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
                   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
+                  const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
 
+                  const useUs = isUsUser && hasUs;
                   const useCa = isCaUser && hasCa;
-                  const useUk = !useCa && hasUk;
+                  const useUk = !useUs && !useCa && hasUk;
                   const showFallbackMessage = isCaUser && !hasCa && hasUk;
-                  const preferredMarket = isCaUser ? "CA" : "UK";
-                  const amazonCode = revealed ? (useCa ? "CAD" : "GBP") : isCaUser ? "CAD" : "GBP";
+                  const showUsFallbackMessage = isUsUser && !hasUs && hasUk;
+                  const preferredMarket = isUsUser ? "US" : isCaUser ? "CA" : "UK";
+                  const amazonCode = revealed
+                    ? useUs
+                      ? "USD"
+                      : useCa
+                      ? "CAD"
+                      : "GBP"
+                    : isUsUser
+                    ? "USD"
+                    : isCaUser
+                    ? "CAD"
+                    : "GBP";
                   const labelSuffix = revealed
-                    ? useCa
+                    ? useUs
+                      ? " (US)"
+                      : useCa
                       ? " (CA)"
                       : " (UK)"
                     : ` (${preferredMarket})`;
-                  const amazonLow = useCa ? caLow : ukLow;
-                  const amazonHigh = useCa ? caHigh : ukHigh;
+                  const amazonLow = useUs ? usLow : useCa ? caLow : ukLow;
+                  const amazonHigh = useUs ? usHigh : useCa ? caHigh : ukHigh;
 
                   const displayAmazonRange = () => {
                     const code = amazonCode;
                     const fmt = (value: number | null) => {
                       if (value == null || !Number.isFinite(value)) return "—";
                       try {
-                        return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-CA", {
+                        return new Intl.NumberFormat(code === "GBP" ? "en-GB" : code === "USD" ? "en-US" : "en-CA", {
                           style: "currency",
                           currency: code,
                           maximumFractionDigits: 2,
                         }).format(value);
                       } catch {
-                        const symbol = code === "GBP" ? "£" : "CA$";
+                        const symbol = code === "GBP" ? "£" : code === "USD" ? "$" : "CA$";
                         return `${symbol}${value.toFixed(2)}`;
                       }
                     };
@@ -362,10 +385,13 @@ export default function WhiteLabelCatalogClient({
                         high: item.landed_gbp_sea_per_unit_high ?? null,
                       };
                     }
-                    return {
-                      low: item.landed_cad_sea_per_unit_low ?? null,
-                      high: item.landed_cad_sea_per_unit_high ?? null,
-                    };
+                    if (amazonCode === "CAD") {
+                      return {
+                        low: item.landed_cad_sea_per_unit_low ?? null,
+                        high: item.landed_cad_sea_per_unit_high ?? null,
+                      };
+                    }
+                    return { low: null, high: null };
                   };
 
                   const marginRange = () => {
@@ -411,6 +437,11 @@ export default function WhiteLabelCatalogClient({
                           {marginText ? (
                             <p className="mt-1 text-[11px] text-neutral-500">
                               Indicative margin: {marginText}
+                            </p>
+                          ) : null}
+                          {showUsFallbackMessage ? (
+                            <p className="mt-1 text-[11px] text-amber-700">
+                              Amazon US price not available at this time for this product.
                             </p>
                           ) : null}
                           {showFallbackMessage ? (

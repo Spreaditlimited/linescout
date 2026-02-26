@@ -55,12 +55,15 @@ export async function ensureCountryTables(conn?: Queryable) {
       default_currency_id INT NULL,
       settlement_currency_code VARCHAR(8) NULL,
       payment_provider VARCHAR(32) NULL,
+      amazon_marketplace VARCHAR(8) NULL,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_country_iso2 (iso2)
     )
   `);
+
+  await ensureColumn(q, "linescout_countries", "amazon_marketplace", "VARCHAR(8) NULL");
 
   await q.query(`
     CREATE TABLE IF NOT EXISTS linescout_country_currencies (
@@ -123,6 +126,7 @@ export async function ensureSeedCountries(conn?: Queryable) {
       default_currency_id: ngnId,
       settlement_currency_code: "NGN",
       payment_provider: "paystack",
+      amazon_marketplace: null,
     },
     {
       name: "United Kingdom",
@@ -131,19 +135,21 @@ export async function ensureSeedCountries(conn?: Queryable) {
       default_currency_id: gbpId,
       settlement_currency_code: "GBP",
       payment_provider: "paypal",
+      amazon_marketplace: "UK",
     },
   ];
 
   for (const c of seed) {
     await q.query(
-      `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          name = VALUES(name),
          iso3 = VALUES(iso3),
          default_currency_id = VALUES(default_currency_id),
          settlement_currency_code = VALUES(settlement_currency_code),
-         payment_provider = VALUES(payment_provider)`,
+         payment_provider = VALUES(payment_provider),
+         amazon_marketplace = VALUES(amazon_marketplace)`,
       [
         c.name,
         c.iso2,
@@ -151,6 +157,7 @@ export async function ensureSeedCountries(conn?: Queryable) {
         c.default_currency_id,
         c.settlement_currency_code,
         c.payment_provider,
+        c.amazon_marketplace,
       ]
     );
   }
@@ -303,7 +310,7 @@ export async function backfillWhiteLabelDefaults(conn?: Queryable) {
 export async function listActiveCountriesAndCurrencies(conn?: Queryable) {
   const q = getQueryable(conn);
   const [countries]: any = await q.query(
-    `SELECT id, name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, is_active
+    `SELECT id, name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace, is_active
      FROM linescout_countries
      WHERE is_active = 1
      ORDER BY name ASC`

@@ -1,14 +1,19 @@
-type KeepaMarketplace = "UK" | "CA";
+type KeepaMarketplace = "UK" | "CA" | "US";
 
 type KeepaMarketConfig = {
   domain: number;
-  currency: "GBP" | "CAD";
+  currency: "GBP" | "CAD" | "USD";
   amazonHost: string;
 };
 
 const KEEP_A_BASE_URL = "https://api.keepa.com";
 
 const MARKET_CONFIG: Record<KeepaMarketplace, KeepaMarketConfig> = {
+  US: {
+    domain: Number(process.env.KEEPA_DOMAIN_US || "1"),
+    currency: "USD",
+    amazonHost: "www.amazon.com",
+  },
   UK: {
     domain: Number(process.env.KEEPA_DOMAIN_UK || "2"),
     currency: "GBP",
@@ -132,7 +137,7 @@ export async function fetchKeepaPrice(asin: string, marketplace: KeepaMarketplac
   const avg90 = pickStatValue(stats, "avg90");
   const minVal = pickMin([stats.min?.[1], stats.min?.[0]]);
   const maxVal = pickMax([stats.max?.[1], stats.max?.[0]]);
-  const offerCountRaw = stats.offerCount ?? product.offerCount ?? null;
+  const offerCountRaw = stats.totalOfferCount ?? stats.offerCount ?? product.offerCount ?? null;
   const offerCount = Number.isFinite(Number(offerCountRaw)) ? Number(offerCountRaw) : null;
 
   const low =
@@ -161,10 +166,21 @@ export async function fetchKeepaPrice(asin: string, marketplace: KeepaMarketplac
   };
 }
 
+export async function fetchKeepaProductRaw(asin: string, marketplace: KeepaMarketplace) {
+  if (!asin) return null;
+  const domain = MARKET_CONFIG[marketplace].domain;
+  const data = await keepaRequest("product", {
+    domain,
+    asin,
+    stats: 1,
+  });
+  return data || null;
+}
+
 export function getKeepaCurrency(marketplace: KeepaMarketplace) {
   return MARKET_CONFIG[marketplace].currency;
 }
 
 export function keepaMarketplaces(): KeepaMarketplace[] {
-  return ["UK", "CA"];
+  return ["UK", "CA", "US"];
 }

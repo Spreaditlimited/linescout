@@ -42,6 +42,10 @@ export type LandedFields = {
   landed_cad_sea_per_unit_high?: number | null;
   landed_cad_sea_total_1000_low?: number | null;
   landed_cad_sea_total_1000_high?: number | null;
+  landed_usd_sea_per_unit_low?: number | null;
+  landed_usd_sea_per_unit_high?: number | null;
+  landed_usd_sea_total_1000_low?: number | null;
+  landed_usd_sea_total_1000_high?: number | null;
 };
 
 export function pickLandedFieldsByCurrency(
@@ -68,6 +72,14 @@ export function pickLandedFieldsByCurrency(
       perUnitHigh: item.landed_cad_sea_per_unit_high,
       totalLow: item.landed_cad_sea_total_1000_low,
       totalHigh: item.landed_cad_sea_total_1000_high,
+    };
+  }
+  if (code === "USD") {
+    return {
+      perUnitLow: item.landed_usd_sea_per_unit_low,
+      perUnitHigh: item.landed_usd_sea_per_unit_high,
+      totalLow: item.landed_usd_sea_total_1000_low,
+      totalHigh: item.landed_usd_sea_total_1000_high,
     };
   }
   return {

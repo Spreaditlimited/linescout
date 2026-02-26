@@ -5,6 +5,7 @@ import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/whi
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
+import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
                u.email,
                u.white_label_next_billing_at,
                c.iso2 AS country_iso2,
+               c.amazon_marketplace AS country_marketplace,
                cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -116,12 +118,17 @@ export async function POST(req: Request) {
         `
         SELECT id,
                product_name, category,
-               amazon_uk_asin, amazon_ca_asin,
-               amazon_uk_last_checked_at, amazon_ca_last_checked_at,
+               amazon_uk_asin, amazon_ca_asin, amazon_us_asin,
+               amazon_uk_last_checked_at, amazon_ca_last_checked_at, amazon_us_last_checked_at,
                amazon_uk_price_current, amazon_uk_price_avg30, amazon_uk_price_avg90,
                amazon_uk_price_min, amazon_uk_price_max, amazon_uk_offer_count,
                amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90,
-               amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count
+               amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count,
+               amazon_us_price_current, amazon_us_price_avg30, amazon_us_price_avg90,
+               amazon_us_price_min, amazon_us_price_max, amazon_us_offer_count,
+               amazon_uk_price_low, amazon_uk_price_high,
+               amazon_ca_price_low, amazon_ca_price_high,
+               amazon_us_price_low, amazon_us_price_high
         FROM linescout_white_label_products
         WHERE id = ?
         LIMIT 1
@@ -132,18 +139,43 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Product not found." }, { status: 404 });
       }
 
-      const isCad = currencyCode === "CAD";
+      const preferredMarket = resolveAmazonMarketplace({
+        marketplace: userRow?.country_marketplace,
+        countryIso2,
+        currencyCode,
+      });
       const caHas =
         product.amazon_ca_price_current != null ||
         product.amazon_ca_price_avg30 != null ||
         product.amazon_ca_price_avg90 != null;
+      const usHas =
+        product.amazon_us_price_current != null ||
+        product.amazon_us_price_avg30 != null ||
+        product.amazon_us_price_avg90 != null;
       const ukHas =
         product.amazon_uk_price_current != null ||
         product.amazon_uk_price_avg30 != null ||
         product.amazon_uk_price_avg90 != null;
-      const market = isCad && caHas ? "CA" : "UK";
+      const market =
+        preferredMarket === "US" && usHas
+          ? "US"
+          : preferredMarket === "CA" && caHas
+          ? "CA"
+          : preferredMarket === "UK" && ukHas
+          ? "UK"
+          : ukHas
+          ? "UK"
+          : caHas
+          ? "CA"
+          : usHas
+          ? "US"
+          : preferredMarket;
       const lastChecked =
-        market === "CA" ? product.amazon_ca_last_checked_at : product.amazon_uk_last_checked_at;
+        market === "CA"
+          ? product.amazon_ca_last_checked_at
+          : market === "US"
+          ? product.amazon_us_last_checked_at
+          : product.amazon_uk_last_checked_at;
       const marketDataComplete =
         market === "CA"
           ? product.amazon_ca_price_current != null &&
@@ -151,6 +183,12 @@ export async function POST(req: Request) {
             product.amazon_ca_price_avg90 != null &&
             (product.amazon_ca_price_min != null ||
               (product.amazon_ca_price_low != null && product.amazon_ca_price_high != null))
+          : market === "US"
+          ? product.amazon_us_price_current != null &&
+            product.amazon_us_price_avg30 != null &&
+            product.amazon_us_price_avg90 != null &&
+            (product.amazon_us_price_min != null ||
+              (product.amazon_us_price_low != null && product.amazon_us_price_high != null))
           : product.amazon_uk_price_current != null &&
             product.amazon_uk_price_avg30 != null &&
             product.amazon_uk_price_avg90 != null &&

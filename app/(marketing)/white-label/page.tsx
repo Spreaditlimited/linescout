@@ -186,7 +186,7 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
   if (allowed.has(candidate)) return candidate;
   const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
@@ -294,7 +294,7 @@ export default async function WhiteLabelPage({
       }
     }
 
-    const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
+    const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
     const sortKey = sort || "recommended";
     const orderBy =
       sortKey === "price_low"
@@ -368,7 +368,7 @@ export default async function WhiteLabelPage({
         GROUP BY product_id
       ) v ON v.product_id = p.id
       WHERE p.is_active = 1
-      ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+      ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
                view_count DESC, p.sort_order ASC, p.id DESC
       LIMIT 8
       `
@@ -406,7 +406,7 @@ export default async function WhiteLabelPage({
           GROUP BY product_id
         ) v ON v.product_id = p.id
         WHERE p.is_active = 1 AND p.category = ?
-        ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+        ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
                  view_count DESC, p.sort_order ASC, p.id DESC
         LIMIT 4
         `,

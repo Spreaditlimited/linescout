@@ -32,10 +32,22 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    const [[settings]]: any = await conn.query(
+      `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
+    );
+    const countries = String(settings?.white_label_subscription_countries || "GB,CA")
+      .split(",")
+      .map((c: string) => c.trim().toUpperCase())
+      .filter(Boolean);
+    const marketplaces = Array.from(
+      new Set(
+        countries.map((iso) => (iso === "US" ? "US" : iso === "CA" ? "CA" : "UK"))
+      )
+    );
     const rows = await listTopWhiteLabelProducts(conn, 500, offset);
     const result = await refreshKeepaProducts(conn, rows, {
       maxProducts,
-      marketplaces: ["UK", "CA"],
+      marketplaces: (marketplaces.length ? marketplaces : ["UK", "CA"]) as any,
       allowSearch: true,
     });
     return NextResponse.json({ ok: true, scope: "weekly", ...result });

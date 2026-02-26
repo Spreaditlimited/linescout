@@ -3,6 +3,7 @@ import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/whi
 import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
+import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 type RevealResult =
   | {
@@ -12,8 +13,8 @@ type RevealResult =
       reveals_used: number;
       reveals_left: number;
       display: {
-        marketplace: "UK" | "CA" | null;
-        currency: "GBP" | "CAD" | null;
+        marketplace: "UK" | "CA" | "US" | null;
+        currency: "GBP" | "CAD" | "USD" | null;
         price_low: number | null;
         price_high: number | null;
         note?: string | null;
@@ -50,6 +51,7 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
             u.white_label_reveals_used, u.white_label_reveals_date,
             u.email, u.white_label_next_billing_at,
             c.iso2 AS country_iso2,
+            c.amazon_marketplace AS country_marketplace,
             cur.code AS currency_code
      FROM users u
      LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -118,7 +120,7 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   }
 
   const [[productRow]]: any = await conn.query(
-    `SELECT id, product_name, category, amazon_uk_asin, amazon_ca_asin
+    `SELECT id, product_name, category, amazon_uk_asin, amazon_ca_asin, amazon_us_asin
      FROM linescout_white_label_products
      WHERE id = ?
      LIMIT 1`,
@@ -126,9 +128,17 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   );
   if (!productRow?.id) return { ok: false, error: "Product not found" };
 
+  const userCurrency = String(userRow?.currency_code || "").toUpperCase();
+  const preferredMarket = resolveAmazonMarketplace({
+    marketplace: userRow?.country_marketplace,
+    countryIso2: userRow?.country_iso2,
+    currencyCode: userCurrency,
+  });
+  const keepaMarketplaces: ("US" | "UK" | "CA")[] =
+    preferredMarket === "US" ? ["US"] : preferredMarket === "CA" ? ["CA"] : ["UK", "CA"];
   const refresh = await refreshKeepaProducts(conn, [productRow], {
     allowSearch: true,
-    marketplaces: ["UK", "CA"],
+    marketplaces: keepaMarketplaces,
     maxProducts: 1,
   });
   if (refresh.errors > 0 && refresh.updated === 0) {
@@ -146,23 +156,30 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   const [[updatedRow]]: any = await conn.query(
     `SELECT id, product_name, category,
             amazon_uk_asin, amazon_uk_url, amazon_uk_currency, amazon_uk_price_low, amazon_uk_price_high, amazon_uk_last_checked_at,
-            amazon_ca_asin, amazon_ca_url, amazon_ca_currency, amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at
+            amazon_ca_asin, amazon_ca_url, amazon_ca_currency, amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at,
+            amazon_us_asin, amazon_us_url, amazon_us_currency, amazon_us_price_low, amazon_us_price_high, amazon_us_last_checked_at
      FROM linescout_white_label_products
      WHERE id = ?
      LIMIT 1`,
     [productId]
   );
 
-  const userCurrency = String(userRow?.currency_code || "").toUpperCase();
-  const displayCurrency = userCurrency === "CAD" ? "CAD" : "GBP";
+  const displayCurrency = marketplaceCurrency(preferredMarket);
   const ukLow = updatedRow?.amazon_uk_price_low != null ? Number(updatedRow.amazon_uk_price_low) : null;
   const ukHigh = updatedRow?.amazon_uk_price_high != null ? Number(updatedRow.amazon_uk_price_high) : null;
   const caLow = updatedRow?.amazon_ca_price_low != null ? Number(updatedRow.amazon_ca_price_low) : null;
   const caHigh = updatedRow?.amazon_ca_price_high != null ? Number(updatedRow.amazon_ca_price_high) : null;
+  const usLow = updatedRow?.amazon_us_price_low != null ? Number(updatedRow.amazon_us_price_low) : null;
+  const usHigh = updatedRow?.amazon_us_price_high != null ? Number(updatedRow.amazon_us_price_high) : null;
   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
-  const useCa = displayCurrency === "CAD" && hasCa;
-  const useUk = !useCa && hasUk;
+  const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
+  const useUs = preferredMarket === "US" && hasUs;
+  const useCa = preferredMarket === "CA" && hasCa;
+  const useUk = preferredMarket === "UK" && hasUk;
+  const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
+  const marketToUse = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
+  const currencyToUse = marketToUse ? marketplaceCurrency(marketToUse) : null;
 
   return {
     ok: true,
@@ -171,13 +188,17 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     reveals_used: revealsUsed,
     reveals_left: enforceLimit ? Math.max(0, dailyLimit - revealsUsed) : dailyLimit,
     display: {
-      marketplace: useCa ? "CA" : useUk ? "UK" : null,
-      currency: useCa ? "CAD" : useUk ? "GBP" : null,
-      price_low: useCa ? caLow : useUk ? ukLow : null,
-      price_high: useCa ? caHigh : useUk ? ukHigh : null,
+      marketplace: marketToUse,
+      currency: currencyToUse,
+      price_low: marketToUse === "US" ? usLow : marketToUse === "CA" ? caLow : marketToUse === "UK" ? ukLow : null,
+      price_high: marketToUse === "US" ? usHigh : marketToUse === "CA" ? caHigh : marketToUse === "UK" ? ukHigh : null,
       note:
-        displayCurrency === "CAD" && !hasCa && hasUk
+        preferredMarket === "US" && !hasUs && hasUk
+          ? "Amazon US price not available at this time for this product."
+          : preferredMarket === "CA" && !hasCa && hasUk
           ? "Amazon CA price not available at this time for this product."
+          : preferredMarket === "UK" && !hasUk && hasCa
+          ? "Amazon UK price not available at this time for this product."
           : null,
     },
   };

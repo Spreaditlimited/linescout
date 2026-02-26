@@ -183,7 +183,7 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
   if (allowed.has(candidate)) return candidate;
   const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
@@ -213,6 +213,7 @@ export default async function WhiteLabelIdeasPage({
   const requestedPage = toInt(params?.page, 1);
   const cookieStore = await cookies();
   const countryCookie = cookieStore.get("wl_country")?.value;
+  const sessionToken = cookieStore.get("linescout_session")?.value || "";
 
   const conn = await db.getConnection();
   let items: any[] = [];
@@ -222,6 +223,8 @@ export default async function WhiteLabelIdeasPage({
   let countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[] = [];
   let countryOptions: { value: string; label: string }[] = [];
   let countryCode = "NG";
+  let profileCountryCode = "";
+  let profileCurrencyCode = "";
   let currencyCode = "NGN";
   let amazonComparisonEnabled = false;
   try {
@@ -236,6 +239,30 @@ export default async function WhiteLabelIdeasPage({
     countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
     currencyCode = getCountryCurrencyCode(picked, currencyById);
     countryOptions = countries.map((c) => ({ value: String(c.iso2 || "").toUpperCase(), label: c.name }));
+
+    if (sessionToken) {
+      const [userRows]: any = await conn.query(
+        `
+        SELECT c.iso2 AS country_iso2, cur.code AS currency_code
+        FROM users u
+        JOIN linescout_user_sessions s ON s.user_id = u.id
+        LEFT JOIN linescout_countries c ON c.id = u.country_id
+        LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+        WHERE s.refresh_token_hash = SHA2(?, 256)
+        LIMIT 1
+        `,
+        [sessionToken]
+      );
+      const userRow = userRows?.[0];
+      profileCountryCode = userRow?.country_iso2 ? String(userRow.country_iso2).toUpperCase() : "";
+      profileCurrencyCode = userRow?.currency_code ? String(userRow.currency_code).toUpperCase() : "";
+      if (profileCountryCode) {
+        countryCode = profileCountryCode;
+      }
+      if (profileCurrencyCode) {
+        currencyCode = profileCurrencyCode;
+      }
+    }
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
@@ -289,7 +316,7 @@ export default async function WhiteLabelIdeasPage({
       }
     }
 
-    const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
+    const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
     const sortClause =
       sort === "price_low"
         ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, p.id DESC`
@@ -431,7 +458,15 @@ export default async function WhiteLabelIdeasPage({
             sort: "Sort by",
           }}
           clearHref="/white-label/ideas"
-          countrySelector={<WhiteLabelCountrySelector value={countryCode} options={countryOptions} />}
+          countrySelector={
+            <WhiteLabelCountrySelector
+              value={countryCode}
+              options={countryOptions}
+              locked={Boolean(profileCountryCode)}
+              lockMessage="To see product prices in another market, change your country in your profile."
+              lockHref="/profile"
+            />
+          }
           countryLabel="Country"
         />
       </div>

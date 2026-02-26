@@ -14,8 +14,8 @@ type InsightsResponse =
         short_desc: string | null;
         image_url: string | null;
       };
-      market: "UK" | "CA";
-      currency: "GBP" | "CAD";
+      market: "UK" | "CA" | "US";
+      currency: "GBP" | "CAD" | "USD";
       note?: string | null;
       metrics: {
         trend_30: number | null;
@@ -120,13 +120,16 @@ export default function WhiteLabelInsightsInfoPage() {
     if (value == null || !Number.isFinite(value)) return "—";
     const currency = data && data.ok ? data.currency : "GBP";
     try {
-      return new Intl.NumberFormat(currency === "CAD" ? "en-CA" : "en-GB", {
-        style: "currency",
-        currency,
-        maximumFractionDigits: 2,
-      }).format(value);
+      return new Intl.NumberFormat(
+        currency === "CAD" ? "en-CA" : currency === "USD" ? "en-US" : "en-GB",
+        {
+          style: "currency",
+          currency,
+          maximumFractionDigits: 2,
+        }
+      ).format(value);
     } catch {
-      const symbol = currency === "CAD" ? "CA$" : "£";
+      const symbol = currency === "CAD" ? "CA$" : currency === "USD" ? "$" : "£";
       return `${symbol}${value.toFixed(2)}`;
     }
   };
@@ -151,6 +154,12 @@ export default function WhiteLabelInsightsInfoPage() {
     const ts = Date.parse(value);
     if (!Number.isFinite(ts)) return value;
     return new Date(ts).toLocaleString();
+  };
+
+  const decisionHeadline = () => {
+    if (!data || !data.ok) return "Decision panel";
+    if (hasUpdating) return "Decision panel (data still syncing)";
+    return "Decision panel";
   };
 
   useEffect(() => {
@@ -361,6 +370,54 @@ export default function WhiteLabelInsightsInfoPage() {
                   </div>
                 </div>
               </div>
+              <div className="rounded-[26px] border border-[rgba(45,52,97,0.18)] bg-[radial-gradient(circle_at_top_left,rgba(45,52,97,0.18),transparent_55%),linear-gradient(135deg,#ffffff,rgba(45,52,97,0.08))] p-5 shadow-[0_20px_45px_rgba(45,52,97,0.18)]">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center rounded-full border border-[rgba(45,52,97,0.2)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-[var(--agent-blue)]">
+                      {decisionHeadline()}
+                    </div>
+                    <p className="mt-3 text-lg font-semibold text-neutral-900">
+                      {data.metrics.trend_30 != null ? `${trendSentence(data.metrics.trend_30)} (30d)` : updatingLabel}
+                    </p>
+                    <p className="mt-1 text-[11px] text-neutral-600">
+                      {data.metrics.offer_count != null
+                        ? `${data.metrics.offer_count} active offers`
+                        : "Competition data pending"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-white/90 px-3 py-1 text-[11px] font-semibold text-neutral-700">
+                      <span className="h-2 w-2 rounded-full bg-[var(--agent-blue)]" />
+                      Market: {data.market}
+                    </span>
+                    <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-white/90 px-3 py-1 text-[11px] font-semibold text-neutral-700">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Currency: {data.currency}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 text-[11px] text-neutral-700 sm:grid-cols-2">
+                  <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2">
+                    <span className="font-semibold text-neutral-800">Price direction:</span>{" "}
+                    {data.metrics.trend_90 != null ? trendSentence(data.metrics.trend_90) : updatingLabel}
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2">
+                    <span className="font-semibold text-neutral-800">Seasonality:</span>{" "}
+                    {data.metrics.seasonality != null ? volatilityLabel(data.metrics.seasonality) : updatingLabel}
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2">
+                    <span className="font-semibold text-neutral-800">Buy‑box:</span>{" "}
+                    {data.metrics.buy_box_stability || updatingLabel}
+                  </div>
+                  <div className="rounded-xl border border-white/70 bg-white/80 px-3 py-2">
+                    <span className="font-semibold text-neutral-800">Last checked:</span>{" "}
+                    {fmtDate(raw?.last_checked_at ?? null)}
+                  </div>
+                </div>
+                <p className="mt-3 text-[11px] text-neutral-600">
+                  Use this snapshot to decide if the product has margin headroom and manageable competition.
+                </p>
+              </div>
               <div className="rounded-[24px] border border-[rgba(45,52,97,0.16)] bg-white p-5 shadow-[0_12px_26px_rgba(45,52,97,0.08)]">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
@@ -428,6 +485,10 @@ export default function WhiteLabelInsightsInfoPage() {
                     <div>Offer count: {fmtNumber(raw?.offer_count ?? null)}</div>
                     <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
                   </div>
+                  <p className="mt-2 text-[11px] text-neutral-500">
+                    Offer count reflects active offers for this ASIN at the last check. Single‑seller listings are
+                    common for brand‑restricted products.
+                  </p>
                 </details>
               </div>
 

@@ -7,8 +7,8 @@ import { Activity, ShieldCheck, TrendingUp, Users } from "lucide-react";
 type InsightsResponse =
   | {
       ok: true;
-      market: "UK" | "CA";
-      currency: "GBP" | "CAD";
+      market: "UK" | "CA" | "US";
+      currency: "GBP" | "CAD" | "USD";
       note?: string | null;
       metrics: {
         trend_30: number | null;

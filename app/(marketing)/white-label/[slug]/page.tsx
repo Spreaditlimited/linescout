@@ -10,6 +10,7 @@ import DeferredSection from "@/components/white-label/DeferredSection";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -54,6 +55,12 @@ type ProductRow = {
   amazon_ca_price_low?: number | null;
   amazon_ca_price_high?: number | null;
   amazon_ca_last_checked_at?: string | null;
+  amazon_us_asin?: string | null;
+  amazon_us_url?: string | null;
+  amazon_us_currency?: string | null;
+  amazon_us_price_low?: number | null;
+  amazon_us_price_high?: number | null;
+  amazon_us_last_checked_at?: string | null;
   view_count?: number | null;
 };
 
@@ -80,13 +87,13 @@ function formatAmazonPriceRange(
   const fmt = (value: number | null | undefined) => {
     if (value == null || !Number.isFinite(Number(value))) return "—";
     try {
-      return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-CA", {
+      return new Intl.NumberFormat(code === "GBP" ? "en-GB" : code === "USD" ? "en-US" : "en-CA", {
         style: "currency",
         currency: code,
         maximumFractionDigits: 2,
       }).format(Number(value));
     } catch {
-      const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : "";
+      const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : code === "USD" ? "$" : "";
       return `${symbol}${Number(value).toFixed(2)}`;
     }
   };
@@ -141,7 +148,7 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
   if (allowed.has(candidate)) return candidate;
   const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
@@ -356,14 +363,24 @@ export default async function WhiteLabelMarketingDetailPage({
   const ukHigh = product.amazon_uk_price_high != null ? Number(product.amazon_uk_price_high) : null;
   const caLow = product.amazon_ca_price_low != null ? Number(product.amazon_ca_price_low) : null;
   const caHigh = product.amazon_ca_price_high != null ? Number(product.amazon_ca_price_high) : null;
+  const usLow = product.amazon_us_price_low != null ? Number(product.amazon_us_price_low) : null;
+  const usHigh = product.amazon_us_price_high != null ? Number(product.amazon_us_price_high) : null;
   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
-  const useUk = hasUk;
-  const amazonLow = useUk ? ukLow : caLow;
-  const amazonHigh = useUk ? ukHigh : caHigh;
-  const amazonMarketplace = useUk ? "UK" : "CA";
-  const amazonCurrency = useUk ? "GBP" : "CAD";
-  const hasAmazonComparison = hasUk || hasCa;
+  const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
+  const preferredMarket = resolveAmazonMarketplace({
+    countryIso2,
+    currencyCode,
+  });
+  const useUs = preferredMarket === "US" && hasUs;
+  const useCa = preferredMarket === "CA" && hasCa;
+  const useUk = preferredMarket === "UK" && hasUk;
+  const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
+  const amazonMarketplace = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
+  const amazonLow = amazonMarketplace === "US" ? usLow : amazonMarketplace === "CA" ? caLow : ukLow;
+  const amazonHigh = amazonMarketplace === "US" ? usHigh : amazonMarketplace === "CA" ? caHigh : ukHigh;
+  const amazonCurrency = amazonMarketplace ? marketplaceCurrency(amazonMarketplace) : "GBP";
+  const hasAmazonComparison = hasUk || hasCa || hasUs;
   const amazonPriceRange = hasAmazonComparison
     ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency)
     : null;

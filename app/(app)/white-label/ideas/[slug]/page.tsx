@@ -53,6 +53,12 @@ type ProductRow = {
   amazon_ca_price_low?: number | null;
   amazon_ca_price_high?: number | null;
   amazon_ca_last_checked_at?: string | null;
+  amazon_us_asin?: string | null;
+  amazon_us_url?: string | null;
+  amazon_us_currency?: string | null;
+  amazon_us_price_low?: number | null;
+  amazon_us_price_high?: number | null;
+  amazon_us_last_checked_at?: string | null;
   view_count?: number | null;
 };
 
@@ -79,13 +85,13 @@ function formatAmazonPriceRange(
   const fmt = (value: number | null | undefined) => {
     if (value == null || !Number.isFinite(Number(value))) return "—";
     try {
-      return new Intl.NumberFormat(code === "GBP" ? "en-GB" : "en-CA", {
+      return new Intl.NumberFormat(code === "GBP" ? "en-GB" : code === "USD" ? "en-US" : "en-CA", {
         style: "currency",
         currency: code,
         maximumFractionDigits: 2,
       }).format(Number(value));
     } catch {
-      const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : "";
+      const symbol = code === "GBP" ? "£" : code === "CAD" ? "CA$" : code === "USD" ? "$" : "";
       return `${symbol}${Number(value).toFixed(2)}`;
     }
   };
@@ -140,7 +146,7 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD"]);
+  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
   if (allowed.has(candidate)) return candidate;
   const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();

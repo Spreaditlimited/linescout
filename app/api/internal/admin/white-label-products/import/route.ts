@@ -149,6 +149,12 @@ export async function POST(req: Request) {
   const idxCaLow = colIndex("amazon_ca_price_low");
   const idxCaHigh = colIndex("amazon_ca_price_high");
   const idxCaChecked = colIndex("amazon_ca_last_checked_at");
+  const idxUsAsin = colIndex("amazon_us_asin");
+  const idxUsUrl = colIndex("amazon_us_url");
+  const idxUsCurrency = colIndex("amazon_us_currency");
+  const idxUsLow = colIndex("amazon_us_price_low");
+  const idxUsHigh = colIndex("amazon_us_price_high");
+  const idxUsChecked = colIndex("amazon_us_last_checked_at");
 
   if (idxId === -1 && idxProductId === -1) {
     return NextResponse.json({ ok: false, error: "CSV must include id or product_id column" }, { status: 400 });
@@ -182,8 +188,15 @@ export async function POST(req: Request) {
         idxCaLow >= 0 ||
         idxCaHigh >= 0 ||
         idxCaChecked >= 0;
+      const hasUs =
+        idxUsAsin >= 0 ||
+        idxUsUrl >= 0 ||
+        idxUsCurrency >= 0 ||
+        idxUsLow >= 0 ||
+        idxUsHigh >= 0 ||
+        idxUsChecked >= 0;
 
-      if (hasUk || hasCa) {
+      if (hasUk || hasCa || hasUs) {
         const ukAsin = clean(idxUkAsin >= 0 ? row[idxUkAsin] : "") || null;
         const ukUrl = clean(idxUkUrl >= 0 ? row[idxUkUrl] : "") || null;
         const ukCurrency =
@@ -200,6 +213,14 @@ export async function POST(req: Request) {
         const caHigh = toNum(idxCaHigh >= 0 ? row[idxCaHigh] : null);
         const caChecked = clean(idxCaChecked >= 0 ? row[idxCaChecked] : "") || null;
 
+        const usAsin = clean(idxUsAsin >= 0 ? row[idxUsAsin] : "") || null;
+        const usUrl = clean(idxUsUrl >= 0 ? row[idxUsUrl] : "") || null;
+        const usCurrency =
+          clean(idxUsCurrency >= 0 ? row[idxUsCurrency] : "") || (usAsin ? "USD" : null);
+        const usLow = toNum(idxUsLow >= 0 ? row[idxUsLow] : null);
+        const usHigh = toNum(idxUsHigh >= 0 ? row[idxUsHigh] : null);
+        const usChecked = clean(idxUsChecked >= 0 ? row[idxUsChecked] : "") || null;
+
         await conn.query(
           `
           UPDATE linescout_white_label_products
@@ -214,7 +235,13 @@ export async function POST(req: Request) {
               amazon_ca_currency = ?,
               amazon_ca_price_low = ?,
               amazon_ca_price_high = ?,
-              amazon_ca_last_checked_at = ?
+              amazon_ca_last_checked_at = ?,
+              amazon_us_asin = ?,
+              amazon_us_url = ?,
+              amazon_us_currency = ?,
+              amazon_us_price_low = ?,
+              amazon_us_price_high = ?,
+              amazon_us_last_checked_at = ?
           WHERE id = ?
           LIMIT 1
           `,
@@ -231,6 +258,12 @@ export async function POST(req: Request) {
             caLow,
             caHigh,
             caChecked,
+            usAsin,
+            usUrl,
+            usCurrency,
+            usLow,
+            usHigh,
+            usChecked,
             id,
           ]
         );
@@ -238,7 +271,7 @@ export async function POST(req: Request) {
         const marketplace = clean(idxMarketplace >= 0 ? row[idxMarketplace] : "") || defaultMarketplace;
         const currency =
           clean(idxCurrency >= 0 ? row[idxCurrency] : "") ||
-          (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : "");
+          (marketplace === "UK" ? "GBP" : marketplace === "CA" ? "CAD" : marketplace === "US" ? "USD" : "");
         const asin = clean(idxAsin >= 0 ? row[idxAsin] : "") || null;
         const url = clean(idxUrl >= 0 ? row[idxUrl] : "") || null;
         const priceLow = toNum(idxLow >= 0 ? row[idxLow] : null);
@@ -255,6 +288,21 @@ export async function POST(req: Request) {
                 amazon_ca_price_low = ?,
                 amazon_ca_price_high = ?,
                 amazon_ca_last_checked_at = ?
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [asin, url, currency || null, priceLow, priceHigh, checkedAt, id]
+          );
+        } else if (marketplace === "US") {
+          await conn.query(
+            `
+            UPDATE linescout_white_label_products
+            SET amazon_us_asin = ?,
+                amazon_us_url = ?,
+                amazon_us_currency = ?,
+                amazon_us_price_low = ?,
+                amazon_us_price_high = ?,
+                amazon_us_last_checked_at = ?
             WHERE id = ?
             LIMIT 1
             `,

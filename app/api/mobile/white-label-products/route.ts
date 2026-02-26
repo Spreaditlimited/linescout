@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import {
-  computeLandedRange,
-  ensureWhiteLabelProductsReady,
-} from "@/lib/white-label-products";
+import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,12 +45,12 @@ export async function GET(req: Request) {
 
       const orderBy = slug
         ? "ORDER BY p.id DESC"
-        : `ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+        : `ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
                  COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC`;
 
       const [[userRow]]: any = await conn.query(
         `
-        SELECT c.iso2 AS country_iso2, cur.code AS currency_code
+        SELECT c.iso2 AS country_iso2, c.amazon_marketplace AS country_marketplace, cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
         LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
@@ -63,8 +61,11 @@ export async function GET(req: Request) {
       );
 
       const userCurrency = String(userRow?.currency_code || "").toUpperCase();
-      const displayCurrency = userCurrency === "CAD" ? "CAD" : "GBP";
-      const displayMarketplace = displayCurrency === "CAD" ? "CA" : "UK";
+      const displayMarketplace = resolveAmazonMarketplace({
+        marketplace: userRow?.country_marketplace,
+        countryIso2: userRow?.country_iso2,
+        currencyCode: userCurrency,
+      });
 
       const [rows]: any = await conn.query(
         `
@@ -96,20 +97,30 @@ export async function GET(req: Request) {
         const ukHigh = r.amazon_uk_price_high != null ? Number(r.amazon_uk_price_high) : null;
         const caLow = r.amazon_ca_price_low != null ? Number(r.amazon_ca_price_low) : null;
         const caHigh = r.amazon_ca_price_high != null ? Number(r.amazon_ca_price_high) : null;
+        const usLow = r.amazon_us_price_low != null ? Number(r.amazon_us_price_low) : null;
+        const usHigh = r.amazon_us_price_high != null ? Number(r.amazon_us_price_high) : null;
         const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
         const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
+        const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
+        const useUs = displayMarketplace === "US" && hasUs;
         const useCa = displayMarketplace === "CA" && hasCa;
-        const useUk = !useCa && hasUk;
+        const useUk = displayMarketplace === "UK" && hasUk;
+        const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
+        const market = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
 
         return {
           ...base,
-          amazon_display_marketplace: useCa ? "CA" : useUk ? "UK" : null,
-          amazon_display_currency: useCa ? "CAD" : useUk ? "GBP" : null,
-          amazon_display_price_low: useCa ? caLow : useUk ? ukLow : null,
-          amazon_display_price_high: useCa ? caHigh : useUk ? ukHigh : null,
+          amazon_display_marketplace: market,
+          amazon_display_currency: market ? marketplaceCurrency(market) : null,
+          amazon_display_price_low: market === "US" ? usLow : market === "CA" ? caLow : market === "UK" ? ukLow : null,
+          amazon_display_price_high: market === "US" ? usHigh : market === "CA" ? caHigh : market === "UK" ? ukHigh : null,
           amazon_display_note:
-            displayMarketplace === "CA" && !hasCa && hasUk
+            displayMarketplace === "US" && !hasUs && hasUk
+              ? "Amazon US price not available at this time for this product."
+              : displayMarketplace === "CA" && !hasCa && hasUk
               ? "Amazon CA price not available at this time for this product."
+              : displayMarketplace === "UK" && !hasUk && hasCa
+              ? "Amazon UK price not available at this time for this product."
               : null,
         };
       });

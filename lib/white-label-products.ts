@@ -1537,6 +1537,10 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       landed_cad_sea_per_unit_high DECIMAL(10,4) NULL,
       landed_cad_sea_total_1000_low DECIMAL(12,2) NULL,
       landed_cad_sea_total_1000_high DECIMAL(12,2) NULL,
+      landed_usd_sea_per_unit_low DECIMAL(10,4) NULL,
+      landed_usd_sea_per_unit_high DECIMAL(10,4) NULL,
+      landed_usd_sea_total_1000_low DECIMAL(12,2) NULL,
+      landed_usd_sea_total_1000_high DECIMAL(12,2) NULL,
       amazon_asin VARCHAR(32) NULL,
       amazon_url VARCHAR(500) NULL,
       amazon_marketplace VARCHAR(8) NULL,
@@ -1568,6 +1572,18 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
       amazon_ca_price_max DECIMAL(12,2) NULL,
       amazon_ca_offer_count INT NULL,
       amazon_ca_last_checked_at DATETIME NULL,
+      amazon_us_asin VARCHAR(32) NULL,
+      amazon_us_url VARCHAR(500) NULL,
+      amazon_us_currency VARCHAR(3) NULL,
+      amazon_us_price_low DECIMAL(12,2) NULL,
+      amazon_us_price_high DECIMAL(12,2) NULL,
+      amazon_us_price_current DECIMAL(12,2) NULL,
+      amazon_us_price_avg30 DECIMAL(12,2) NULL,
+      amazon_us_price_avg90 DECIMAL(12,2) NULL,
+      amazon_us_price_min DECIMAL(12,2) NULL,
+      amazon_us_price_max DECIMAL(12,2) NULL,
+      amazon_us_offer_count INT NULL,
+      amazon_us_last_checked_at DATETIME NULL,
       is_active TINYINT NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1591,6 +1607,10 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_per_unit_high", "DECIMAL(10,4) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_total_1000_low", "DECIMAL(12,2) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "landed_cad_sea_total_1000_high", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_usd_sea_per_unit_low", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_usd_sea_per_unit_high", "DECIMAL(10,4) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_usd_sea_total_1000_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "landed_usd_sea_total_1000_high", "DECIMAL(12,2) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_asin", "VARCHAR(32) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_url", "VARCHAR(500) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_marketplace", "VARCHAR(8) NULL");
@@ -1622,6 +1642,18 @@ export async function ensureWhiteLabelProductsTable(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_price_max", "DECIMAL(12,2) NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_offer_count", "INT NULL");
   await ensureColumn(conn, "linescout_white_label_products", "amazon_ca_last_checked_at", "DATETIME NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_asin", "VARCHAR(32) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_url", "VARCHAR(500) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_currency", "VARCHAR(3) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_low", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_high", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_current", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_avg30", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_avg90", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_min", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_price_max", "DECIMAL(12,2) NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_offer_count", "INT NULL");
+  await ensureColumn(conn, "linescout_white_label_products", "amazon_us_last_checked_at", "DATETIME NULL");
 
   await conn.query(
     `CREATE INDEX IF NOT EXISTS idx_white_label_slug ON linescout_white_label_products (slug)`

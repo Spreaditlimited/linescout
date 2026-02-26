@@ -6,8 +6,6 @@ const dotenv = require("dotenv");
 dotenv.config({ path: ".env.local" });
 
 const RMB_PER_KG_SEA = 20;
-const RMB_PER_GBP = 9;
-const RMB_PER_CAD = 5;
 const MARKUP = 0.2;
 const LANDED_LOW_MULTIPLIER = 0.5;
 
@@ -49,32 +47,29 @@ function computeSeaCosts({
     database: process.env.DB_NAME,
   });
 
-  const [usdRows] = await conn.query(
-    `
-    SELECT rate
-    FROM linescout_fx_rates
-    WHERE base_currency_code = 'USD' AND quote_currency_code = 'NGN'
-    ORDER BY effective_at DESC, id DESC
-    LIMIT 1
-    `
-  );
-
-  const [rmbRows] = await conn.query(
-    `
-    SELECT rate
-    FROM linescout_fx_rates
-    WHERE base_currency_code = 'RMB' AND quote_currency_code = 'NGN'
-    ORDER BY effective_at DESC, id DESC
-    LIMIT 1
-    `
-  );
-
-  const usdToNgn = toNumber(usdRows?.[0]?.rate);
-  const rmbToNgn = toNumber(rmbRows?.[0]?.rate);
-  if (!usdToNgn || !rmbToNgn) {
-    throw new Error("Missing FX rates for USD→NGN or RMB→NGN.");
+  async function fetchRate(base, quote) {
+    const [rows] = await conn.query(
+      `
+      SELECT rate
+      FROM linescout_fx_rates
+      WHERE base_currency_code = ? AND quote_currency_code = ?
+      ORDER BY effective_at DESC, id DESC
+      LIMIT 1
+      `,
+      [base, quote]
+    );
+    return toNumber(rows?.[0]?.rate);
   }
-  const rmbPerUsd = usdToNgn / rmbToNgn;
+
+  const rmbToUsd = await fetchRate("RMB", "USD");
+  const rmbToGbp = await fetchRate("RMB", "GBP");
+  const rmbToCad = await fetchRate("RMB", "CAD");
+  if (!rmbToUsd || !rmbToGbp || !rmbToCad) {
+    throw new Error("Missing FX rates for RMB→USD, RMB→GBP, or RMB→CAD.");
+  }
+  const rmbPerUsd = 1 / rmbToUsd;
+  const rmbPerGbp = 1 / rmbToGbp;
+  const rmbPerCad = 1 / rmbToCad;
 
   const [rows] = await conn.query(
     `
@@ -97,14 +92,21 @@ function computeSeaCosts({
       fobLowUsd,
       fobHighUsd,
       rmbPerUsd,
-      rmbPerUnitCurrency: RMB_PER_GBP,
+      rmbPerUnitCurrency: rmbPerGbp,
     });
     const cad = computeSeaCosts({
       volKgPer1000: vol,
       fobLowUsd,
       fobHighUsd,
       rmbPerUsd,
-      rmbPerUnitCurrency: RMB_PER_CAD,
+      rmbPerUnitCurrency: rmbPerCad,
+    });
+    const usd = computeSeaCosts({
+      volKgPer1000: vol,
+      fobLowUsd,
+      fobHighUsd,
+      rmbPerUsd,
+      rmbPerUnitCurrency: rmbPerUsd,
     });
 
     await conn.query(
@@ -118,7 +120,11 @@ function computeSeaCosts({
         landed_cad_sea_per_unit_low = ?,
         landed_cad_sea_per_unit_high = ?,
         landed_cad_sea_total_1000_low = ?,
-        landed_cad_sea_total_1000_high = ?
+        landed_cad_sea_total_1000_high = ?,
+        landed_usd_sea_per_unit_low = ?,
+        landed_usd_sea_per_unit_high = ?,
+        landed_usd_sea_total_1000_low = ?,
+        landed_usd_sea_total_1000_high = ?
       WHERE id = ?
       `,
       [
@@ -130,6 +136,10 @@ function computeSeaCosts({
         cad.perUnitHigh,
         cad.totalLow,
         cad.totalHigh,
+        usd.perUnitLow,
+        usd.perUnitHigh,
+        usd.totalLow,
+        usd.totalHigh,
         row.id,
       ]
     );

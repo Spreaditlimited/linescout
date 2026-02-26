@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
+import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ export async function GET(req: Request) {
                u.email,
                u.white_label_next_billing_at,
                c.iso2 AS country_iso2,
+               c.amazon_marketplace AS country_marketplace,
                cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -146,8 +148,11 @@ export async function GET(req: Request) {
                amazon_uk_price_low, amazon_uk_price_high, amazon_uk_last_checked_at,
                amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90, amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count,
                amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at,
+               amazon_us_price_current, amazon_us_price_avg30, amazon_us_price_avg90, amazon_us_price_min, amazon_us_price_max, amazon_us_offer_count,
+               amazon_us_price_low, amazon_us_price_high, amazon_us_last_checked_at,
                landed_gbp_sea_per_unit_low, landed_gbp_sea_per_unit_high,
-               landed_cad_sea_per_unit_low, landed_cad_sea_per_unit_high
+               landed_cad_sea_per_unit_low, landed_cad_sea_per_unit_high,
+               landed_usd_sea_per_unit_low, landed_usd_sea_per_unit_high
         FROM linescout_white_label_products
         WHERE id = ?
         LIMIT 1
@@ -164,19 +169,47 @@ export async function GET(req: Request) {
         );
       }
 
-      const isCad = currencyCode === "CAD";
+      const preferredMarket = resolveAmazonMarketplace({
+        marketplace: userRow?.country_marketplace,
+        countryIso2,
+        currencyCode,
+      });
       const caHas =
         product.amazon_ca_price_current != null ||
         product.amazon_ca_price_avg30 != null ||
         product.amazon_ca_price_avg90 != null;
+      const usHas =
+        product.amazon_us_price_current != null ||
+        product.amazon_us_price_avg30 != null ||
+        product.amazon_us_price_avg90 != null;
       const ukHas =
         product.amazon_uk_price_current != null ||
         product.amazon_uk_price_avg30 != null ||
         product.amazon_uk_price_avg90 != null;
 
-      const market = isCad && caHas ? "CA" : "UK";
-      const currency = market === "CA" ? "CAD" : "GBP";
-      const note = isCad && !caHas && ukHas ? "Showing UK insights because CA data is still syncing." : null;
+      const market =
+        preferredMarket === "US" && usHas
+          ? "US"
+          : preferredMarket === "CA" && caHas
+          ? "CA"
+          : preferredMarket === "UK" && ukHas
+          ? "UK"
+          : ukHas
+          ? "UK"
+          : caHas
+          ? "CA"
+          : usHas
+          ? "US"
+          : preferredMarket;
+      const currency = marketplaceCurrency(market);
+      const note =
+        preferredMarket === "US" && !usHas && ukHas
+          ? "Showing UK insights because US data is still syncing."
+          : preferredMarket === "CA" && !caHas && ukHas
+          ? "Showing UK insights because CA data is still syncing."
+          : preferredMarket === "UK" && !ukHas && caHas
+          ? "Showing CA insights because UK data is still syncing."
+          : null;
 
       const current = toNum(product[`amazon_${market.toLowerCase()}_price_current`]);
       const avg30 = toNum(product[`amazon_${market.toLowerCase()}_price_avg30`]);
@@ -191,14 +224,26 @@ export async function GET(req: Request) {
       const offers = offersRaw != null && offersRaw > 0 ? offersRaw : null;
       const lastChecked = product[`amazon_${market.toLowerCase()}_last_checked_at`] || null;
       const landedLow =
-        market === "CA" ? toNum(product.landed_cad_sea_per_unit_low) : toNum(product.landed_gbp_sea_per_unit_low);
+        market === "CA"
+          ? toNum(product.landed_cad_sea_per_unit_low)
+          : market === "US"
+          ? toNum(product.landed_usd_sea_per_unit_low)
+          : market === "UK"
+          ? toNum(product.landed_gbp_sea_per_unit_low)
+          : null;
       const landedHigh =
-        market === "CA" ? toNum(product.landed_cad_sea_per_unit_high) : toNum(product.landed_gbp_sea_per_unit_high);
+        market === "CA"
+          ? toNum(product.landed_cad_sea_per_unit_high)
+          : market === "US"
+          ? toNum(product.landed_usd_sea_per_unit_high)
+          : market === "UK"
+          ? toNum(product.landed_gbp_sea_per_unit_high)
+          : null;
 
       const trend30 = current && avg30 ? (current - avg30) / avg30 : null;
       const trend90 = current && avg90 ? (current - avg90) / avg90 : null;
-      const useMinMax = avg90 && minVal != null && maxVal != null;
-      const volatility = useMinMax ? (maxVal! - minVal!) / avg90! : null;
+      const useMinMax = avg90 && min != null && max != null;
+      const volatility = useMinMax ? (max! - min!) / avg90! : null;
       const buyBoxStability =
         volatility == null
           ? null

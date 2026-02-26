@@ -111,6 +111,9 @@ export default function WhiteLabelProductsPage() {
   const [csvText, setCsvText] = useState("");
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvMsg, setCsvMsg] = useState<string | null>(null);
+  const [keepaRawLoadingId, setKeepaRawLoadingId] = useState<number | null>(null);
+  const [keepaRawMarketplace, setKeepaRawMarketplace] = useState<Record<number, string>>({});
+  const [keepaRawData, setKeepaRawData] = useState<Record<number, any | null>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 200);
@@ -188,6 +191,12 @@ export default function WhiteLabelProductsPage() {
       "amazon_ca_price_low",
       "amazon_ca_price_high",
       "amazon_ca_last_checked_at",
+      "amazon_us_asin",
+      "amazon_us_url",
+      "amazon_us_currency",
+      "amazon_us_price_low",
+      "amazon_us_price_high",
+      "amazon_us_last_checked_at",
     ].join(",");
     const sample = [
       "123",
@@ -202,6 +211,12 @@ export default function WhiteLabelProductsPage() {
       "CAD",
       "29.99",
       "34.99",
+      "2026-02-22 10:00:00",
+      "B0USASIN",
+      "https://www.amazon.com/dp/B0USASIN",
+      "USD",
+      "22.99",
+      "28.99",
       "2026-02-22 10:00:00",
     ].join(",");
     const csv = `${header}\n${sample}\n`;
@@ -272,6 +287,7 @@ export default function WhiteLabelProductsPage() {
       setBulkSaving(false);
     }
   }
+
 
   async function quickToggle(id: number, next: boolean) {
     if (togglingId) return;
@@ -366,6 +382,26 @@ export default function WhiteLabelProductsPage() {
       setErr(e?.message || "Failed to update");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function loadKeepaRaw(id: number) {
+    if (keepaRawLoadingId) return;
+    const marketplace = keepaRawMarketplace[id] || "US";
+    setKeepaRawLoadingId(id);
+    setKeepaRawData((prev) => ({ ...prev, [id]: null }));
+    try {
+      const res = await fetch("/api/internal/admin/white-label-products/keepa-raw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, marketplace }),
+      });
+      const data = await res.json().catch(() => null);
+      setKeepaRawData((prev) => ({ ...prev, [id]: data }));
+    } catch (e: any) {
+      setKeepaRawData((prev) => ({ ...prev, [id]: { ok: false, error: e?.message || "Fetch failed." } }));
+    } finally {
+      setKeepaRawLoadingId(null);
     }
   }
 
@@ -467,6 +503,7 @@ export default function WhiteLabelProductsPage() {
             options={[
               { value: "UK", label: "UK (GBP)" },
               { value: "CA", label: "CA (CAD)" },
+              { value: "US", label: "US (USD)" },
             ]}
             placeholder="Default marketplace"
           />
@@ -492,8 +529,8 @@ export default function WhiteLabelProductsPage() {
           <p className="mt-2 text-xs text-neutral-500">Selected file: {csvName}</p>
         ) : null}
         <p className="mt-2 text-xs text-neutral-500">
-          Tip: If your CSV includes the amazon_uk_* or amazon_ca_* columns, the default marketplace
-          picker is ignored.
+          Tip: If your CSV includes the amazon_uk_*, amazon_ca_*, or amazon_us_* columns, the default
+          marketplace picker is ignored.
         </p>
         {csvMsg ? (
           <p
@@ -843,6 +880,42 @@ export default function WhiteLabelProductsPage() {
                         >
                           {savingId === item.id ? "Saving..." : "Save"}
                         </button>
+                      </div>
+                      <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-semibold text-neutral-200">Keepa raw debug</p>
+                          <div className="flex items-center gap-2">
+                            <SearchableSelect
+                              className="w-28"
+                              value={keepaRawMarketplace[item.id] || "US"}
+                              onChange={(value) =>
+                                setKeepaRawMarketplace((prev) => ({
+                                  ...prev,
+                                  [item.id]: String(value || "US").toUpperCase(),
+                                }))
+                              }
+                              options={[
+                                { value: "US", label: "US" },
+                                { value: "UK", label: "UK" },
+                                { value: "CA", label: "CA" },
+                              ]}
+                              placeholder="Market"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => loadKeepaRaw(item.id)}
+                              className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white"
+                              disabled={keepaRawLoadingId === item.id}
+                            >
+                              {keepaRawLoadingId === item.id ? "Loading..." : "Fetch raw"}
+                            </button>
+                          </div>
+                        </div>
+                        {keepaRawData[item.id] ? (
+                          <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-white/10 bg-black/60 p-3 text-[11px] text-neutral-200">
+                            {JSON.stringify(keepaRawData[item.id], null, 2)}
+                          </pre>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}

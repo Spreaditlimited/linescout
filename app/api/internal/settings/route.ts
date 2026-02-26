@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
 import { ensureCountryConfig } from "@/lib/country-config";
+import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -310,8 +311,8 @@ export async function GET() {
        ORDER BY code ASC`
     );
     const [countries]: any = await conn.query(
-      `SELECT c.id, c.name, c.iso2, c.iso3, c.default_currency_id, c.settlement_currency_code, c.payment_provider, c.is_active,
-              cur.code AS default_currency_code
+      `SELECT c.id, c.name, c.iso2, c.iso3, c.default_currency_id, c.settlement_currency_code, c.payment_provider,
+              c.amazon_marketplace, c.is_active, cur.code AS default_currency_code
        FROM linescout_countries c
        LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
        ORDER BY c.name ASC`
@@ -424,31 +425,78 @@ export async function POST(req: Request) {
         const iso2 = String(body?.iso2 || "").trim().toUpperCase();
         const iso3 = String(body?.iso3 || "").trim().toUpperCase() || null;
         const default_currency_id = num(body?.default_currency_id);
-        const settlement_currency_code = String(body?.settlement_currency_code || "").trim().toUpperCase() || null;
+        const settlement_currency_code = String(body?.settlement_currency_code || "").trim().toUpperCase() || "";
         const rawProvider = String(body?.payment_provider || "").trim();
+        const autoMapDefault = Boolean(body?.auto_map_default_currency);
+        const autoAddWhiteLabel = Boolean(body?.auto_add_white_label);
         const payment_provider =
           rawProvider
             ? rawProvider
             : iso2 && iso2 !== "NG"
               ? "paypal"
               : null;
+        const amazon_marketplace = resolveAmazonMarketplace({
+          countryIso2: iso2,
+          currencyCode: settlement_currency_code || null,
+        });
         if (!name || name.length < 2) {
           return NextResponse.json({ ok: false, error: "Country name is too short" }, { status: 400 });
         }
         if (!iso2 || iso2.length !== 2) {
           return NextResponse.json({ ok: false, error: "Country ISO2 must be 2 letters" }, { status: 400 });
         }
+        if (!settlement_currency_code) {
+          return NextResponse.json({ ok: false, error: "Settlement currency is required" }, { status: 400 });
+        }
+        if (!payment_provider) {
+          return NextResponse.json({ ok: false, error: "Payment provider is required" }, { status: 400 });
+        }
         await conn.query(
-          `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider)
-           VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              name = VALUES(name),
              iso3 = VALUES(iso3),
              default_currency_id = VALUES(default_currency_id),
              settlement_currency_code = VALUES(settlement_currency_code),
-             payment_provider = VALUES(payment_provider)`,
-          [name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider]
+             payment_provider = VALUES(payment_provider),
+             amazon_marketplace = VALUES(amazon_marketplace)`,
+          [name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace]
         );
+
+        if (autoMapDefault && default_currency_id) {
+          const [rows]: any = await conn.query(
+            `SELECT id FROM linescout_countries WHERE iso2 = ? LIMIT 1`,
+            [iso2]
+          );
+          const countryId = rows?.[0]?.id;
+          if (countryId) {
+            await conn.query(
+              `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
+               VALUES (?, ?, 1)
+               ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+              [countryId, default_currency_id]
+            );
+          }
+        }
+
+        if (autoAddWhiteLabel && iso2) {
+          const settings = await ensureRow(conn);
+          const raw = String(settings?.white_label_subscription_countries || "");
+          const list = raw
+            ? raw
+                .split(",")
+                .map((v: string) => v.trim().toUpperCase())
+                .filter(Boolean)
+            : [];
+          if (!list.includes(iso2)) list.push(iso2);
+          await conn.query(
+            `UPDATE linescout_settings
+             SET white_label_subscription_countries = ?
+             WHERE id = ?`,
+            [list.join(","), settings.id]
+          );
+        }
         return NextResponse.json({ ok: true });
       }
 
@@ -490,6 +538,23 @@ export async function POST(req: Request) {
         if (body?.payment_provider !== undefined) {
           sets.push("payment_provider = ?");
           params.push(payment_provider || null);
+        }
+        const hasMarketplaceInput = body?.amazon_marketplace !== undefined;
+        const marketplaceInput = hasMarketplaceInput ? String(body?.amazon_marketplace || "").trim().toUpperCase() : "";
+        if (hasMarketplaceInput) {
+          sets.push("amazon_marketplace = ?");
+          params.push(marketplaceInput || null);
+        } else if (iso2 || body?.settlement_currency_code !== undefined) {
+          const [[current]]: any = await conn.query(
+            `SELECT iso2, settlement_currency_code FROM linescout_countries WHERE id = ? LIMIT 1`,
+            [id]
+          );
+          const resolved = resolveAmazonMarketplace({
+            countryIso2: iso2 || current?.iso2,
+            currencyCode: settlement_currency_code || current?.settlement_currency_code,
+          });
+          sets.push("amazon_marketplace = ?");
+          params.push(resolved || null);
         }
         if (is_active !== null) {
           sets.push("is_active = ?");

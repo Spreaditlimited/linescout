@@ -8,6 +8,7 @@ type KeepaProductRow = {
   category: string;
   amazon_uk_asin?: string | null;
   amazon_ca_asin?: string | null;
+  amazon_us_asin?: string | null;
 };
 
 type RefreshResult = {
@@ -18,24 +19,48 @@ type RefreshResult = {
 };
 
 type RefreshOptions = {
-  marketplaces?: ("UK" | "CA")[];
+  marketplaces?: ("UK" | "CA" | "US")[];
   maxProducts?: number;
   force?: boolean;
   allowSearch?: boolean;
 };
 
-function buildSearchTerm(row: KeepaProductRow) {
+function buildSearchTerms(row: KeepaProductRow) {
   const name = String(row.product_name || "").trim();
   const category = String(row.category || "").trim();
-  if (!category) return name;
-  return `${name} ${category}`;
+  const terms = new Set<string>();
+  if (name && category) terms.add(`${name} ${category}`);
+  if (name) terms.add(name);
+  if (category && name) {
+    const cleanedCategory = category.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+    if (cleanedCategory) terms.add(`${name} ${cleanedCategory}`);
+  }
+  return Array.from(terms);
 }
 
-function nextAsin(row: KeepaProductRow, market: "UK" | "CA") {
-  return market === "UK" ? row.amazon_uk_asin : row.amazon_ca_asin;
+function nextAsin(row: KeepaProductRow, market: "UK" | "CA" | "US") {
+  if (market === "UK") return row.amazon_uk_asin;
+  if (market === "CA") return row.amazon_ca_asin;
+  return row.amazon_us_asin;
 }
 
-function marketColumns(market: "UK" | "CA") {
+function marketColumns(market: "UK" | "CA" | "US") {
+  if (market === "US") {
+    return {
+      asin: "amazon_us_asin",
+      url: "amazon_us_url",
+      currency: "amazon_us_currency",
+      priceLow: "amazon_us_price_low",
+      priceHigh: "amazon_us_price_high",
+      priceCurrent: "amazon_us_price_current",
+      priceAvg30: "amazon_us_price_avg30",
+      priceAvg90: "amazon_us_price_avg90",
+      priceMin: "amazon_us_price_min",
+      priceMax: "amazon_us_price_max",
+      offerCount: "amazon_us_offer_count",
+      checkedAt: "amazon_us_last_checked_at",
+    } as const;
+  }
   if (market === "UK") {
       return {
         asin: "amazon_uk_asin",
@@ -90,8 +115,11 @@ export async function refreshKeepaProducts(
       let asin = nextAsin(row, market);
       try {
         if (!asin && allowSearch) {
-          const term = buildSearchTerm(row);
-          asin = await searchKeepaAsin(term, market);
+          const terms = buildSearchTerms(row);
+          for (const term of terms) {
+            asin = await searchKeepaAsin(term, market);
+            if (asin) break;
+          }
         }
 
         if (!asin) {
@@ -169,7 +197,7 @@ export async function listTopWhiteLabelProducts(
   const safeOffset = Math.max(0, offset);
   const [rows]: any = await conn.query(
     `
-    SELECT p.id, p.product_name, p.category, p.amazon_uk_asin, p.amazon_ca_asin
+    SELECT p.id, p.product_name, p.category, p.amazon_uk_asin, p.amazon_ca_asin, p.amazon_us_asin
     FROM linescout_white_label_products p
     LEFT JOIN (
       SELECT product_id, COUNT(*) AS views

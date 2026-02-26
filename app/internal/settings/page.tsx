@@ -96,6 +96,7 @@ type CountryItem = {
   default_currency_code?: string | null;
   settlement_currency_code?: string | null;
   payment_provider?: string | null;
+  amazon_marketplace?: string | null;
   is_active?: number;
 };
 
@@ -246,6 +247,8 @@ export default function InternalSettingsPage() {
   const [newCountryDefaultCurrencyId, setNewCountryDefaultCurrencyId] = useState<number | null>(null);
   const [newCountrySettlement, setNewCountrySettlement] = useState("");
   const [newCountryProvider, setNewCountryProvider] = useState("");
+  const [newCountryAutoMap, setNewCountryAutoMap] = useState(true);
+  const [newCountryAddToWhiteLabel, setNewCountryAddToWhiteLabel] = useState(false);
 
   const [editingCountryId, setEditingCountryId] = useState<number | null>(null);
   const [editCountryName, setEditCountryName] = useState("");
@@ -601,6 +604,14 @@ export default function InternalSettingsPage() {
   async function createCountry() {
     setCountryErr(null);
     try {
+      if (!newCountrySettlement.trim()) {
+        setCountryErr("Settlement currency is required.");
+        return;
+      }
+      if (!newCountryProvider.trim()) {
+        setCountryErr("Payment provider is required.");
+        return;
+      }
       await adminAction("country.create", {
         name: newCountryName,
         iso2: newCountryIso2,
@@ -608,12 +619,16 @@ export default function InternalSettingsPage() {
         default_currency_id: newCountryDefaultCurrencyId,
         settlement_currency_code: newCountrySettlement,
         payment_provider: newCountryProvider,
+        auto_map_default_currency: newCountryAutoMap,
+        auto_add_white_label: newCountryAddToWhiteLabel,
       });
       setNewCountryName("");
       setNewCountryIso2("");
       setNewCountryIso3("");
       setNewCountrySettlement("");
       setNewCountryProvider("");
+      setNewCountryAutoMap(true);
+      setNewCountryAddToWhiteLabel(false);
       await loadSettings();
     } catch (e: any) {
       setCountryErr(e?.message || "Failed to create country");
@@ -1939,12 +1954,14 @@ export default function InternalSettingsPage() {
                     onChange={(e) => setWhiteLabelPaypalMonthlyGbp(e.target.value)}
                     className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="Monthly plan ID"
+                    disabled
                   />
                   <input
                     value={whiteLabelPaypalYearlyGbp}
                     onChange={(e) => setWhiteLabelPaypalYearlyGbp(e.target.value)}
                     className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="Yearly plan ID"
+                    disabled
                   />
                 </div>
               </div>
@@ -1980,12 +1997,14 @@ export default function InternalSettingsPage() {
                     onChange={(e) => setWhiteLabelPaypalMonthlyCad(e.target.value)}
                     className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="Monthly plan ID"
+                    disabled
                   />
                   <input
                     value={whiteLabelPaypalYearlyCad}
                     onChange={(e) => setWhiteLabelPaypalYearlyCad(e.target.value)}
                     className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="Yearly plan ID"
+                    disabled
                   />
                 </div>
               </div>
@@ -2000,6 +2019,7 @@ export default function InternalSettingsPage() {
                 onChange={(e) => setWhiteLabelPaypalProductId(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                 placeholder="PayPal product ID"
+                disabled
               />
             </div>
             <p className="mt-2 text-[11px] text-neutral-500">
@@ -2304,18 +2324,47 @@ export default function InternalSettingsPage() {
                 ]}
                 onChange={(next) => setNewCountryDefaultCurrencyId(next ? Number(next) : null)}
               />
-              <input
+              <SearchableSelect
                 value={newCountrySettlement}
-                onChange={(e) => setNewCountrySettlement(e.target.value.toUpperCase())}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Settlement currency (e.g. NGN)"
+                onChange={(value) => setNewCountrySettlement(value)}
+                options={[
+                  { value: "", label: "Settlement currency" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Settlement currency"
               />
-              <input
+              <SearchableSelect
                 value={newCountryProvider}
-                onChange={(e) => setNewCountryProvider(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Payment provider (optional)"
+                onChange={(value) => setNewCountryProvider(value)}
+                options={[
+                  { value: "", label: "Payment provider" },
+                  { value: "paystack", label: "Paystack" },
+                  { value: "paypal", label: "PayPal" },
+                  { value: "providus", label: "Providus" },
+                  { value: "global", label: "Global" },
+                ]}
+                placeholder="Payment provider"
               />
+              <div className="flex flex-col gap-2 text-xs text-neutral-400 sm:col-span-2">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newCountryAutoMap}
+                    onChange={(e) => setNewCountryAutoMap(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Auto-map default currency to this country
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newCountryAddToWhiteLabel}
+                    onChange={(e) => setNewCountryAddToWhiteLabel(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Add ISO2 to white label eligible countries
+                </label>
+              </div>
               <button
                 onClick={createCountry}
                 className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
@@ -2365,16 +2414,25 @@ export default function InternalSettingsPage() {
                           ]}
                           onChange={(next) => setEditCountryDefaultCurrencyId(next ? Number(next) : null)}
                         />
-                        <input
+                        <SearchableSelect
                           value={editCountrySettlement}
-                          onChange={(e) => setEditCountrySettlement(e.target.value.toUpperCase())}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          onChange={(value) => setEditCountrySettlement(value)}
+                          options={[
+                            { value: "", label: "Settlement currency" },
+                            ...currencies.map((cur) => ({ value: String(cur.code), label: String(cur.code) })),
+                          ]}
                           placeholder="Settlement currency"
                         />
-                        <input
+                        <SearchableSelect
                           value={editCountryProvider}
-                          onChange={(e) => setEditCountryProvider(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          onChange={(value) => setEditCountryProvider(value)}
+                          options={[
+                            { value: "", label: "Payment provider" },
+                            { value: "paystack", label: "Paystack" },
+                            { value: "paypal", label: "PayPal" },
+                            { value: "providus", label: "Providus" },
+                            { value: "global", label: "Global" },
+                          ]}
                           placeholder="Payment provider"
                         />
                       </div>
@@ -2487,7 +2545,6 @@ export default function InternalSettingsPage() {
                   ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
                 ]}
                 placeholder="Base currency"
-                variant="light"
               />
               <SearchableSelect
                 value={newFxQuote}
@@ -2497,7 +2554,6 @@ export default function InternalSettingsPage() {
                   ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
                 ]}
                 placeholder="Quote currency"
-                variant="light"
               />
               <input
                 value={newFxRate}

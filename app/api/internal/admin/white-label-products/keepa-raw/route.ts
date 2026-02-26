@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
-import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { ensureWhiteLabelProductsTable } from "@/lib/white-label-products";
+import { fetchKeepaProductRaw, searchKeepaAsin } from "@/lib/keepa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,40 +63,72 @@ export async function POST(req: Request) {
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
 
   const body = await req.json().catch(() => ({}));
-  const ids = Array.isArray(body?.ids)
-    ? body.ids.map(toId).filter(Boolean)
-    : [toId(body?.id)].filter(Boolean);
-
-  if (!ids.length) {
-    return NextResponse.json({ ok: false, error: "Provide ids or id in body" }, { status: 400 });
+  const id = toId(body?.id);
+  const marketplace = String(body?.marketplace || "US").trim().toUpperCase();
+  if (!id) {
+    return NextResponse.json({ ok: false, error: "Provide id" }, { status: 400 });
   }
-
-  const marketplaces = Array.isArray(body?.marketplaces)
-    ? body.marketplaces.map((v: any) => String(v).toUpperCase()).filter(Boolean)
-    : undefined;
+  if (!["US", "UK", "CA"].includes(marketplace)) {
+    return NextResponse.json({ ok: false, error: "Invalid marketplace" }, { status: 400 });
+  }
 
   const conn = await db.getConnection();
   try {
     await ensureWhiteLabelProductsTable(conn);
-
     const [rows]: any = await conn.query(
       `
       SELECT id, product_name, category, amazon_uk_asin, amazon_ca_asin, amazon_us_asin
       FROM linescout_white_label_products
-      WHERE id IN (?)
+      WHERE id = ?
+      LIMIT 1
       `,
-      [ids]
+      [id]
     );
+    const product = rows?.[0];
+    if (!product) return NextResponse.json({ ok: false, error: "Product not found" }, { status: 404 });
 
-    const result = await refreshKeepaProducts(conn, rows || [], {
-      marketplaces: marketplaces as any,
-      allowSearch: true,
+    const asinKey = marketplace === "US" ? "amazon_us_asin" : marketplace === "CA" ? "amazon_ca_asin" : "amazon_uk_asin";
+    let asin = product?.[asinKey] ? String(product[asinKey]).trim() : "";
+    let searched = false;
+    let searchTerm: string | null = null;
+
+    if (!asin) {
+      searched = true;
+      searchTerm = `${String(product.product_name || "").trim()} ${String(product.category || "").trim()}`.trim();
+      asin = (await searchKeepaAsin(searchTerm, marketplace as any)) || "";
+    }
+
+    if (!asin) {
+      return NextResponse.json({
+        ok: true,
+        marketplace,
+        searched,
+        searchTerm,
+        asin: null,
+        product: null,
+        stats: null,
+      });
+    }
+
+    const raw = await fetchKeepaProductRaw(asin, marketplace as any);
+    const keepaProduct = raw?.products?.[0] || null;
+    const stats = keepaProduct?.stats || null;
+
+    return NextResponse.json({
+      ok: true,
+      marketplace,
+      searched,
+      searchTerm,
+      asin,
+      product: keepaProduct,
+      stats,
+      tokensLeft: raw?.tokensLeft ?? null,
+      tokensConsumed: raw?.tokensConsumed ?? null,
+      timestamp: raw?.timestamp ?? null,
     });
-
-    return NextResponse.json({ ok: true, ...result });
   } catch (e: any) {
-    console.error("POST /api/internal/admin/white-label-products/keepa error:", e?.message || e);
-    return NextResponse.json({ ok: false, error: "Keepa refresh failed" }, { status: 500 });
+    console.error("POST /api/internal/admin/white-label-products/keepa-raw error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: e?.message || "Keepa raw fetch failed" }, { status: 500 });
   } finally {
     conn.release();
   }
