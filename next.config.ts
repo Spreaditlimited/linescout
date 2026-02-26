@@ -6,6 +6,15 @@ type RequestPatternArgs = { request: Request };
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  async redirects() {
+    return [
+      {
+        source: "/machine-sourcing",
+        destination: "/",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withPWA({
