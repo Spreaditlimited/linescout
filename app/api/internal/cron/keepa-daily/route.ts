@@ -53,7 +53,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, scope: "daily", ...result });
   } catch (e: any) {
     console.error("GET /api/internal/cron/keepa-daily error:", e?.message || e);
-    return NextResponse.json({ ok: false, error: "Keepa daily refresh failed" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Market daily refresh failed" }, { status: 500 });
   } finally {
     conn.release();
   }

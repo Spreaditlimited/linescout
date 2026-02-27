@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Activity, ShieldCheck, TrendingUp, Users } from "lucide-react";
 
@@ -46,9 +46,12 @@ export default function WhiteLabelInsightsInfoPage() {
   const [data, setData] = useState<InsightsResponse | null>(null);
   const [productId, setProductId] = useState<number | null>(null);
   const [allowLocal, setAllowLocal] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [updateStalled, setUpdateStalled] = useState(false);
-  const refreshRequestedRef = useRef(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [detailsData, setDetailsData] = useState<any | null>(null);
+  const [offersLoading, setOffersLoading] = useState(false);
+  const [offersData, setOffersData] = useState<any | null>(null);
+  const [graphs, setGraphs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -64,8 +67,6 @@ export default function WhiteLabelInsightsInfoPage() {
 
   useEffect(() => {
     if (!productId) return;
-    refreshRequestedRef.current = false;
-    setUpdateStalled(false);
     let live = true;
     setLoading(true);
     fetch(`/api/white-label/insights?product_id=${encodeURIComponent(String(productId))}`, {
@@ -113,7 +114,7 @@ export default function WhiteLabelInsightsInfoPage() {
       data.metrics.offer_count == null ||
       data.metrics.seasonality == null ||
       data.metrics.buy_box_stability == null);
-  const updatingLabel = updateStalled ? "Not enough data yet" : "Updating";
+  const updatingLabel = "Not enough data yet";
   const raw = data && data.ok ? data.raw : null;
 
   const fmtMoney = (value: number | null) => {
@@ -162,60 +163,135 @@ export default function WhiteLabelInsightsInfoPage() {
     return "Decision panel";
   };
 
-  useEffect(() => {
-    if (!productId || !data || !data.ok || !hasUpdating) return;
-    if (refreshRequestedRef.current) return;
-    refreshRequestedRef.current = true;
-    setRefreshing(true);
-    fetch("/api/white-label/insights/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ product_id: productId }),
-    })
-      .catch(() => null)
-      .finally(() => setRefreshing(false));
-  }, [productId, data, hasUpdating]);
-
-  useEffect(() => {
-    if (!productId || !hasUpdating) return;
-    let cancelled = false;
-    let attempts = 0;
-    const interval = setInterval(() => {
-      if (cancelled) return;
-      attempts += 1;
-      if (attempts > 18) {
-        clearInterval(interval);
-        if (!cancelled) setUpdateStalled(true);
-        return;
+  const loadDetails = async (mode: "full" | "offers" = "full") => {
+    if (!productId || detailsLoading || offersLoading) return;
+    if (mode === "offers") {
+      setOffersLoading(true);
+    } else {
+      setDetailsLoading(true);
+      setDetailsError(null);
+    }
+    try {
+      const res = await fetch("/api/white-label/insights/details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId, mode }),
+      });
+      const json = await res.json();
+      if (!json?.ok) {
+        throw new Error(json?.error || "Unable to load market data.");
       }
-      fetch(`/api/white-label/insights?product_id=${encodeURIComponent(String(productId))}`, {
-        cache: "no-store",
-      })
-        .then((r) => r.json())
-        .then((json: InsightsResponse) => {
-          if (cancelled) return;
-          setData(json);
-          if (json && (json as any).ok) {
-            const metrics = (json as any).metrics || {};
-            const stillUpdating =
-              metrics.trend_30 == null ||
-              metrics.trend_90 == null ||
-              metrics.offer_count == null ||
-              metrics.seasonality == null ||
-              metrics.buy_box_stability == null;
-            if (!stillUpdating) {
-              setUpdateStalled(false);
-              clearInterval(interval);
-            }
-          }
-        })
-        .catch(() => null);
-    }, 10000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [productId, hasUpdating]);
+      if (mode === "offers") {
+        setOffersData(json);
+      } else {
+        setDetailsData(json);
+      }
+    } catch (e: any) {
+      if (mode === "offers") {
+        setOffersData(null);
+      } else {
+        setDetailsError(e?.message || "Unable to load market data.");
+      }
+    } finally {
+      if (mode === "offers") setOffersLoading(false);
+      else setDetailsLoading(false);
+    }
+  };
+
+  const loadGraph = (type: string) => {
+    if (!productId || graphs[type]) return;
+    const src = `/api/white-label/insights/graph?product_id=${encodeURIComponent(
+      String(productId)
+    )}&type=${encodeURIComponent(type)}`;
+    setGraphs((prev) => ({ ...prev, [type]: src }));
+  };
+
+  const dataSummary = (payload: any) => {
+    if (!payload?.summary) return null;
+    const summary = payload.summary || {};
+    return (
+      <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+        {"offers_total" in summary ? <div>Total offers: {fmtNumber(summary.offers_total)}</div> : null}
+        {"sales_rank_drops_30" in summary ? (
+          <div>Sales rank drops (30d): {fmtNumber(summary.sales_rank_drops_30)}</div>
+        ) : null}
+        {"sales_rank_drops_90" in summary ? (
+          <div>Sales rank drops (90d): {fmtNumber(summary.sales_rank_drops_90)}</div>
+        ) : null}
+        {"sales_rank_drops_180" in summary ? (
+          <div>Sales rank drops (180d): {fmtNumber(summary.sales_rank_drops_180)}</div>
+        ) : null}
+        {"sales_rank_drops_365" in summary ? (
+          <div>Sales rank drops (365d): {fmtNumber(summary.sales_rank_drops_365)}</div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const offerSummary = (payload: any) => {
+    if (!payload?.offer_summary) return null;
+    const summary = payload.offer_summary || {};
+    const items = [
+      { key: "total_offers", label: "Total offers", help: "All active listings found for this product." },
+      {
+        key: "recent_offers_30d",
+        label: "Offers seen (30d)",
+        help: "Listings active recently; higher means fresher activity.",
+      },
+      {
+        key: "amazon_offers",
+        label: "Sold by Amazon",
+        help: "Amazon is a direct seller; usually harder to compete.",
+      },
+      { key: "prime_offers", label: "Prime offers", help: "Listings eligible for Prime delivery." },
+      { key: "fba_offers", label: "FBA offers", help: "Sellers using Amazon fulfillment." },
+      { key: "fbm_offers", label: "FBM offers", help: "Sellers shipping themselves." },
+      {
+        key: "warehouse_deals",
+        label: "Warehouse deals",
+        help: "Discounted Amazon returns or open-box items.",
+      },
+      {
+        key: "prime_exclusive_offers",
+        label: "Prime‑exclusive",
+        help: "Deals only available to Prime members.",
+      },
+      { key: "preorder_offers", label: "Preorder offers", help: "Listings not yet available to ship." },
+      {
+        key: "shippable_offers",
+        label: "Shippable offers",
+        help: "Currently able to ship; excludes out-of-stock listings.",
+      },
+      {
+        key: "map_restricted_offers",
+        label: "MAP restricted",
+        help: "Minimum advertised price rules; pricing floor enforced.",
+      },
+      { key: "unique_sellers", label: "Unique sellers", help: "How many different sellers are competing." },
+    ];
+
+    return (
+      <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
+        {items.map((item) => {
+          if (!(item.key in summary)) return null;
+          return (
+            <div key={item.key} className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-2 text-neutral-600">
+                {item.label}
+                <span
+                  title={item.help}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-neutral-300 text-[10px] font-semibold text-neutral-500"
+                >
+                  i
+                </span>
+              </span>
+              <span className="font-semibold text-neutral-800">{fmtNumber(summary[item.key])}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -330,13 +406,45 @@ export default function WhiteLabelInsightsInfoPage() {
               </p>
               {hasUpdating ? (
                 <p className="mt-3 text-xs text-neutral-500">
-                  {updateStalled
-                    ? "Some signals are not available yet for this product."
-                    : "Updating means our data refresh is still in progress. Check back shortly for the latest signals."}
+                  Some signals are not available yet. Load full market data to pull the latest details.
                 </p>
               ) : null}
-              {refreshing ? (
-                <p className="mt-2 text-xs font-semibold text-[var(--agent-blue)]">Refreshing data now…</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => loadDetails("full")}
+                  className="btn btn-outline px-4 py-2 text-xs"
+                  disabled={detailsLoading}
+                >
+                  {detailsLoading ? "Loading market data…" : detailsData ? "Market data loaded" : "Load market data"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadDetails("offers")}
+                  className="btn btn-outline px-4 py-2 text-xs"
+                  disabled={offersLoading}
+                >
+                  {offersLoading ? "Loading offers…" : offersData ? "Offers loaded" : "Load offer details"}
+                </button>
+              </div>
+              {detailsData ? (
+                <div className="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold text-neutral-700">Market data summary</p>
+                  {dataSummary(detailsData)}
+                  <p className="mt-2 text-[11px] text-neutral-500">
+                    Market data shows overall demand signals and price behavior. Use it to judge momentum before you
+                    go deeper into offer‑level competition.
+                  </p>
+                </div>
+              ) : null}
+              {offersData ? (
+                <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3">
+                  <p className="text-[11px] font-semibold text-neutral-700">Offer details summary</p>
+                  {offerSummary(offersData)}
+                </div>
+              ) : null}
+              {detailsError ? (
+                <p className="mt-2 text-xs font-semibold text-amber-700">{detailsError}</p>
               ) : null}
               {data.note ? (
                 <p className="mt-3 text-xs font-semibold text-amber-700">{data.note}</p>
@@ -455,6 +563,19 @@ export default function WhiteLabelInsightsInfoPage() {
                     <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
                     <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
                   </div>
+                  <div className="mt-3">
+                    {graphs.price ? (
+                      <img src={graphs.price} alt="Price graph" className="w-full rounded-xl border border-neutral-200" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => loadGraph("price")}
+                        className="btn btn-outline px-3 py-1 text-[11px]"
+                      >
+                        Load price chart
+                      </button>
+                    )}
+                  </div>
                 </details>
               </div>
 
@@ -484,6 +605,9 @@ export default function WhiteLabelInsightsInfoPage() {
                   <div className="mt-3 grid gap-2 text-[11px] text-neutral-600 sm:grid-cols-2">
                     <div>Offer count: {fmtNumber(raw?.offer_count ?? null)}</div>
                     <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
+                    {detailsData?.summary?.offers_total != null ? (
+                      <div>Total offers (market data): {fmtNumber(detailsData.summary.offers_total)}</div>
+                    ) : null}
                   </div>
                   <p className="mt-2 text-[11px] text-neutral-500">
                     Offer count reflects active offers for this ASIN at the last check. Single‑seller listings are
@@ -521,6 +645,23 @@ export default function WhiteLabelInsightsInfoPage() {
                     <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
                     <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
                   </div>
+                  <div className="mt-3">
+                    {graphs.salesrank ? (
+                      <img
+                        src={graphs.salesrank}
+                        alt="Sales rank graph"
+                        className="w-full rounded-xl border border-neutral-200"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => loadGraph("salesrank")}
+                        className="btn btn-outline px-3 py-1 text-[11px]"
+                      >
+                        Load sales rank chart
+                      </button>
+                    )}
+                  </div>
                 </details>
               </div>
 
@@ -551,6 +692,19 @@ export default function WhiteLabelInsightsInfoPage() {
                     <div>90‑day average: {fmtMoney(raw?.price_avg90 ?? null)}</div>
                     <div>Last checked: {fmtDate(raw?.last_checked_at ?? null)}</div>
                   </div>
+                  <div className="mt-3">
+                    {graphs.buybox ? (
+                      <img src={graphs.buybox} alt="Buy box graph" className="w-full rounded-xl border border-neutral-200" />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => loadGraph("buybox")}
+                        className="btn btn-outline px-3 py-1 text-[11px]"
+                      >
+                        Load buy‑box chart
+                      </button>
+                    )}
+                  </div>
                 </details>
               </div>
             </div>
@@ -558,18 +712,90 @@ export default function WhiteLabelInsightsInfoPage() {
 
           <div className="rounded-[28px] border border-[rgba(45,52,97,0.16)] bg-[linear-gradient(180deg,rgba(45,52,97,0.08),rgba(255,255,255,0.95))] p-6 shadow-[0_18px_36px_rgba(45,52,97,0.12)] sm:p-7">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-neutral-500">How to use this</p>
+            <p className="mt-3 text-sm text-neutral-600">
+              Think like a smart entrepreneur. You want healthy demand, manageable competition, and room for margin.
+            </p>
+
             <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
-              <h3 className="text-sm font-semibold text-neutral-900">Quick decision guide</h3>
-              <ul className="mt-3 space-y-2 text-sm text-neutral-600">
-                <li>Rising prices + low competition = strong margin potential.</li>
-                <li>Falling prices + many sellers = consider differentiation.</li>
-                <li>High seasonality = plan inventory timing carefully.</li>
-              </ul>
+              <h3 className="text-sm font-semibold text-neutral-900">Price trend</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Tells you if prices are moving up or down. Rising prices usually mean demand is strong or supply is
+                tight. Falling prices can signal heavy competition or weak demand.
+              </p>
             </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">Competition</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Shows how many sellers are actively fighting for the same sale. Fewer sellers can mean better margin,
+                but also check if a brand owner dominates the listing.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">Seasonality</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Measures how much prices swing. Big swings mean sales are seasonal, so you must time inventory
+                carefully. Low swings suggest steadier demand.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">Buy‑box stability</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Stable buy‑box pricing means you can predict your margins. Volatile buy‑box pricing means price wars,
+                which can destroy profit quickly.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">Amazon price vs landed cost</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                This is your margin reality check. If your landed cost range is close to the market price, walk away
+                or improve your sourcing. If there’s a healthy gap, you have room to win.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">How to read the price chart</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Look for the direction and the shape. A steady upward slope suggests growing demand. Sharp drops often
+                mean price wars or excess supply. Wide swings mean unstable pricing, so plan for thinner margins.
+              </p>
+              <p className="mt-2 text-sm text-neutral-600">
+                Focus on the last 30–90 days. If the recent trend is stable and above your landed cost range, the
+                product has healthier margin potential.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">How to read the sales rank chart</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                Lower rank is better. A downward trend (toward lower numbers) means stronger sales. Big spikes upward
+                mean sales slowed or demand dropped.
+              </p>
+              <p className="mt-2 text-sm text-neutral-600">
+                Consistent rank movement is healthier than random spikes. Stable, improving rank suggests steady
+                demand that can support a new entrant.
+              </p>
+            </div>
+
+            <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
+              <h3 className="text-sm font-semibold text-neutral-900">How to read the buy‑box chart</h3>
+              <p className="mt-2 text-sm text-neutral-600">
+                The buy‑box price shows what wins the “Add to Cart” slot. A flat line means stable pricing and
+                predictable margins. Frequent jumps signal price wars.
+              </p>
+              <p className="mt-2 text-sm text-neutral-600">
+                If the buy‑box sits far below your landed cost range, the market is too tight. If it stays above your
+                cost range, you have room to compete.
+              </p>
+            </div>
+
             <div className="mt-4 rounded-[22px] border border-white/80 bg-white/80 p-5 shadow-[0_12px_24px_rgba(45,52,97,0.12)] backdrop-blur">
               <h3 className="text-sm font-semibold text-neutral-900">Market</h3>
               <p className="mt-2 text-sm text-neutral-600">
-                Showing {data.market} signals ({data.currency}).
+                Showing {data.market} signals ({data.currency}). Always validate in the market you plan to sell.
               </p>
             </div>
           </div>

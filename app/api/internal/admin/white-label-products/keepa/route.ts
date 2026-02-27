@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ...result });
   } catch (e: any) {
     console.error("POST /api/internal/admin/white-label-products/keepa error:", e?.message || e);
-    return NextResponse.json({ ok: false, error: "Keepa refresh failed" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Market refresh failed" }, { status: 500 });
   } finally {
     conn.release();
   }

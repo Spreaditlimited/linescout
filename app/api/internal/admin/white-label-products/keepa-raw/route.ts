@@ -128,7 +128,7 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("POST /api/internal/admin/white-label-products/keepa-raw error:", e?.message || e);
-    return NextResponse.json({ ok: false, error: e?.message || "Keepa raw fetch failed" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "Market data fetch failed" }, { status: 500 });
   } finally {
     conn.release();
   }

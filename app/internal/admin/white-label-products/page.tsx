@@ -883,7 +883,7 @@ export default function WhiteLabelProductsPage() {
                       </div>
                       <div className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-semibold text-neutral-200">Keepa raw debug</p>
+                          <p className="text-xs font-semibold text-neutral-200">Market data raw debug</p>
                           <div className="flex items-center gap-2">
                             <SearchableSelect
                               className="w-28"
@@ -907,7 +907,7 @@ export default function WhiteLabelProductsPage() {
                               className="rounded-lg border border-white/10 px-3 py-1 text-xs text-white"
                               disabled={keepaRawLoadingId === item.id}
                             >
-                              {keepaRawLoadingId === item.id ? "Loading..." : "Fetch raw"}
+                              {keepaRawLoadingId === item.id ? "Loading..." : "Fetch raw data"}
                             </button>
                           </div>
                         </div>

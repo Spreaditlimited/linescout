@@ -104,6 +104,28 @@ async function keepaRequest(path: string, params: Record<string, string | number
   return payload;
 }
 
+async function keepaBinaryRequest(path: string, params: Record<string, string | number | undefined>) {
+  const key = requireKeepaKey();
+  const url = new URL(`${KEEP_A_BASE_URL}/${path}`);
+  url.searchParams.set("key", key);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    url.searchParams.set(k, String(v));
+  });
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Keepa error (${res.status}): ${text || res.statusText}`);
+  }
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  const buf = Buffer.from(await res.arrayBuffer());
+  return { contentType, buf };
+}
+
 export async function searchKeepaAsin(term: string, marketplace: KeepaMarketplace) {
   if (!term.trim()) return null;
   const domain = MARKET_CONFIG[marketplace].domain;
@@ -175,6 +197,39 @@ export async function fetchKeepaProductRaw(asin: string, marketplace: KeepaMarke
     stats: 1,
   });
   return data || null;
+}
+
+export async function fetchKeepaProductDetails(
+  asin: string,
+  marketplace: KeepaMarketplace,
+  options: { history?: 0 | 1; rating?: 0 | 1; update?: number; offers?: number } = {}
+) {
+  if (!asin) return null;
+  const domain = MARKET_CONFIG[marketplace].domain;
+  const data = await keepaRequest("product", {
+    domain,
+    asin,
+    stats: 1,
+    history: options.history ?? 1,
+    rating: options.rating ?? 1,
+    update: options.update,
+    offers: options.offers,
+  });
+  return data || null;
+}
+
+export async function fetchKeepaGraphImage(
+  asin: string,
+  marketplace: KeepaMarketplace,
+  params: Record<string, string | number | undefined>
+) {
+  if (!asin) return null;
+  const domain = MARKET_CONFIG[marketplace].domain;
+  return keepaBinaryRequest("graphimage", {
+    domain,
+    asin,
+    ...params,
+  });
 }
 
 export function getKeepaCurrency(marketplace: KeepaMarketplace) {
