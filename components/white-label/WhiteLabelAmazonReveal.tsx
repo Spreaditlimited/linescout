@@ -41,7 +41,7 @@ export default function WhiteLabelAmazonReveal({
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [data, setData] = useState<RevealResult | null>(null);
-  const storageKey = `wl_amazon_reveal_${productId}`;
+  const storageKey = `wl_amazon_reveal_${productId}_${currencyCode}`;
   const revealTtlMs = 24 * 60 * 60 * 1000;
   const isFresh = (payload: any) =>
     payload?.revealed_at && Date.now() - Number(payload.revealed_at) < revealTtlMs;

@@ -145,7 +145,7 @@ export default function WhiteLabelCatalogClient({
       { loading?: boolean; error?: string | null; code?: string | null; data?: any }
     >
   >({});
-  const storageKey = (productId: number) => `wl_amazon_reveal_${productId}`;
+  const storageKey = (productId: number) => `wl_amazon_reveal_${productId}_${currencyCode}`;
   const revealTtlMs = 24 * 60 * 60 * 1000;
   const isFresh = (payload: any) =>
     payload?.revealed_at && Date.now() - Number(payload.revealed_at) < revealTtlMs;
@@ -170,7 +170,7 @@ export default function WhiteLabelCatalogClient({
     if (Object.keys(next).length) {
       setReveals((prev) => ({ ...next, ...prev }));
     }
-  }, [items]);
+  }, [items, currencyCode]);
 
   async function handleReveal(productId: number) {
     if (typeof window !== "undefined") {
