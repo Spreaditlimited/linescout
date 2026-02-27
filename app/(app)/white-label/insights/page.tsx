@@ -297,9 +297,9 @@ export default function WhiteLabelInsightsInfoPage() {
         <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="grid gap-6">
             <div className="rounded-[28px] border border-neutral-200 bg-white p-6 shadow-[0_18px_38px_rgba(15,23,42,0.08)] sm:p-8">
-              <div className="flex flex-wrap items-center gap-5">
+              <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center">
                 {data.product.image_url ? (
-                  <div className="h-20 w-20 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50">
+                  <div className="h-20 w-20 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 sm:mx-0">
                     <img
                       src={data.product.image_url}
                       alt={data.product.name}
@@ -307,11 +307,11 @@ export default function WhiteLabelInsightsInfoPage() {
                     />
                   </div>
                 ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xs font-semibold text-neutral-400">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 text-xs font-semibold text-neutral-400 sm:mx-0">
                     No image
                   </div>
                 )}
-                <div className="flex-1">
+                <div className="flex-1 text-center sm:text-left">
                   <p className="text-xs font-semibold uppercase tracking-[0.25em] text-neutral-400">
                     {data.product.category || "Product"}
                   </p>

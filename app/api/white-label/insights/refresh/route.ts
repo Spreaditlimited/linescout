@@ -147,15 +147,27 @@ export async function POST(req: Request) {
       const caHas =
         product.amazon_ca_price_current != null ||
         product.amazon_ca_price_avg30 != null ||
-        product.amazon_ca_price_avg90 != null;
+        product.amazon_ca_price_avg90 != null ||
+        product.amazon_ca_price_low != null ||
+        product.amazon_ca_price_high != null ||
+        product.amazon_ca_price_min != null ||
+        product.amazon_ca_price_max != null;
       const usHas =
         product.amazon_us_price_current != null ||
         product.amazon_us_price_avg30 != null ||
-        product.amazon_us_price_avg90 != null;
+        product.amazon_us_price_avg90 != null ||
+        product.amazon_us_price_low != null ||
+        product.amazon_us_price_high != null ||
+        product.amazon_us_price_min != null ||
+        product.amazon_us_price_max != null;
       const ukHas =
         product.amazon_uk_price_current != null ||
         product.amazon_uk_price_avg30 != null ||
-        product.amazon_uk_price_avg90 != null;
+        product.amazon_uk_price_avg90 != null ||
+        product.amazon_uk_price_low != null ||
+        product.amazon_uk_price_high != null ||
+        product.amazon_uk_price_min != null ||
+        product.amazon_uk_price_max != null;
       const market =
         preferredMarket === "US" && usHas
           ? "US"

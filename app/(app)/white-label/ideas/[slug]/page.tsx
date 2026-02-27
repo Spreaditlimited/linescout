@@ -254,6 +254,7 @@ export default async function WhiteLabelIdeaDetailPage({
   const { slug } = await params;
   const cookieStore = await cookies();
   const countryCookie = cookieStore.get("wl_country")?.value;
+  const sessionToken = cookieStore.get("linescout_session")?.value || "";
 
   const conn = await db.getConnection();
   let product: ProductRow | null = null;
@@ -262,6 +263,8 @@ export default async function WhiteLabelIdeaDetailPage({
   let currencyCode = "NGN";
   let countryIso2 = "";
   let amazonComparisonEnabled = false;
+  let profileCountryCode = "";
+  let profileCurrencyCode = "";
   try {
     await ensureCountryConfig(conn);
     await ensureWhiteLabelSettings(conn);
@@ -272,6 +275,30 @@ export default async function WhiteLabelIdeaDetailPage({
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
     currencyCode = getCountryCurrencyCode(picked, currencyById);
     countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+
+    if (sessionToken) {
+      const [userRows]: any = await conn.query(
+        `
+        SELECT c.iso2 AS country_iso2, cur.code AS currency_code
+        FROM users u
+        JOIN linescout_user_sessions s ON s.user_id = u.id
+        LEFT JOIN linescout_countries c ON c.id = u.country_id
+        LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+        WHERE s.refresh_token_hash = SHA2(?, 256)
+        LIMIT 1
+        `,
+        [sessionToken]
+      );
+      const userRow = userRows?.[0];
+      profileCountryCode = userRow?.country_iso2 ? String(userRow.country_iso2).toUpperCase() : "";
+      profileCurrencyCode = userRow?.currency_code ? String(userRow.currency_code).toUpperCase() : "";
+      if (profileCountryCode) {
+        countryIso2 = profileCountryCode;
+      }
+      if (profileCurrencyCode) {
+        currencyCode = profileCurrencyCode;
+      }
+    }
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
