@@ -18,12 +18,14 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/white-label") ||
     pathname.startsWith("/machines") ||
     pathname.startsWith("/machine-sourcing-webinar") ||
-    pathname.startsWith("/machine-sourcing-webinar-video");
+    pathname.startsWith("/machine-sourcing-webinar-video") ||
+    pathname.startsWith("/track");
   const isLanding =
     pathname === "/" ||
     pathname.startsWith("/account-deletion") ||
-    isAgents;
-  const isPublicQuote = pathname.startsWith("/quote/");
+    isAgents ||
+    pathname.startsWith("/track");
+  const isPublicQuote = pathname.startsWith("/quote/") || pathname.startsWith("/shipping-quote/");
   const isAgentApp = pathname.startsWith("/agent-app");
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
   const isAccountDeletion = pathname.startsWith("/account-deletion");
@@ -35,6 +37,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/quotes") ||
     pathname.startsWith("/payments") ||
     pathname.startsWith("/wallet") ||
+    pathname.startsWith("/shipments") ||
     pathname.startsWith("/profile") ||
     pathname.startsWith("/paystack") ||
     (pathname.startsWith("/white-label") && !isWhiteLabelMarketing) ||

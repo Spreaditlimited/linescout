@@ -1,0 +1,135 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+type VerifyResp = {
+  ok: boolean;
+  token?: string;
+  error?: string;
+};
+
+export default function ShippingPaystackVerifyClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const reference = useMemo(() => String(searchParams.get("reference") || "").trim(), [searchParams]);
+  const token = useMemo(() => String(searchParams.get("token") || "").trim(), [searchParams]);
+  const [status, setStatus] = useState<"loading" | "error" | "success">("loading");
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function verify() {
+      if (!reference) {
+        setStatus("error");
+        setMessage("Missing payment reference.");
+        return;
+      }
+
+      setStatus("loading");
+      setMessage(null);
+
+      const res = await fetch("/api/shipping-quote/paystack/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reference }),
+      });
+
+      const json: VerifyResp = await res.json().catch(() => ({
+        ok: false,
+        error: "Bad response",
+      }));
+
+      if (!active) return;
+
+      if (!res.ok || !json?.ok) {
+        setStatus("error");
+        setMessage(json?.error || "Payment not confirmed yet. Please retry in a few seconds.");
+        return;
+      }
+
+      setStatus("success");
+      setMessage("Payment verified. Redirecting…");
+
+      const targetToken = json?.token || token;
+      if (targetToken) {
+        router.replace(`/shipping-quote/${targetToken}?paid=1`);
+        return;
+      }
+      router.replace("/shipments");
+    }
+
+    verify();
+    return () => {
+      active = false;
+    };
+  }, [reference, router, token]);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    const t = setTimeout(() => {
+      try {
+        if (window.opener) {
+          window.close();
+        }
+      } catch {}
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [status]);
+
+  return (
+    <div className="px-6 py-10">
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+            Payment verification
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-neutral-900">Verifying payment</h1>
+          <p className="mt-2 text-sm text-neutral-600">
+            We’re confirming your payment with Paystack.
+          </p>
+
+          {status === "loading" ? (
+            <div className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-600">
+              Verifying…
+            </div>
+          ) : null}
+
+          {status === "error" ? (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {message}
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="btn btn-outline"
+                >
+                  Retry verification
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (token) {
+                      router.replace(`/shipping-quote/${token}`);
+                    } else {
+                      router.replace("/shipments");
+                    }
+                  }}
+                  className="btn btn-ghost"
+                >
+                  Back to shipping quote
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {status === "success" ? (
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] p-4 text-sm text-[var(--agent-blue)]">
+              {message}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}

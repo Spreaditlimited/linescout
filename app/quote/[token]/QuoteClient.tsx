@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 type ShippingRate = {
   id: number;
@@ -14,7 +15,12 @@ type ShippingRate = {
 
 type QuoteClientProps = {
   token: string;
+  apiBase?: string;
+  verifyApiBase?: string;
+  shippingOnly?: boolean;
   customerName?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
   agentNote?: string | null;
   items: any[];
   exchangeRmb: number;
@@ -144,7 +150,12 @@ function computeTotals(
 
 export default function QuoteClient({
   token,
+  apiBase = "/api/quote",
+  verifyApiBase = "/api/quote",
+  shippingOnly = false,
   customerName,
+  customerEmail,
+  customerPhone,
   agentNote,
   items,
   exchangeRmb,
@@ -180,7 +191,9 @@ export default function QuoteClient({
   }, [shippingRates, defaultShippingTypeId]);
 
   const [selectedRateId, setSelectedRateId] = useState<number | null>(initialRateId);
-  const [paymentOption, setPaymentOption] = useState<"deposit" | "product" | "shipping">("product");
+  const [paymentOption, setPaymentOption] = useState<"deposit" | "product" | "shipping">(
+    shippingOnly ? "shipping" : "product"
+  );
   const [useWallet, setUseWallet] = useState(false);
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
@@ -216,6 +229,11 @@ export default function QuoteClient({
 
   useEffect(() => {
     const pay = String(searchParams?.get("pay") || "").toLowerCase();
+    if (shippingOnly) {
+      setPaymentOption("shipping");
+      setPayMsg("Shipping payment selected.");
+      return;
+    }
     if (pay === "shipping") {
       setPaymentOption("shipping");
       setPayMsg("Shipping payment selected.");
@@ -226,7 +244,7 @@ export default function QuoteClient({
 
   const refreshPayments = async () => {
     try {
-      const res = await fetch(`/api/quote/${token}/payments`, { cache: "no-store" });
+      const res = await fetch(`${apiBase}/${token}/payments`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.ok) {
         setPaidTotals({
@@ -421,15 +439,17 @@ export default function QuoteClient({
   const hasShippingRemaining =
     effectiveDisplayCurrency === "NGN" ? shippingRemainingNgn > 0 : shippingRemainingDisplay > 0;
 
-  const canPayShipping =
-    (effectiveDisplayCurrency === "NGN"
-      ? productPaidTotalNgn >= productTargetNgn
-      : productPaidTotalDisplay >= productTargetDisplay) && handoffStatus === "shipped";
+  const canPayShipping = shippingOnly
+    ? hasShippingRemaining
+    : (effectiveDisplayCurrency === "NGN"
+        ? productPaidTotalNgn >= productTargetNgn
+        : productPaidTotalDisplay >= productTargetDisplay) && handoffStatus === "shipped";
   const canPayDeposit =
+    !shippingOnly &&
     depositEnabled &&
     (effectiveDisplayCurrency === "NGN" ? depositRemainingNgn > 0 : depositRemainingDisplay > 0);
   const canPayProduct =
-    effectiveDisplayCurrency === "NGN" ? productRemainingNgn > 0 : productRemainingDisplay > 0;
+    !shippingOnly && (effectiveDisplayCurrency === "NGN" ? productRemainingNgn > 0 : productRemainingDisplay > 0);
 
   const progress = {
     deposit: depositEnabled
@@ -449,7 +469,7 @@ export default function QuoteClient({
     }
     setPaying(true);
     try {
-      const res = await fetch(`/api/quote/${token}/pay`, {
+      const res = await fetch(`${apiBase}/${token}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -514,24 +534,184 @@ export default function QuoteClient({
     setPayMsg("Ready to pay the remaining balance.");
   };
 
-  const downloadReceipt = (payment: QuotePayment) => {
-    const lines = [
-      "LineScout (Sure Importers Limited)",
-      "",
-      "Payment receipt",
-      `Date: ${fmtDate(payment.paid_at || payment.created_at)}`,
-      `Amount: ${payment.currency} ${Number(payment.amount || 0).toLocaleString()}`,
-      `Purpose: ${formatPurpose(payment.purpose)}`,
-      `Method: ${payment.method || "unknown"}`,
-      payment.provider_ref ? `Reference: ${payment.provider_ref}` : "",
-      "",
-      "Need help? hello@sureimports.com",
-    ].filter(Boolean);
-    const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const downloadReceipt = async (payment: QuotePayment) => {
+    const paidAt = fmtDate(payment.paid_at || payment.created_at) || "—";
+    const amount = `${payment.currency} ${Number(payment.amount || 0).toLocaleString()}`;
+    const receiptNo = `LS-${payment.id}`;
+    const purposeLabel = formatPurpose(payment.purpose);
+    const methodLabel = payment.method || "unknown";
+    const reference = payment.provider_ref || "—";
+    const customerLabel = customerName || "Customer";
+    const customerEmailLabel = customerEmail || "—";
+    const customerPhoneLabel = customerPhone || "—";
+    const quoteLabel = shippingOnly ? "Shipping-only invoice" : "Quote payment";
+    const tokenLabel = token || "—";
+
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595.28, 841.89]); // A4
+    const { width, height } = page.getSize();
+    const margin = 48;
+    const textColor = rgb(0.1, 0.12, 0.2);
+    const muted = rgb(0.45, 0.48, 0.56);
+    const rule = rgb(0.86, 0.88, 0.9);
+
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let cursorY = height - margin;
+
+    // Header (plain text)
+    page.drawText("LineScout Receipt", {
+      x: margin,
+      y: cursorY,
+      size: 15,
+      font: fontBold,
+      color: textColor,
+    });
+    cursorY -= 18;
+    page.drawText("Sure Importers Limited", {
+      x: margin,
+      y: cursorY,
+      size: 9,
+      font: fontRegular,
+      color: muted,
+    });
+    page.drawText(receiptNo, {
+      x: width - margin - 120,
+      y: cursorY,
+      size: 9,
+      font: fontBold,
+      color: textColor,
+    });
+    cursorY -= 16;
+    page.drawText(paidAt, {
+      x: margin,
+      y: cursorY,
+      size: 9,
+      font: fontRegular,
+      color: muted,
+    });
+    page.drawText(quoteLabel, {
+      x: width - margin - 180,
+      y: cursorY,
+      size: 9,
+      font: fontRegular,
+      color: muted,
+    });
+
+    cursorY -= 20;
+
+    const drawRow = (label: string, value: string) => {
+      cursorY -= 14;
+      page.drawText(label, {
+        x: margin,
+        y: cursorY,
+        size: 8,
+        font: fontBold,
+        color: muted,
+      });
+      page.drawText(value, {
+        x: margin + 140,
+        y: cursorY,
+        size: 9,
+        font: fontRegular,
+        color: textColor,
+      });
+    };
+
+    cursorY -= 6;
+    page.drawText("Customer", {
+      x: margin,
+      y: cursorY,
+      size: 10,
+      font: fontBold,
+      color: textColor,
+    });
+    drawRow("Name", customerLabel);
+    drawRow("Email", customerEmailLabel);
+    drawRow("Phone", customerPhoneLabel);
+    drawRow("Quote Token", tokenLabel);
+
+    cursorY -= 18;
+
+    cursorY -= 4;
+    page.drawText("Payment", {
+      x: margin,
+      y: cursorY,
+      size: 10,
+      font: fontBold,
+      color: textColor,
+    });
+    drawRow("Description", quoteLabel);
+    drawRow("Purpose", purposeLabel);
+    drawRow("Method", methodLabel);
+    drawRow("Reference", reference);
+    drawRow("Amount", amount);
+
+    cursorY -= 18;
+    page.drawText(`Total paid: ${amount}`, {
+      x: margin,
+      y: cursorY,
+      size: 10,
+      font: fontBold,
+      color: textColor,
+    });
+
+    cursorY -= 20;
+    page.drawText("Need help? hello@sureimports.com", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+    cursorY -= 12;
+    page.drawText("Sure Importers Limited", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontBold,
+      color: textColor,
+    });
+    cursorY -= 12;
+    page.drawText("Nigeria Office: 5 Olutosin Ajayi (Martins Adegboyega) Street, Ajao Estate, Lagos, Nigeria", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+    cursorY -= 12;
+    page.drawText("Nigeria Phone: 08037649956, 08064583664, 08068397263", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+    cursorY -= 12;
+    page.drawText("United Kingdom: 33 Bevan Court, Dunlop Street, Warrington, England", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+    cursorY -= 12;
+    page.drawText("UK Phone: 070881194138", {
+      x: margin,
+      y: cursorY,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `linescout-receipt-${payment.id}.txt`;
+    a.download = `linescout-receipt-${payment.id}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -559,6 +739,12 @@ export default function QuoteClient({
               <p className="mt-1 text-sm text-neutral-600">
                 Customer: <span className="text-neutral-800">{customerName || "Customer"}</span>
               </p>
+              {customerEmail ? (
+                <p className="text-xs text-neutral-500">Email: {customerEmail}</p>
+              ) : null}
+              {customerPhone ? (
+                <p className="text-xs text-neutral-500">Phone: {customerPhone}</p>
+              ) : null}
               <p className="text-xs text-neutral-500">Token: {token}</p>
               {String(agentNote || "").trim() ? (
                 <p className="mt-2 whitespace-pre-line text-xs text-neutral-600">
@@ -576,26 +762,65 @@ export default function QuoteClient({
 
           <div className="mt-6 overflow-x-auto rounded-2xl border border-[rgba(45,52,97,0.14)]">
             <table className="min-w-full text-sm">
-              <thead className="bg-[rgba(45,52,97,0.08)] text-neutral-700">
-                <tr>
-                  <th className="px-4 py-3 text-left">Item</th>
-                  <th className="px-4 py-3 text-left">Qty</th>
-                  <th className="px-4 py-3 text-left">Unit RMB</th>
-                  <th className="px-4 py-3 text-left">Total RMB</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item: any, idx: number) => (
-                  <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
-                    <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
-                    <td className="px-4 py-3 text-neutral-600">{item.quantity}</td>
-                    <td className="px-4 py-3 text-neutral-600">{item.unit_price_rmb}</td>
-                    <td className="px-4 py-3 text-neutral-800">
-                      {Number(item.quantity || 0) * Number(item.unit_price_rmb || 0)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {shippingOnly ? (
+                <>
+                  <thead className="bg-[rgba(45,52,97,0.08)] text-neutral-700">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Shipment</th>
+                      <th className="px-4 py-3 text-left">Units ({unitLabel})</th>
+                      <th className="px-4 py-3 text-left">Rate (USD)</th>
+                      <th className="px-4 py-3 text-left">Total (USD)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item: any, idx: number) => {
+                      const qty = Number(item.quantity || 0);
+                      const unitsPerItem =
+                        selectedRate?.rate_unit === "per_cbm"
+                          ? Number(item.unit_cbm || 0)
+                          : Number(item.unit_weight_kg || 0);
+                      const totalUnits = qty * unitsPerItem;
+                      const lineTotal = totalUnits * Number(selectedRate?.rate_value || 0);
+                      return (
+                        <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
+                          <td className="px-4 py-3 text-neutral-800">
+                            <div className="font-semibold">{item.product_name || "Shipping"}</div>
+                            <div className="text-xs text-neutral-500">
+                              {item.product_description || "Shipping only service"}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-neutral-600">{totalUnits.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-neutral-600">{fmtUsd(Number(selectedRate?.rate_value || 0))}</td>
+                          <td className="px-4 py-3 text-neutral-800">{fmtUsd(lineTotal)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </>
+              ) : (
+                <>
+                  <thead className="bg-[rgba(45,52,97,0.08)] text-neutral-700">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Item</th>
+                      <th className="px-4 py-3 text-left">Qty</th>
+                      <th className="px-4 py-3 text-left">Unit RMB</th>
+                      <th className="px-4 py-3 text-left">Total RMB</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item: any, idx: number) => (
+                      <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
+                        <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
+                        <td className="px-4 py-3 text-neutral-600">{item.quantity}</td>
+                        <td className="px-4 py-3 text-neutral-600">{item.unit_price_rmb}</td>
+                        <td className="px-4 py-3 text-neutral-800">
+                          {Number(item.quantity || 0) * Number(item.unit_price_rmb || 0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </>
+              )}
             </table>
           </div>
 
@@ -628,132 +853,138 @@ export default function QuoteClient({
             ) : null}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-            <div className="text-xs text-neutral-500">Payment option</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {depositEnabled ? (
+          {shippingOnly ? null : (
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+              <div className="text-xs text-neutral-500">Payment option</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {depositEnabled ? (
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption("deposit")}
+                    disabled={!canPayDeposit}
+                    className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                      paymentOption === "deposit"
+                        ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                        : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
+                    } ${!canPayDeposit ? "opacity-50 cursor-not-allowed" : ""}`}
+                  >
+                    Pay deposit ({depositPercent || 0}% · {fmtCurrency(depositRemainingDisplay || 0, effectiveDisplayCurrency)})
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  onClick={() => setPaymentOption("deposit")}
-                  disabled={!canPayDeposit}
+                  onClick={() => setPaymentOption("product")}
+                  disabled={!canPayProduct}
                   className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                    paymentOption === "deposit"
+                    paymentOption === "product"
                       ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                       : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
-                  } ${!canPayDeposit ? "opacity-50 cursor-not-allowed" : ""}`}
+                  } ${!canPayProduct ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
-                  Pay deposit ({depositPercent || 0}% · {fmtCurrency(depositRemainingDisplay || 0, effectiveDisplayCurrency)})
+                  Pay product ({fmtCurrency(productRemainingDisplay || 0, effectiveDisplayCurrency)})
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setPaymentOption("product")}
-                disabled={!canPayProduct}
-                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  paymentOption === "product"
-                    ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
-                    : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
-                } ${!canPayProduct ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                Pay product ({fmtCurrency(productRemainingDisplay || 0, effectiveDisplayCurrency)})
-              </button>
-              <button
-                type="button"
-                onClick={() => setPaymentOption("shipping")}
-                disabled={!canPayShipping || !hasShippingRemaining}
-                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  paymentOption === "shipping"
-                    ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
-                    : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
-                } ${!canPayShipping || !hasShippingRemaining ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                Pay shipping ({fmtCurrency(shippingRemainingDisplay || 0, effectiveDisplayCurrency)})
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentOption("shipping")}
+                  disabled={!canPayShipping || !hasShippingRemaining}
+                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
+                    paymentOption === "shipping"
+                      ? "border-[var(--agent-blue)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                      : "border-[rgba(45,52,97,0.2)] text-neutral-700 hover:border-neutral-500"
+                  } ${!canPayShipping || !hasShippingRemaining ? "opacity-50 cursor-not-allowed" : ""}`}
+                >
+                  Pay shipping ({fmtCurrency(shippingRemainingDisplay || 0, effectiveDisplayCurrency)})
+                </button>
+              </div>
+              <p className="mt-3 text-xs text-neutral-500">
+                Product payment includes local transport. Shipping is available only after product is fully paid.
+              </p>
             </div>
-            <p className="mt-3 text-xs text-neutral-500">
-              Product payment includes local transport. Shipping is available only after product is fully paid.
-            </p>
-          </div>
+          )}
 
-          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-            <div className="text-xs text-neutral-500">Payment timeline</div>
-            <div className="mt-4 space-y-3 text-sm">
-              {depositEnabled ? (
+          {shippingOnly ? null : (
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+              <div className="text-xs text-neutral-500">Payment timeline</div>
+              <div className="mt-4 space-y-3 text-sm">
+                {depositEnabled ? (
+                  <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-neutral-800">Deposit</div>
+                      <div className="text-xs text-neutral-600">
+                      {fmtCurrency(depositPaidDisplay, effectiveDisplayCurrency)} /{" "}
+                        {fmtCurrency(depositAmountDisplay, effectiveDisplayCurrency)}
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
+                      <div
+                        className="h-2 rounded-full bg-[var(--agent-blue)]"
+                        style={{ width: `${Math.round((progress.deposit || 0) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-neutral-800">Deposit</div>
+                    <div className="text-neutral-800">Product payment</div>
                     <div className="text-xs text-neutral-600">
-                    {fmtCurrency(depositPaidDisplay, effectiveDisplayCurrency)} /{" "}
-                      {fmtCurrency(depositAmountDisplay, effectiveDisplayCurrency)}
+                      {fmtCurrency(productPaidTotalDisplay, effectiveDisplayCurrency)} /{" "}
+                      {fmtCurrency(productTargetDisplay, effectiveDisplayCurrency)}
                     </div>
                   </div>
                   <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
                     <div
                       className="h-2 rounded-full bg-[var(--agent-blue)]"
-                      style={{ width: `${Math.round((progress.deposit || 0) * 100)}%` }}
+                      style={{ width: `${Math.round(progress.product * 100)}%` }}
                     />
                   </div>
+                  {commitmentDueNgn > 0 ? (
+                    <div className="mt-2 text-[11px] text-neutral-500">
+                      Commitment fee discount: {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
 
-              <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-neutral-800">Product payment</div>
-                  <div className="text-xs text-neutral-600">
-                    {fmtCurrency(productPaidTotalDisplay, effectiveDisplayCurrency)} /{" "}
-                    {fmtCurrency(productTargetDisplay, effectiveDisplayCurrency)}
+                <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-neutral-800">Shipping payment</div>
+                    <div className="text-xs text-neutral-600">
+                      {fmtCurrency(shippingPaidDisplay, effectiveDisplayCurrency)} /{" "}
+                      {fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}
+                    </div>
                   </div>
-                </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
-                  <div
-                    className="h-2 rounded-full bg-[var(--agent-blue)]"
-                    style={{ width: `${Math.round(progress.product * 100)}%` }}
-                  />
-                </div>
-                {commitmentDueNgn > 0 ? (
-                  <div className="mt-2 text-[11px] text-neutral-500">
-                    Commitment fee discount: {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}
+                  <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
+                    <div
+                      className="h-2 rounded-full bg-[var(--agent-blue)]"
+                      style={{ width: `${Math.round(progress.shipping * 100)}%` }}
+                    />
                   </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-neutral-800">Shipping payment</div>
-                  <div className="text-xs text-neutral-600">
-                    {fmtCurrency(shippingPaidDisplay, effectiveDisplayCurrency)} /{" "}
-                    {fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}
-                  </div>
+                  {!canPayShipping ? (
+                    <div className="mt-2 text-[11px] text-neutral-500">
+                      Available after product is fully paid and the project is marked shipped.
+                    </div>
+                  ) : null}
                 </div>
-                <div className="mt-2 h-2 w-full rounded-full bg-[rgba(45,52,97,0.12)]">
-                  <div
-                    className="h-2 rounded-full bg-[var(--agent-blue)]"
-                    style={{ width: `${Math.round(progress.shipping * 100)}%` }}
-                  />
-                </div>
-                {!canPayShipping ? (
-                  <div className="mt-2 text-[11px] text-neutral-500">
-                    Available after product is fully paid and the project is marked shipped.
-                  </div>
-                ) : null}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Product total ({effectiveDisplayCurrency})</div>
-              <div className="text-lg font-semibold">{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</div>
+          {shippingOnly ? null : (
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+                <div className="text-xs text-neutral-500">Product total ({effectiveDisplayCurrency})</div>
+                <div className="text-lg font-semibold">{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</div>
+              </div>
+              <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+                <div className="text-xs text-neutral-500">Shipping (USD)</div>
+                <div className="text-lg font-semibold">{fmtUsd(totals.totalShippingUsd)}</div>
+              </div>
+              <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+                <div className="text-xs text-neutral-500">Shipping ({effectiveDisplayCurrency})</div>
+                <div className="text-lg font-semibold">{fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}</div>
+              </div>
             </div>
-            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Shipping (USD)</div>
-              <div className="text-lg font-semibold">{fmtUsd(totals.totalShippingUsd)}</div>
-            </div>
-            <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Shipping ({effectiveDisplayCurrency})</div>
-              <div className="text-lg font-semibold">{fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}</div>
-            </div>
-          </div>
+          )}
           {showFxDebug ? (
             <div className="mt-4 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-[11px] text-neutral-700">
               <div className="font-semibold text-neutral-800">FX debug</div>
@@ -768,40 +999,42 @@ export default function QuoteClient({
             </div>
           ) : null}
 
-          <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-            <div className="text-xs text-neutral-500">Amount due ({effectiveDisplayCurrency})</div>
-            <div className="text-xl font-semibold text-[var(--agent-blue)]">
-              {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
-            </div>
-            {commitmentDueNgn > 0 ? (
-              <p className="mt-2 text-xs text-neutral-500">
-                Commitment fee is applied as an instant discount once product is fully paid.
-              </p>
-            ) : null}
-            {paymentOption === "product" && commitmentDueNgn > 0 ? (
-              <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
-                <div className="flex items-center justify-between">
-                  <span>Product total</span>
-                  <span>{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span>Commitment fee discount</span>
-                  <span>- {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between text-neutral-800">
-                  <span>Amount due now</span>
-                  <span>{fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)}</span>
-                </div>
+          {shippingOnly ? null : (
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+              <div className="text-xs text-neutral-500">Amount due ({effectiveDisplayCurrency})</div>
+              <div className="text-xl font-semibold text-[var(--agent-blue)]">
+                {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
               </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={handlePayRemaining}
-              className="mt-4 w-full rounded-xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-neutral-800 hover:border-neutral-500"
-            >
-              Pay exact remaining balance
-            </button>
-          </div>
+              {commitmentDueNgn > 0 ? (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Commitment fee is applied as an instant discount once product is fully paid.
+                </p>
+              ) : null}
+              {paymentOption === "product" && commitmentDueNgn > 0 ? (
+                <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
+                  <div className="flex items-center justify-between">
+                    <span>Product total</span>
+                    <span>{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span>Commitment fee discount</span>
+                    <span>- {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-neutral-800">
+                    <span>Amount due now</span>
+                    <span>{fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={handlePayRemaining}
+                className="mt-4 w-full rounded-xl border border-[rgba(45,52,97,0.2)] px-4 py-2 text-xs font-semibold text-neutral-800 hover:border-neutral-500"
+              >
+                Pay exact remaining balance
+              </button>
+            </div>
+          )}
 
           <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Payment method</div>
@@ -1009,7 +1242,7 @@ export default function QuoteClient({
                           type="button"
                           onClick={async () => {
                             try {
-                              const res = await fetch("/api/quote/paystack/verify", {
+                              const res = await fetch(`${verifyApiBase}/paystack/verify`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ reference: p.provider_ref }),
@@ -1038,7 +1271,7 @@ export default function QuoteClient({
                           type="button"
                           onClick={async () => {
                             try {
-                              const res = await fetch("/api/quote/paypal/verify", {
+                              const res = await fetch(`${verifyApiBase}/paypal/verify`, {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ order_id: p.provider_ref }),

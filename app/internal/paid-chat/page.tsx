@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import ConfirmModal from "../_components/ConfirmModal";
 
 type MeRes =
   | {
@@ -130,6 +131,7 @@ export default function PaidChatInboxPage() {
   // per-conversation action loading + error
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [rowNote, setRowNote] = useState<Record<number, string>>({});
+  const [confirmTakeoverId, setConfirmTakeoverId] = useState<number | null>(null);
 
   const canLoadMore = useMemo(() => nextCursor != null, [nextCursor]);
   const authed = !!(me && "ok" in me && me.ok);
@@ -137,6 +139,17 @@ export default function PaidChatInboxPage() {
   const myUsername = authed ? (me as any).user.username : null;
   const myRole = authed ? ((me as any).user.role as "admin" | "agent") : null;
   const isAdmin = myRole === "admin";
+
+  const inboxStats = useMemo(() => {
+    const total = items.length;
+    const unassigned = items.filter((i) => i.assigned_agent_id == null).length;
+    const assignedToMe =
+      myId != null
+        ? items.filter((i) => i.assigned_agent_id != null && Number(i.assigned_agent_id) === Number(myId)).length
+        : 0;
+    const unread = items.filter((i) => i.is_unread).length;
+    return { total, unassigned, assignedToMe, unread };
+  }, [items, myId]);
 
   async function loadMe() {
     try {
@@ -258,8 +271,10 @@ export default function PaidChatInboxPage() {
     children: React.ReactNode;
     title?: string;
   }) {
-    const base = "block border-b border-neutral-800 px-3 py-3 sm:px-4";
-    const enabled = "active:bg-neutral-800 hover:bg-neutral-900/40";
+    const base =
+      "block border-b border-neutral-800/80 px-4 py-4 sm:px-5 transition-colors";
+    const enabled =
+      "bg-neutral-950/40 hover:bg-neutral-900/70 active:bg-neutral-900/90";
     const disabledCls = "opacity-60";
 
     if (disabled) {
@@ -279,19 +294,58 @@ export default function PaidChatInboxPage() {
 
   return (
     <div className="min-h-[100dvh]">
-      <div className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h1 className="text-base font-semibold">Paid Chats</h1>
+      <div className="mx-auto w-full max-w-4xl px-3 py-6 sm:px-6">
+        <div className="mb-6 rounded-2xl border border-neutral-800/80 bg-gradient-to-br from-neutral-950 via-neutral-950 to-neutral-900/70 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+                Admin Console
+              </div>
+              <h1 className="mt-2 text-lg font-semibold text-neutral-100">
+                Paid Chats Inbox
+              </h1>
+              <div className="mt-1 text-xs text-neutral-400">
+                Monitor, assign, and take over premium conversations.
+              </div>
+            </div>
 
-          <button
-            onClick={() => {
-              loadMe();
-              load(true);
-            }}
-            className="shrink-0 rounded-lg border border-neutral-700 px-3 py-1.5 text-xs active:scale-[0.99]"
-          >
-            Refresh
-          </button>
+            <button
+              onClick={() => {
+                loadMe();
+                load(true);
+              }}
+              className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-neutral-900/80 active:scale-[0.99]"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Total</div>
+              <div className="mt-1 text-sm font-semibold text-neutral-100">
+                {inboxStats.total}
+              </div>
+            </div>
+            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Unread</div>
+              <div className="mt-1 text-sm font-semibold text-amber-200">
+                {inboxStats.unread}
+              </div>
+            </div>
+            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Unassigned</div>
+              <div className="mt-1 text-sm font-semibold text-amber-200">
+                {inboxStats.unassigned}
+              </div>
+            </div>
+            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Assigned to you</div>
+              <div className="mt-1 text-sm font-semibold text-emerald-200">
+                {inboxStats.assignedToMe}
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading ? (
@@ -305,7 +359,7 @@ export default function PaidChatInboxPage() {
             No paid chats yet
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-neutral-800">
+          <div className="overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-950/40 shadow-[0_0_0_1px_rgba(0,0,0,0.2)]">
             {items.map((it) => {
               const convId = it.conversation_id;
 
@@ -374,70 +428,33 @@ export default function PaidChatInboxPage() {
                   href={`/internal/paid-chat/${convId}`}
                   title={linkDisabled ? "Locked: assigned to another agent" : ""}
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-2">
-                        {/* ✅ unread dot */}
+                      <div className="flex items-start gap-3">
                         <div className="mt-2 shrink-0">
                           {showUnread ? (
-                            <span className="block h-2.5 w-2.5 rounded-full bg-amber-400" />
+                            <span className="block h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.12)]" />
                           ) : (
                             <span className="block h-2.5 w-2.5 rounded-full bg-transparent" />
                           )}
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold">
-                            {title}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="truncate text-sm font-semibold text-neutral-100">
+                              {title}
+                            </div>
+                            <span className="text-[11px] text-neutral-500">
+                              #{convId}
+                            </span>
                           </div>
                           <div className="mt-1 truncate text-xs text-neutral-400">
                             {it.last_message_text || "No messages yet"}
                           </div>
                         </div>
-
-                        <div className="shrink-0 flex flex-col items-end gap-1">
-                          {showClaim ? (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                claimOrTakeover(convId);
-                              }}
-                              disabled={isBusy || !authed}
-                              className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-1.5 text-[12px] font-semibold text-neutral-100 active:scale-[0.99] disabled:opacity-60"
-                            >
-                              {isBusy ? "…" : "Claim"}
-                            </button>
-                          ) : showTakeover ? (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                claimOrTakeover(convId);
-                              }}
-                              disabled={isBusy || !authed}
-                              className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-1.5 text-[12px] font-semibold text-red-200 active:scale-[0.99] disabled:opacity-60"
-                            >
-                              {isBusy ? "…" : "Take over"}
-                            </button>
-                          ) : showLocked ? (
-                            <span
-                              className={[
-                                badgeBase(),
-                                "border-neutral-700 bg-neutral-900/60 text-neutral-300",
-                              ].join(" ")}
-                            >
-                              Locked
-                            </span>
-                          ) : null}
-
-                          <div className="text-[11px] text-neutral-500">
-                            {formatTime(it.last_message_at || it.updated_at)}
-                          </div>
-                        </div>
                       </div>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
                         <span
                           className={[
                             badgeBase(),
@@ -458,7 +475,6 @@ export default function PaidChatInboxPage() {
 
                         {assignedBadge}
 
-                        {/* ✅ unread badge */}
                         {showUnread ? (
                           <span
                             className={[
@@ -482,6 +498,47 @@ export default function PaidChatInboxPage() {
                         ) : null}
                       </div>
                     </div>
+
+                    <div className="shrink-0 flex flex-col items-end gap-2">
+                      {showClaim ? (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            claimOrTakeover(convId);
+                          }}
+                          disabled={isBusy || !authed}
+                          className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-1.5 text-[12px] font-semibold text-neutral-100 hover:bg-neutral-900 active:scale-[0.99] disabled:opacity-60"
+                        >
+                          {isBusy ? "…" : "Claim"}
+                        </button>
+                      ) : showTakeover ? (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setConfirmTakeoverId(convId);
+                          }}
+                          disabled={isBusy || !authed}
+                          className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-1.5 text-[12px] font-semibold text-red-200 hover:bg-red-950/50 active:scale-[0.99] disabled:opacity-60"
+                        >
+                          {isBusy ? "…" : "Take over"}
+                        </button>
+                      ) : showLocked ? (
+                        <span
+                          className={[
+                            badgeBase(),
+                            "border-neutral-700 bg-neutral-900/60 text-neutral-300",
+                          ].join(" ")}
+                        >
+                          Locked
+                        </span>
+                      ) : null}
+
+                      <div className="text-[11px] text-neutral-500">
+                        {formatTime(it.last_message_at || it.updated_at)}
+                      </div>
+                    </div>
                   </div>
                 </RowShell>
               );
@@ -498,6 +555,20 @@ export default function PaidChatInboxPage() {
           </button>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmTakeoverId != null}
+        title="Take over this conversation?"
+        description="This will assign the conversation to you and notify the customer."
+        confirmText="Take over"
+        onCancel={() => setConfirmTakeoverId(null)}
+        onConfirm={async () => {
+          if (confirmTakeoverId != null) {
+            await claimOrTakeover(confirmTakeoverId);
+          }
+          setConfirmTakeoverId(null);
+        }}
+      />
     </div>
   );
 }

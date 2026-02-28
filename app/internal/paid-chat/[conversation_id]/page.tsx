@@ -3,6 +3,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import ConfirmModal from "../../_components/ConfirmModal";
+import SearchableSelect from "../../_components/SearchableSelect";
+
+type MeRes =
+  | {
+      ok: true;
+      user: {
+        id: number;
+        username: string;
+        role: "admin" | "agent";
+      };
+    }
+  | { ok: false; error: string };
+
+type AgentRow = {
+  id: number;
+  username: string;
+  email: string | null;
+  is_active: number;
+  approval_status: string | null;
+};
 
 type Msg = {
   id: number;
@@ -18,6 +39,9 @@ type MsgRes = {
   conversation_id: number;
   assigned_agent_id?: number | null;
   assigned_agent_username?: string | null;
+  meta?: {
+    customer_name?: string | null;
+  };
   items: Msg[];
   last_id: number;
   error?: string;
@@ -37,6 +61,14 @@ type ClaimRes = {
   claimed?: boolean;
   already_assigned?: boolean;
   taken_over?: boolean;
+  error?: string;
+};
+
+type AssignRes = {
+  ok: boolean;
+  conversation_id: number;
+  assigned_agent_id: number | null;
+  assigned_agent_username?: string | null;
   error?: string;
 };
 
@@ -84,6 +116,10 @@ export default function PaidChatThreadPage() {
   const [lastId, setLastId] = useState<number>(0);
   const lastIdRef = useRef<number>(0);
 
+  const [me, setMe] = useState<MeRes | null>(null);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -91,11 +127,30 @@ export default function PaidChatThreadPage() {
 
   const [assignedAgentId, setAssignedAgentId] = useState<number | null>(null);
   const [assignedAgentUsername, setAssignedAgentUsername] = useState<string | null>(null);
+  const [customerName, setCustomerName] = useState<string | null>(null);
+
+  const [takeoverConfirmOpen, setTakeoverConfirmOpen] = useState(false);
+  const [handoverOpen, setHandoverOpen] = useState(false);
+  const [handoverTarget, setHandoverTarget] = useState("");
+  const [handoverBusy, setHandoverBusy] = useState(false);
+  const [handoverNote, setHandoverNote] = useState("");
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const canSend = useMemo(() => !!input.trim() && !sending, [input, sending]);
+  const authed = !!(me && "ok" in me && me.ok);
+  const myId = authed ? (me as any).user.id : null;
+  const myRole = authed ? ((me as any).user.role as "admin" | "agent") : null;
+  const isAdmin = myRole === "admin";
+
+  const activeAgents = useMemo(
+    () =>
+      agents.filter(
+        (a) => Number(a.is_active ?? 1) === 1 && String(a.approval_status || "") === "approved"
+      ),
+    [agents]
+  );
 
   useEffect(() => {
     lastIdRef.current = lastId;
@@ -113,6 +168,7 @@ export default function PaidChatThreadPage() {
     last: number;
     assigned_agent_id: number | null;
     assigned_agent_username: string | null;
+    customer_name: string | null;
   }> {
     const res = await fetch(
       `/api/internal/paid-chat/messages?conversation_id=${conversationId}&after_id=${after}&limit=120`,
@@ -135,7 +191,44 @@ export default function PaidChatThreadPage() {
         ? data.assigned_agent_username.trim()
         : null;
 
-    return { rows, last, assigned_agent_id, assigned_agent_username };
+    const customer_name =
+      typeof data?.meta?.customer_name === "string" && data.meta.customer_name.trim()
+        ? data.meta.customer_name.trim()
+        : null;
+
+    return { rows, last, assigned_agent_id, assigned_agent_username, customer_name };
+  }
+
+  async function loadMe() {
+    try {
+      const res = await fetch("/internal/auth/me", { cache: "no-store" });
+      const data = (await res.json().catch(() => null)) as MeRes | null;
+      if (data) setMe(data);
+      else setMe({ ok: false, error: "Failed to load session" });
+    } catch {
+      setMe({ ok: false, error: "Failed to load session" });
+    }
+  }
+
+  async function loadAgents() {
+    setAgentsLoading(true);
+    try {
+      const res = await fetch("/api/internal/admin/agents?limit=200&cursor=0", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) return;
+      const mapped = (Array.isArray(data.items) ? data.items : []).map((a: any) => ({
+        id: Number(a.internal_user_id),
+        username: String(a.username || ""),
+        email: a?.profile?.email || null,
+        is_active: a.is_active ? 1 : 0,
+        approval_status: a?.checklist?.approved_to_claim ? "approved" : "pending",
+      }));
+      setAgents(mapped);
+    } catch {
+      // silent
+    } finally {
+      setAgentsLoading(false);
+    }
   }
 
   async function claimConversation() {
@@ -165,7 +258,67 @@ export default function PaidChatThreadPage() {
     else setClaimNote("");
   }
 
-  // Boot: claim + initial load + start polling
+  async function handoverConversation() {
+    if (!handoverTarget) {
+      setHandoverNote("Select an agent or return to pool.");
+      return;
+    }
+
+    setHandoverNote("");
+    setHandoverBusy(true);
+
+    try {
+      if (handoverTarget === "pool") {
+        const res = await fetch("/api/internal/paid-chat/unclaim", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversation_id: conversationId }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          setHandoverNote(data?.error || `Release failed (${res.status})`);
+          return;
+        }
+        setAssignedAgentId(null);
+        setAssignedAgentUsername(null);
+        setClaimNote("Returned to pool.");
+        setHandoverOpen(false);
+        return;
+      }
+
+      const agentId = Number(handoverTarget || 0);
+      if (!agentId) {
+        setHandoverNote("Select a valid agent.");
+        return;
+      }
+
+      const res = await fetch("/api/internal/paid-chat/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: conversationId, agent_id: agentId }),
+      });
+      const data: AssignRes | null = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setHandoverNote(data?.error || `Assign failed (${res.status})`);
+        return;
+      }
+
+      const picked = activeAgents.find((a) => Number(a.id) === agentId) || null;
+      setAssignedAgentId(typeof data?.assigned_agent_id === "number" ? data.assigned_agent_id : agentId);
+      setAssignedAgentUsername(
+        (typeof data?.assigned_agent_username === "string" && data.assigned_agent_username.trim()) ||
+          (picked?.username ? picked.username : null)
+      );
+      setClaimNote("Assigned by admin.");
+      setHandoverOpen(false);
+    } catch {
+      setHandoverNote("Network error");
+    } finally {
+      setHandoverBusy(false);
+    }
+  }
+
+  // Boot: initial load + start polling
   useEffect(() => {
     if (!conversationId) return;
 
@@ -175,13 +328,12 @@ export default function PaidChatThreadPage() {
       try {
         setBootErr(null);
 
-        await claimConversation();
-
         const initial = await fetchNew(0);
         if (cancelled) return;
 
         setAssignedAgentId(initial.assigned_agent_id);
         setAssignedAgentUsername(initial.assigned_agent_username);
+        setCustomerName(initial.customer_name);
 
         setItems(initial.rows);
         setLastId(initial.last);
@@ -195,12 +347,13 @@ export default function PaidChatThreadPage() {
       try {
         const after = lastIdRef.current || 0;
 
-        const { rows, last, assigned_agent_id, assigned_agent_username } =
+        const { rows, last, assigned_agent_id, assigned_agent_username, customer_name } =
           await fetchNew(after);
 
         // always keep assignment fresh
         setAssignedAgentId(assigned_agent_id);
         setAssignedAgentUsername(assigned_agent_username);
+        if (customer_name) setCustomerName(customer_name);
 
         if (!rows.length) return;
 
@@ -227,6 +380,16 @@ export default function PaidChatThreadPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
+
+  useEffect(() => {
+    loadMe();
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    loadAgents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin]);
 
   async function send() {
     const text = input.trim();
@@ -296,6 +459,12 @@ export default function PaidChatThreadPage() {
       ? `Assigned agent ID: ${assignedAgentId}`
       : "Unassigned";
 
+  const showTakeover =
+    isAdmin &&
+    assignedAgentId != null &&
+    myId != null &&
+    Number(assignedAgentId) !== Number(myId);
+
   return (
     <div className="min-h-[100dvh] bg-[#0B0B0E] text-neutral-100 flex flex-col">
       <div className="sticky top-0 z-20 border-b border-white/10 bg-black/60 backdrop-blur px-3 sm:px-4 py-3 flex items-center gap-3">
@@ -307,14 +476,40 @@ export default function PaidChatThreadPage() {
         </Link>
 
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">Conversation #{conversationId}</div>
+          <div className="truncate text-sm font-semibold">
+            {customerName ? `${customerName} • #${conversationId}` : `Conversation #${conversationId}`}
+          </div>
           <div className="mt-0.5 text-[11px] text-white/50 truncate">
             {assignmentLine}
             {claimNote ? ` • ${claimNote}` : ""}
           </div>
         </div>
 
-        <div className="ml-auto shrink-0 text-[11px] text-white/50">Agent view</div>
+        {isAdmin ? (
+          <div className="ml-auto shrink-0 flex items-center gap-2">
+            {showTakeover ? (
+              <button
+                onClick={() => setTakeoverConfirmOpen(true)}
+                className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-1.5 text-[11px] font-semibold text-red-200"
+              >
+                Take over
+              </button>
+            ) : null}
+            <button
+              onClick={() => {
+                setHandoverNote("");
+                setHandoverTarget("");
+                setHandoverOpen(true);
+              }}
+              className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-1.5 text-[11px] font-semibold text-neutral-200"
+            >
+              Hand over
+            </button>
+            <div className="text-[11px] text-white/50">Admin view</div>
+          </div>
+        ) : (
+          <div className="ml-auto shrink-0 text-[11px] text-white/50">Agent view</div>
+        )}
       </div>
 
       {bootErr ? (
@@ -378,6 +573,69 @@ export default function PaidChatThreadPage() {
           </div>
         </>
       )}
+
+      <ConfirmModal
+        open={takeoverConfirmOpen}
+        title="Take over this conversation?"
+        description="This will assign the conversation to you and notify the customer."
+        confirmText="Take over"
+        onCancel={() => setTakeoverConfirmOpen(false)}
+        onConfirm={async () => {
+          await claimConversation();
+          setTakeoverConfirmOpen(false);
+        }}
+      />
+
+      {handoverOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0B0E] p-4">
+            <div className="text-sm font-semibold text-white">Hand over conversation</div>
+            <div className="mt-1 text-xs text-white/60">
+              Assign to a specific agent or return this chat to the pool.
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <SearchableSelect
+                value={handoverTarget}
+                options={[
+                  { value: "", label: "Select agent or action" },
+                  { value: "pool", label: "Return to pool" },
+                  ...activeAgents.map((agent) => ({
+                    value: String(agent.id),
+                    label: agent.username || `Agent ${agent.id}`,
+                  })),
+                ]}
+                onChange={(next) => setHandoverTarget(next)}
+                className="w-full"
+              />
+
+              {agentsLoading ? (
+                <div className="text-xs text-white/50">Loading agents…</div>
+              ) : null}
+
+              {handoverNote ? (
+                <div className="text-xs text-red-200">{handoverNote}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                onClick={() => setHandoverOpen(false)}
+                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handoverConversation}
+                disabled={handoverBusy}
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-neutral-950 disabled:opacity-60"
+              >
+                {handoverBusy ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

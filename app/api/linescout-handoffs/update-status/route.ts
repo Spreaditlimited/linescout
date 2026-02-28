@@ -4,6 +4,8 @@ import { headers } from "next/headers";
 import mysql from "mysql2/promise";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { computeAgentPointsForHandoff } from "@/lib/agent-points";
+import { createEasyPostTracker } from "@/lib/easypost";
+import { ensureShipmentTables, generateTrackingId, normalizeStatus as normalizeShipmentStatus } from "@/lib/shipments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -684,6 +686,99 @@ export async function POST(req: Request) {
     conn = null;
 
     const handoff = handoffRows?.[0] || null;
+    let trackingId: string | null = null;
+
+    if (target === "shipped" && handoff) {
+      const shipmentConn = await mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+      });
+      try {
+        await ensureShipmentTables(shipmentConn as any);
+        const [shipRows]: any = await shipmentConn.query(
+          `
+          SELECT id, public_tracking_id
+          FROM linescout_shipments
+          WHERE source_type = 'project' AND source_id = ?
+          LIMIT 1
+          `,
+          [handoff.id]
+        );
+        if (shipRows?.[0]) {
+          trackingId = String(shipRows[0].public_tracking_id || "");
+        } else {
+          const email = String(handoff.email || "").trim();
+          let userId: number | null = null;
+          if (email) {
+            const [userRows]: any = await shipmentConn.query(
+              `SELECT id FROM users WHERE email = ? OR email_normalized = ? LIMIT 1`,
+              [email, email.toLowerCase()]
+            );
+            userId = userRows?.[0]?.id ? Number(userRows[0].id) : null;
+          }
+
+          trackingId = generateTrackingId();
+          const provider = handoff?.tracking_number ? "easypost" : "manual";
+          const [insertRes]: any = await shipmentConn.query(
+            `
+            INSERT INTO linescout_shipments
+            (public_tracking_id, user_id, source_type, source_id, contact_name, contact_email,
+             origin_country, destination_country, carrier, carrier_tracking_number,
+             tracking_provider, status, last_event_at)
+            VALUES (?, ?, 'project', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            `,
+            [
+              trackingId,
+              userId,
+              handoff.id,
+              handoff.customer_name || null,
+              email || null,
+              null,
+              null,
+              handoff.shipper || null,
+              handoff.tracking_number || null,
+              provider,
+              "shipped",
+            ]
+          );
+          const shipmentId = Number(insertRes?.insertId || 0);
+          await shipmentConn.query(
+            `
+            INSERT INTO linescout_shipment_events
+            (shipment_id, status, label, notes, event_time, source, created_by_internal_user_id)
+            VALUES (?, ?, ?, ?, NOW(), 'system', ?)
+            `,
+            [
+              shipmentId,
+              "shipped",
+              null,
+              handoff.shipper || handoff.tracking_number
+                ? `Shipment marked as shipped${handoff.shipper ? ` via ${handoff.shipper}` : ""}.`
+                : "Shipment marked as shipped.",
+              actor?.id ?? null,
+            ]
+          );
+
+          if (handoff.tracking_number) {
+            const tracker = await createEasyPostTracker({
+              trackingCode: handoff.tracking_number,
+              carrier: handoff.shipper || null,
+            });
+            if (tracker.ok) {
+              const status = normalizeShipmentStatus(tracker.tracker.status || "created");
+              await shipmentConn.query(
+                `UPDATE linescout_shipments SET provider_tracker_id = ?, status = ?, last_event_at = NOW() WHERE id = ?`,
+                [tracker.tracker.id, status, shipmentId]
+              );
+            }
+          }
+        }
+      } finally {
+        await shipmentConn.end();
+      }
+    }
 
     let emailResult: any = { ok: false, skipped: true, reason: "No recipient email" };
     if (handoff?.email && process.env.STATUS_EMAILS_ENABLED !== "0") {
@@ -703,6 +798,7 @@ export async function POST(req: Request) {
         lines.push("Good news: a manufacturer has been identified for your request.");
       }
       if (target === "shipped") {
+        if (trackingId) lines.push(`LineScout Tracking ID: ${trackingId}`);
         if (handoff?.shipper) lines.push(`Shipper: ${handoff.shipper}`);
         if (handoff?.tracking_number) lines.push(`Tracking Number: ${handoff.tracking_number}`);
       }

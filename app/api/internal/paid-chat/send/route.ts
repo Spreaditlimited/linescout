@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
+import { sendNoticeEmail } from "@/lib/notice-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -397,6 +398,32 @@ export async function POST(req: Request) {
             body: (hasText ? messageText : "Attachment").slice(0, 120),
             data: { kind: "paid", conversation_id: conversationId },
           });
+
+          const [emailRows]: any = await conn.query(
+            `
+            SELECT email
+            FROM users
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [customerId]
+          );
+          const email = String(emailRows?.[0]?.email || "").trim();
+          if (email) {
+            const preview = (hasText ? messageText : "Attachment").trim().slice(0, 120);
+            await sendNoticeEmail({
+              to: email,
+              subject: "New paid chat message",
+              title: "New paid chat message",
+              lines: [
+                "A specialist sent a new message in your paid chat.",
+                `Conversation ID: ${conversationId}`,
+                `Preview: ${preview || "Attachment"}`,
+              ],
+              footerNote:
+                "This email was sent because a paid chat received a new message on LineScout.",
+            });
+          }
         }
       }
     } catch {}

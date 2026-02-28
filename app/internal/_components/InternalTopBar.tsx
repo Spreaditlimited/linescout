@@ -236,6 +236,7 @@ export default function InternalTopBar() {
     adminItems.push({ label: "Machines", href: "/internal/admin/machines" });
     adminItems.push({ label: "Agent Approval", href: "/internal/admin/agent-approval" });
     adminItems.push({ label: "Reorders", href: "/internal/admin/reorders" });
+    adminItems.push({ label: "Shipments", href: "/internal/shipments" });
     adminItems.push({ label: "Payouts", href: "/internal/admin/payouts" });
     adminItems.push({ label: "Agent Support", href: "/internal/agent-support" });
     adminItems.push({ label: "Notifications", href: "/internal/notifications" });
