@@ -130,6 +130,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Shipment not found." }, { status: 404 });
     }
 
+    const [paidRows]: any = await conn.query(
+      `
+      SELECT COUNT(*) AS paid_count
+      FROM linescout_shipping_quote_payments p
+      JOIN linescout_shipping_quotes q ON q.id = p.shipping_quote_id
+      WHERE q.shipment_id = ?
+        AND p.status = 'paid'
+      `,
+      [shipmentId]
+    );
+    const paidCount = Number(paidRows?.[0]?.paid_count || 0);
+    if (paidCount > 0) {
+      return NextResponse.json(
+        { ok: false, error: "Shipping has already been paid. Contact support for additional invoices." },
+        { status: 400 }
+      );
+    }
+
     const defaults = await getNigeriaDefaults(conn);
     let countryId = defaults.country_id;
     let displayCurrencyCode = defaults.display_currency_code;

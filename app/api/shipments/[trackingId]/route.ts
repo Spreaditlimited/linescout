@@ -109,7 +109,7 @@ export async function GET(req: Request, context: { params: Promise<{ trackingId:
       await ensureShippingQuoteTables(conn);
       const [quoteRows]: any = await conn.query(
         `
-        SELECT id, token, created_at
+        SELECT id, token, created_at, created_by
         FROM linescout_shipping_quotes
         WHERE shipment_id = ?
         ORDER BY created_at DESC, id DESC
@@ -154,6 +154,7 @@ export async function GET(req: Request, context: { params: Promise<{ trackingId:
               id: Number(latestQuote.id || 0),
               token: String(latestQuote.token || ""),
               created_at: latestQuote.created_at || null,
+              created_by: latestQuote.created_by != null ? Number(latestQuote.created_by) : null,
               has_paid_payment: latestPaid > 0,
             }
           : null,

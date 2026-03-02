@@ -9,7 +9,13 @@ type DetailResponse =
       shipment: any;
       events: any[];
       packages?: any[];
-      shipping_quote?: { id: number; token: string; created_at?: string | null; has_paid_payment: boolean } | null;
+      shipping_quote?: {
+        id: number;
+        token: string;
+        created_at?: string | null;
+        created_by?: number | null;
+        has_paid_payment: boolean;
+      } | null;
       shipping_quote_any_paid?: boolean;
     }
   | { ok: false; error: string };
@@ -317,8 +323,15 @@ export default function ShipmentDetailClient({ trackingId }: { trackingId: strin
   const shipment = state.shipment;
   const events = state.events || [];
   const packages = state.packages || [];
-  const unpaidInvoice = Boolean(state.shipping_quote && !state.shipping_quote.has_paid_payment);
+  const latestQuote = state.shipping_quote || null;
   const hasAnyPaid = Boolean(state.shipping_quote_any_paid);
+  const latestCreatedByUser =
+    latestQuote && latestQuote.created_by != null && latestQuote.created_by === shipment.user_id;
+  const unpaidInvoice = Boolean(
+    latestQuote &&
+      !latestQuote.has_paid_payment &&
+      (!hasAnyPaid || !latestCreatedByUser)
+  );
 
   return (
     <div className="px-6 py-10">
