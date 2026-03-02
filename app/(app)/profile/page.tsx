@@ -55,6 +55,10 @@ export default function ProfilePage() {
   const [dailyReveals, setDailyReveals] = useState(0);
   const [dailyInsights, setDailyInsights] = useState(0);
   const [exemption, setExemption] = useState<ProfileResponse["white_label_exempt"]>(null);
+  const isNigeria = (() => {
+    const country = (countries || []).find((c) => Number(c.id) === Number(countryId));
+    return String(country?.iso2 || "").toUpperCase() === "NG";
+  })();
   const [status, setStatus] = useState<"idle" | "loading" | "saving" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -348,43 +352,45 @@ export default function ProfilePage() {
           </button>
         </form>
 
-        <div className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-              White label subscription
-            </p>
-            <span
-              className={`rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap ${
-                subscriptionActive
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                  : trialActive
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : "border-neutral-200 bg-white text-neutral-600"
-              }`}
-            >
-              {subscriptionLabel}
-            </span>
-          </div>
-          <div className="mt-2 text-sm text-neutral-600">
-            {trialLabel ? <p>{trialLabel}</p> : <p>Manage your white label access and billing.</p>}
-          </div>
-          {(subscriptionActive || cancelledActive) && nextBillingAt ? (
-            <div className="mt-2 text-xs text-neutral-500">
-              {cancelledActive ? "Access ends" : "Next billing date"}:{" "}
-              {new Date(nextBillingAt).toLocaleDateString()}.
-            </div>
-          ) : null}
-          {showManageLink ? (
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Link
-                href="/white-label/subscribe"
-                className="inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+        {!isNigeria ? (
+          <div className="mt-6 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                White label subscription
+              </p>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap ${
+                  subscriptionActive
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : trialActive
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-neutral-200 bg-white text-neutral-600"
+                }`}
               >
-                Manage subscription
-              </Link>
+                {subscriptionLabel}
+              </span>
             </div>
-          ) : null}
-        </div>
+            <div className="mt-2 text-sm text-neutral-600">
+              {trialLabel ? <p>{trialLabel}</p> : <p>Manage your white label access and billing.</p>}
+            </div>
+            {(subscriptionActive || cancelledActive) && nextBillingAt ? (
+              <div className="mt-2 text-xs text-neutral-500">
+                {cancelledActive ? "Access ends" : "Next billing date"}:{" "}
+                {new Date(nextBillingAt).toLocaleDateString()}.
+              </div>
+            ) : null}
+            {showManageLink ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/white-label/subscribe"
+                  className="inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+                >
+                  Manage billing
+                </Link>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-6 rounded-2xl border border-neutral-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

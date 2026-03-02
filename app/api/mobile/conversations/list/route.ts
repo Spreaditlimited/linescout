@@ -16,6 +16,9 @@ function defaultTitle(chat_mode: string, route_type: RouteType) {
   // Your rule:
   // - Paid conversations: "Machine Sourcing" / "White Label"
   // - AI conversations: "AI Conversation"
+  if (chat_mode === "limited_human") {
+    return "Quick chat";
+  }
   if (chat_mode === "paid_human") {
     if (route_type === "white_label") return "White Label";
     if (route_type === "simple_sourcing") return "Simple Sourcing";
@@ -56,9 +59,13 @@ export async function GET(req: Request) {
           c.route_type,
           c.title,
           c.chat_mode,
+          c.conversation_kind,
           c.payment_status,
           c.project_status,
           c.handoff_id,
+          c.human_message_limit,
+          c.human_message_used,
+          c.human_access_expires_at,
           c.updated_at,
           c.created_at,
           (
@@ -91,6 +98,17 @@ export async function GET(req: Request) {
         FROM linescout_conversations c
         WHERE c.user_id = ?
           AND c.route_type = ?
+          AND (
+            c.conversation_kind IS NULL
+            OR c.conversation_kind <> 'quick_human'
+            OR (
+              c.conversation_kind = 'quick_human'
+              AND c.chat_mode = 'limited_human'
+              AND c.project_status = 'active'
+              AND (c.human_access_expires_at IS NULL OR c.human_access_expires_at > NOW())
+              AND (c.human_message_limit = 0 OR c.human_message_used < c.human_message_limit)
+            )
+          )
         ORDER BY sort_at DESC, c.id DESC
         LIMIT 80
         `,

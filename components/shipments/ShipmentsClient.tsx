@@ -187,7 +187,7 @@ export default function ShipmentsClient() {
   const selectedRate =
     availableRates.find((r) => r.id === Number(form.shipping_rate_id || 0)) || null;
   const units = Number(form.shipping_units || 0);
-  const displayCurrency = String(profile?.display_currency_code || "").toUpperCase() || "USD";
+  const displayCurrency = "USD";
 
   const estimate = useMemo(() => {
     if (!selectedRate) return null;
@@ -228,8 +228,8 @@ export default function ShipmentsClient() {
         shipping_rate_value: form.shipping_rate_value || null,
         shipping_units: form.shipping_units ? Number(form.shipping_units) : null,
         estimated_shipping_usd: estimate?.usdAmount ?? null,
-        estimated_shipping_amount: estimate?.displayAmount ?? null,
-        estimated_shipping_currency: displayCurrency || "",
+        estimated_shipping_amount: estimate?.usdAmount ?? null,
+        estimated_shipping_currency: "USD",
         status,
         tracking_provider: "manual",
         packages: packagesDraft,
@@ -492,8 +492,8 @@ export default function ShipmentsClient() {
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Estimated shipping cost:{" "}
             <span className="font-semibold">
-              {estimate.displayAmount
-                ? formatMoney(estimate.displayAmount, displayCurrency)
+              {estimate.usdAmount
+                ? formatMoney(estimate.usdAmount, "USD")
                 : formatMoney(estimate.estimatedInRateCurrency, estimate.rateCurrency)}
             </span>{" "}
             <span className="text-amber-700">(estimate based on your inputs)</span>

@@ -139,8 +139,23 @@ export async function GET(req: Request) {
       if (beforeId > 0) {
         const [rows]: any = await conn.query(
           `
-          SELECT id, sender_type, sender_id, message_text, created_at
-          FROM linescout_messages
+          SELECT
+            m.id,
+            m.sender_type,
+            m.sender_id,
+            m.message_text,
+            m.created_at,
+            CASE
+              WHEN m.sender_type = 'agent' THEN
+                COALESCE(
+                  NULLIF(TRIM(CONCAT(COALESCE(ap.first_name, ''), ' ', COALESCE(ap.last_name, ''))), ''),
+                  NULLIF(TRIM(iu.username), '')
+                )
+              ELSE NULL
+            END AS sender_name
+          FROM linescout_messages m
+          LEFT JOIN internal_users iu ON iu.id = m.sender_id AND m.sender_type = 'agent'
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = iu.id
           WHERE conversation_id = ?
             AND id < ?
           ORDER BY id DESC
@@ -157,8 +172,23 @@ export async function GET(req: Request) {
       } else if (afterId > 0) {
         const [rows]: any = await conn.query(
           `
-          SELECT id, sender_type, sender_id, message_text, created_at
-          FROM linescout_messages
+          SELECT
+            m.id,
+            m.sender_type,
+            m.sender_id,
+            m.message_text,
+            m.created_at,
+            CASE
+              WHEN m.sender_type = 'agent' THEN
+                COALESCE(
+                  NULLIF(TRIM(CONCAT(COALESCE(ap.first_name, ''), ' ', COALESCE(ap.last_name, ''))), ''),
+                  NULLIF(TRIM(iu.username), '')
+                )
+              ELSE NULL
+            END AS sender_name
+          FROM linescout_messages m
+          LEFT JOIN internal_users iu ON iu.id = m.sender_id AND m.sender_type = 'agent'
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = iu.id
           WHERE conversation_id = ?
             AND id > ?
           ORDER BY id ASC
@@ -170,8 +200,23 @@ export async function GET(req: Request) {
       } else {
         const [rows]: any = await conn.query(
           `
-          SELECT id, sender_type, sender_id, message_text, created_at
-          FROM linescout_messages
+          SELECT
+            m.id,
+            m.sender_type,
+            m.sender_id,
+            m.message_text,
+            m.created_at,
+            CASE
+              WHEN m.sender_type = 'agent' THEN
+                COALESCE(
+                  NULLIF(TRIM(CONCAT(COALESCE(ap.first_name, ''), ' ', COALESCE(ap.last_name, ''))), ''),
+                  NULLIF(TRIM(iu.username), '')
+                )
+              ELSE NULL
+            END AS sender_name
+          FROM linescout_messages m
+          LEFT JOIN internal_users iu ON iu.id = m.sender_id AND m.sender_type = 'agent'
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = iu.id
           WHERE conversation_id = ?
           ORDER BY id DESC
           LIMIT ?
@@ -228,16 +273,57 @@ export async function GET(req: Request) {
         attachmentsByMessageId[mid].push(a);
       }
 
+      const agentIds = Array.from(
+        new Set(
+          (msgs || [])
+            .filter((m: any) => m.sender_type === "agent")
+            .map((m: any) => Number(m.sender_id || 0))
+            .filter((n: number) => Number.isFinite(n) && n > 0)
+        )
+      );
+      const agentNameMap: Record<string, string> = {};
+      if (agentIds.length) {
+        const [agentRows]: any = await conn.query(
+          `
+          SELECT iu.id, iu.username, ap.first_name, ap.last_name
+          FROM internal_users iu
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = iu.id
+          WHERE iu.id IN (?)
+          `,
+          [agentIds]
+        );
+        for (const row of agentRows || []) {
+          const id = Number(row.id || 0);
+          const first = String(row.first_name || "").trim();
+          const last = String(row.last_name || "").trim();
+          const username = String(row.username || "").trim();
+          const name = first || last ? `${first} ${last}`.trim() : username;
+          if (id && name) agentNameMap[String(id)] = name;
+        }
+      }
+
+      const items = (msgs || []).map((m: any) => {
+        const mapped = m.sender_id ? agentNameMap[String(m.sender_id)] : null;
+        return {
+          ...m,
+          sender_name: m.sender_name ? String(m.sender_name) : mapped || null,
+        };
+      });
+
+      const firstAgentName =
+        items.find((m: any) => m?.sender_type === "agent" && m?.sender_name)?.sender_name || null;
+
       return NextResponse.json({
         ok: true,
-        items: msgs || [],
+        items,
         meta:
           String(conv?.conversation_kind || "") === "quick_human"
             ? {
                 customer_name: String(conv?.customer_name || "Customer"),
-                agent_name: "Specialist",
+                agent_name: firstAgentName || "Specialist",
               }
             : undefined,
+        agent_name_map: agentNameMap,
         attachments,
         attachments_by_message_id: attachmentsByMessageId,
         has_more: hasMore,

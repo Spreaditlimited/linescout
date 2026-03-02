@@ -476,6 +476,7 @@ export default function QuoteClient({
           purpose: paymentOption === "deposit" ? "deposit" : paymentOption === "shipping" ? "shipping_payment" : "full_product_payment",
           use_wallet: useWallet,
           shipping_type_id: selectedRate?.shipping_type_id || null,
+          shipping_rate_id: selectedRate?.id || null,
         }),
       });
       const json = await res.json().catch(() => null);

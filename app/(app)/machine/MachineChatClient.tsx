@@ -11,9 +11,13 @@ type ConversationRow = {
   id: number;
   route_type: RouteType;
   chat_mode: "ai_only" | "limited_human" | "paid_human";
+  conversation_kind?: "quick_human" | string | null;
   payment_status: "unpaid" | "pending" | "paid";
   project_status: "active" | "cancelled";
   handoff_id: number | null;
+  human_message_limit?: number | null;
+  human_message_used?: number | null;
+  human_access_expires_at?: string | null;
   updated_at: string;
   created_at: string;
   last_message_text: string | null;
@@ -63,6 +67,7 @@ const WELCOME_MSG: MessageItem = {
 function convTitle(c: ConversationRow) {
   const t = String(c.title || "").trim();
   if (t) return t;
+  if (c.chat_mode === "limited_human") return "Quick chat";
   return "AI Conversation";
 }
 
@@ -181,8 +186,7 @@ export default function MachineChatClient() {
   }
 
   const aiConversations = useMemo(
-    () =>
-      conversations.filter((c) => c.chat_mode === "ai_only" || c.chat_mode === "limited_human"),
+    () => conversations.filter((c) => c.chat_mode === "ai_only" || c.chat_mode === "limited_human"),
     [conversations]
   );
 
@@ -197,7 +201,7 @@ export default function MachineChatClient() {
       setConversations(items);
 
       if (!activeId) {
-        const first = items.find((c) => c.chat_mode === "ai_only" || c.chat_mode === "limited_human");
+        const first = items.find((c) => c.chat_mode === "ai_only");
         if (first) setActiveId(first.id);
       }
 
@@ -226,6 +230,11 @@ export default function MachineChatClient() {
     let active = true;
     async function loadMessages() {
       if (!activeId) return;
+      const activeConv = conversations.find((c) => c.id === activeId);
+      if (activeConv?.chat_mode === "limited_human") {
+        router.replace(`/quick-chat?route_type=${routeType}&conversation_id=${activeId}`);
+        return;
+      }
       setLoading(true);
       setError(null);
       const res = await authFetch(`/api/mobile/messages?conversation_id=${activeId}&limit=80`);
@@ -488,6 +497,11 @@ export default function MachineChatClient() {
                     )}
                     <span className="font-semibold">{convTitle(c)}</span>
                   </button>
+                  {c.chat_mode === "limited_human" ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700">
+                      Quick chat
+                    </span>
+                  ) : null}
                   <button
                     type="button"
                     className="rounded-full p-1 text-neutral-400 hover:text-[var(--agent-blue)]"
@@ -531,6 +545,17 @@ export default function MachineChatClient() {
                     {c.last_message_text || "No messages yet"}
                   </span>
                 </button>
+                {c.chat_mode === "limited_human" ? (
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(c.id)}
+                    className="mt-1 block w-full text-left"
+                  >
+                    <span className="block text-[11px] text-neutral-500">
+                      Expires in {timeUntilSafe(c.human_access_expires_at || null)}
+                    </span>
+                  </button>
+                ) : null}
               </div>
             ))}
           </div>

@@ -124,6 +124,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const body = await req.json().catch(() => ({}));
   const purpose = String(body?.purpose || "shipping_payment");
   const useWallet = !!body?.use_wallet;
+  const shippingRateId = body?.shipping_rate_id ? Number(body.shipping_rate_id) : null;
+  const shippingTypeId = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
 
   const conn = await db.getConnection();
   try {
@@ -189,9 +191,70 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const effectiveCountryIso2 = userCountryIso2 || countryIso2 || "NG";
     const isNigeria = effectiveCountryIso2 === "NG";
 
-    const baseUsd = Number(quote.total_shipping_usd || 0);
+    let shippingRateUsd = Number(quote.shipping_rate_usd || 0);
+    let shippingRateUnit = String(quote.shipping_rate_unit || "per_kg");
+    let shippingTypeIdResolved = Number(quote.shipping_type_id || 0) || null;
+
+    if (shippingRateId) {
+      const [rateRows]: any = await conn.query(
+        `SELECT shipping_type_id, rate_value, rate_unit
+         FROM linescout_shipping_rates
+         WHERE id = ?
+           AND is_active = 1
+           AND country_id = ?
+         LIMIT 1`,
+        [shippingRateId, quote.country_id]
+      );
+      if (rateRows?.length) {
+        shippingTypeIdResolved = Number(rateRows[0].shipping_type_id || shippingTypeIdResolved || 0) || null;
+        shippingRateUsd = num(rateRows[0].rate_value, shippingRateUsd);
+        shippingRateUnit = String(rateRows[0].rate_unit || shippingRateUnit);
+      }
+    } else if (shippingTypeId) {
+      const [rateRows]: any = await conn.query(
+        `SELECT rate_value, rate_unit
+         FROM linescout_shipping_rates
+         WHERE shipping_type_id = ?
+           AND is_active = 1
+           AND country_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [shippingTypeId, quote.country_id]
+      );
+      if (rateRows?.length) {
+        shippingTypeIdResolved = shippingTypeId;
+        shippingRateUsd = num(rateRows[0].rate_value, shippingRateUsd);
+        shippingRateUnit = String(rateRows[0].rate_unit || shippingRateUnit);
+      }
+    }
+
+    const totalWeightKg = Number(quote.total_weight_kg || 0);
+    const totalCbm = Number(quote.total_cbm || 0);
+    const shippingUnits = shippingRateUnit === "per_cbm" ? totalCbm : totalWeightKg;
+    let baseUsd = Number(quote.total_shipping_usd || 0);
+    if (shippingRateUsd > 0 && shippingUnits > 0) {
+      baseUsd = shippingUnits * shippingRateUsd;
+    }
     if (!Number.isFinite(baseUsd) || baseUsd <= 0) {
       return NextResponse.json({ ok: false, error: "Shipping total is not available." }, { status: 400 });
+    }
+
+    if (shippingRateUsd > 0 && shippingUnits > 0) {
+      const totalShippingNgn = await convertAmount(conn, baseUsd, "USD", "NGN");
+      await conn.query(
+        `UPDATE linescout_shipping_quotes
+         SET shipping_type_id = ?, shipping_rate_usd = ?, shipping_rate_unit = ?, total_shipping_usd = ?, total_shipping_ngn = ?
+         WHERE id = ?
+         LIMIT 1`,
+        [
+          shippingTypeIdResolved,
+          shippingRateUsd,
+          shippingRateUnit,
+          baseUsd,
+          Number(totalShippingNgn || 0) || null,
+          quote.id,
+        ]
+      );
     }
 
     let paymentCurrency = "USD";

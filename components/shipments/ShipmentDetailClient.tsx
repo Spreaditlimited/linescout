@@ -481,14 +481,6 @@ export default function ShipmentDetailClient({ trackingId }: { trackingId: strin
                 </button>
               </>
             ) : null}
-            {shipment.quote_token ? (
-              <Link
-                href={`/shipping-quote/${encodeURIComponent(shipment.quote_token)}`}
-                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-700 sm:whitespace-nowrap"
-              >
-                Shipping invoice
-              </Link>
-            ) : null}
           </div>
         </div>
 

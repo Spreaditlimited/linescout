@@ -294,7 +294,7 @@ export default function SourcingProjectClient() {
         setErr(data?.error || "Could not start brief specialist chat.");
         return;
       }
-      router.push(`/machine?route_type=${routeType}&conversation_id=${data.conversation_id}`);
+      router.push(`/quick-chat?route_type=${routeType}&conversation_id=${data.conversation_id}`);
     } catch (e: any) {
       setErr(e?.message || "Network error. Please try again.");
     } finally {
