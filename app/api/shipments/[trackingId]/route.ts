@@ -106,7 +106,59 @@ export async function GET(req: Request, context: { params: Promise<{ trackingId:
         `,
         [shipment.id]
       );
-      return NextResponse.json({ ok: true, shipment, events: eventRows || [], packages: packageRows || [] });
+      await ensureShippingQuoteTables(conn);
+      const [quoteRows]: any = await conn.query(
+        `
+        SELECT id, token, created_at
+        FROM linescout_shipping_quotes
+        WHERE shipment_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+        `,
+        [shipment.id]
+      );
+      const latestQuote = quoteRows?.[0] || null;
+      let latestPaid = 0;
+      let anyPaid = 0;
+      if (latestQuote?.id) {
+        const [paidRows]: any = await conn.query(
+          `
+          SELECT COUNT(*) AS paid_count
+          FROM linescout_shipping_quote_payments
+          WHERE shipping_quote_id = ?
+            AND status = 'paid'
+          `,
+          [latestQuote.id]
+        );
+        latestPaid = Number(paidRows?.[0]?.paid_count || 0);
+      }
+      const [anyPaidRows]: any = await conn.query(
+        `
+        SELECT COUNT(*) AS paid_count
+        FROM linescout_shipping_quote_payments p
+        JOIN linescout_shipping_quotes q ON q.id = p.shipping_quote_id
+        WHERE q.shipment_id = ?
+          AND p.status = 'paid'
+        `,
+        [shipment.id]
+      );
+      anyPaid = Number(anyPaidRows?.[0]?.paid_count || 0);
+
+      return NextResponse.json({
+        ok: true,
+        shipment,
+        events: eventRows || [],
+        packages: packageRows || [],
+        shipping_quote: latestQuote
+          ? {
+              id: Number(latestQuote.id || 0),
+              token: String(latestQuote.token || ""),
+              created_at: latestQuote.created_at || null,
+              has_paid_payment: latestPaid > 0,
+            }
+          : null,
+        shipping_quote_any_paid: anyPaid > 0,
+      });
     } finally {
       conn.release();
     }

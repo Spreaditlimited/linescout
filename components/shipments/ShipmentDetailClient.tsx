@@ -4,7 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 type DetailResponse =
-  | { ok: true; shipment: any; events: any[]; packages?: any[] }
+  | {
+      ok: true;
+      shipment: any;
+      events: any[];
+      packages?: any[];
+      shipping_quote?: { id: number; token: string; created_at?: string | null; has_paid_payment: boolean } | null;
+      shipping_quote_any_paid?: boolean;
+    }
   | { ok: false; error: string };
 
 type ShippingRate = {
@@ -161,6 +168,10 @@ export default function ShipmentDetailClient({ trackingId }: { trackingId: strin
   async function payEstimate() {
     setPaying(true);
     try {
+      if (state && state.ok && state.shipping_quote?.token) {
+        window.location.href = `/shipping-quote/${encodeURIComponent(state.shipping_quote.token)}`;
+        return;
+      }
       const res = await fetch("/api/shipments/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -306,6 +317,8 @@ export default function ShipmentDetailClient({ trackingId }: { trackingId: strin
   const shipment = state.shipment;
   const events = state.events || [];
   const packages = state.packages || [];
+  const unpaidInvoice = Boolean(state.shipping_quote && !state.shipping_quote.has_paid_payment);
+  const hasAnyPaid = Boolean(state.shipping_quote_any_paid);
 
   return (
     <div className="px-6 py-10">
@@ -466,18 +479,27 @@ export default function ShipmentDetailClient({ trackingId }: { trackingId: strin
                 </button>
                 <button
                   type="button"
+                  onClick={() => setConfirmDeleteShipment(true)}
+                  className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-600 sm:whitespace-nowrap"
+                >
+                  Delete draft
+                </button>
+              </>
+            ) : null}
+            {unpaidInvoice ? (
+              <>
+                <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  {hasAnyPaid
+                    ? "You have another invoice to pay for this shipment."
+                    : "You have an invoice to pay for this shipment."}
+                </div>
+                <button
+                  type="button"
                   onClick={payEstimate}
                   disabled={paying}
                   className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-neutral-200 bg-white px-5 py-2.5 text-sm font-semibold text-neutral-700 disabled:opacity-60 sm:whitespace-nowrap"
                 >
                   {paying ? "Preparing invoice..." : "Pay for shipping"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmDeleteShipment(true)}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-600 sm:whitespace-nowrap"
-                >
-                  Delete draft
                 </button>
               </>
             ) : null}
