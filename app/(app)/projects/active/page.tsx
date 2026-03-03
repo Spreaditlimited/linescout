@@ -77,13 +77,11 @@ export default function ActiveProjectPage() {
       })[0] || null;
 
       if (!active) return;
-      setProject(mostRecent);
-
       if (!mostRecent) {
-        setSummary(null);
-        setStatus("idle");
+        router.replace("/projects/new");
         return;
       }
+      setProject(mostRecent);
 
       const summaryRes = await authFetch(
         `/api/mobile/projects/summary?conversation_id=${mostRecent.conversation_id}`

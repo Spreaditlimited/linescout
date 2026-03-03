@@ -114,9 +114,7 @@ export default function OnboardingCountryClient() {
       return;
     }
 
-    const nextParam = String(searchParams.get("next") || "").trim();
-    const safeNext = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
-    router.replace(safeNext || "/white-label/ideas");
+    router.replace("/projects/new");
   }
 
   return (

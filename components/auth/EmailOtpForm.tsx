@@ -63,29 +63,7 @@ export default function EmailOtpForm() {
       return;
     }
 
-    const aiRoutes = ["machine_sourcing", "white_label", "simple_sourcing"];
-    let aiStarted = false;
-    try {
-      const results = await Promise.all(
-        aiRoutes.map(async (routeType) => {
-          const res = await authFetch(`/api/mobile/conversations/list?route_type=${routeType}`);
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok || !Array.isArray(json?.items)) return false;
-          return json.items.some((c: any) => {
-            const mode = String(c?.chat_mode || "");
-            if (mode !== "ai_only" && mode !== "limited_human") return false;
-            const lastText = String(c?.last_message_text || "").trim();
-            const lastAt = String(c?.last_message_at || "").trim();
-            return Boolean(lastText || lastAt);
-          });
-        })
-      );
-      aiStarted = results.some(Boolean);
-    } catch {
-      aiStarted = false;
-    }
-
-    router.replace(aiStarted ? "/machine" : "/machine");
+    router.replace("/projects/new");
   }
 
   useEffect(() => {
