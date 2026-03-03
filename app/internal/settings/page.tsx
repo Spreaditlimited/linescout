@@ -2560,6 +2560,8 @@ export default function InternalSettingsPage() {
                 onChange={(e) => setNewFxRate(e.target.value)}
                 className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                 placeholder="Rate"
+                type="number"
+                step="0.00001"
                 inputMode="decimal"
               />
               <button
@@ -2586,7 +2588,12 @@ export default function InternalSettingsPage() {
                     <div className="font-semibold text-neutral-100">
                       {r.base_currency_code} → {r.quote_currency_code}
                     </div>
-                    <div className="text-neutral-400">Rate: {Number(r.rate || 0).toLocaleString()}</div>
+                    <div className="text-neutral-400">
+                      Rate:{" "}
+                      {Number(r.rate || 0).toLocaleString(undefined, {
+                        maximumFractionDigits: 5,
+                      })}
+                    </div>
                   </div>
                   <div className="text-[11px] text-neutral-500">
                     {r.effective_at ? `Effective ${r.effective_at}` : "No effective date"}

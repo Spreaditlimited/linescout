@@ -216,8 +216,14 @@ export async function PUT(req: Request) {
     const fullName = `${firstName} ${lastName}`.trim();
 
     if (countryId) {
-      const rows = await queryRows<RowDataPacket & { default_currency_code?: string | null; settlement_currency_code?: string | null }>(
-        `SELECT cur.code AS default_currency_code, c.settlement_currency_code
+      const rows = await queryRows<
+        RowDataPacket & {
+          default_currency_code?: string | null;
+          settlement_currency_code?: string | null;
+          iso2?: string | null;
+        }
+      >(
+        `SELECT cur.code AS default_currency_code, c.settlement_currency_code, c.iso2
          FROM linescout_countries c
          LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
          WHERE c.id = ?
@@ -226,7 +232,16 @@ export async function PUT(req: Request) {
       );
       const defaultCode = String(rows?.[0]?.default_currency_code || "").trim();
       const settlementCurrencyCode = String(rows?.[0]?.settlement_currency_code || "").trim() || null;
-      const displayCurrencyCode = defaultCode || null;
+      const iso2 = String(rows?.[0]?.iso2 || "").trim().toUpperCase();
+      const inferred =
+        iso2 === "US"
+          ? "USD"
+          : iso2 === "CA"
+          ? "CAD"
+          : iso2 === "GB" || iso2 === "UK"
+          ? "GBP"
+          : null;
+      const displayCurrencyCode = defaultCode || settlementCurrencyCode || inferred || null;
 
       await queryRows(
         `UPDATE users

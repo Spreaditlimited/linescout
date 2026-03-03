@@ -94,6 +94,7 @@ export async function ensureSeedCurrencies(conn?: Queryable) {
     { code: "NGN", symbol: "₦", decimal_places: 0 },
     { code: "GBP", symbol: "£", decimal_places: 2 },
     { code: "USD", symbol: "$", decimal_places: 2 },
+    { code: "CAD", symbol: "CA$", decimal_places: 2 },
     { code: "RMB", symbol: "¥", decimal_places: 2 },
   ];
 
@@ -110,13 +111,15 @@ export async function ensureSeedCurrencies(conn?: Queryable) {
 export async function ensureSeedCountries(conn?: Queryable) {
   const q = getQueryable(conn);
   const [rows]: any = await q.query(
-    `SELECT id, code FROM linescout_currencies WHERE code IN ('NGN', 'GBP')`
+    `SELECT id, code FROM linescout_currencies WHERE code IN ('NGN', 'GBP', 'USD', 'CAD')`
   );
   const byCode = new Map<string, number>();
   for (const r of rows || []) byCode.set(String(r.code || "").toUpperCase(), Number(r.id));
 
   const ngnId = byCode.get("NGN") || null;
   const gbpId = byCode.get("GBP") || null;
+  const usdId = byCode.get("USD") || null;
+  const cadId = byCode.get("CAD") || null;
 
   const seed = [
     {
@@ -136,6 +139,24 @@ export async function ensureSeedCountries(conn?: Queryable) {
       settlement_currency_code: "GBP",
       payment_provider: "paypal",
       amazon_marketplace: "UK",
+    },
+    {
+      name: "United States",
+      iso2: "US",
+      iso3: "USA",
+      default_currency_id: usdId,
+      settlement_currency_code: "USD",
+      payment_provider: "paypal",
+      amazon_marketplace: "US",
+    },
+    {
+      name: "Canada",
+      iso2: "CA",
+      iso3: "CAN",
+      default_currency_id: cadId,
+      settlement_currency_code: "CAD",
+      payment_provider: "paypal",
+      amazon_marketplace: "CA",
     },
   ];
 
@@ -185,6 +206,109 @@ export async function ensureSeedCountries(conn?: Queryable) {
       );
     }
   }
+
+  if (usdId) {
+    const [us]: any = await q.query(`SELECT id FROM linescout_countries WHERE iso2 = 'US' LIMIT 1`);
+    if (us?.[0]?.id) {
+      await q.query(
+        `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
+         VALUES (?, ?, 1)
+         ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+        [us[0].id, usdId]
+      );
+    }
+  }
+
+  if (cadId) {
+    const [ca]: any = await q.query(`SELECT id FROM linescout_countries WHERE iso2 = 'CA' LIMIT 1`);
+    if (ca?.[0]?.id) {
+      await q.query(
+        `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
+         VALUES (?, ?, 1)
+         ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+        [ca[0].id, cadId]
+      );
+    }
+  }
+}
+
+export async function syncUserCountryCurrency(conn: Queryable, userId: number) {
+  const [rows]: any = await conn.query(
+    `
+    SELECT
+      u.id,
+      u.country_id,
+      u.display_currency_code,
+      c.payment_provider,
+      c.settlement_currency_code,
+      c.iso2,
+      c.name,
+      cur.code AS default_currency_code
+    FROM users u
+    LEFT JOIN linescout_countries c ON c.id = u.country_id
+    LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+    WHERE u.id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  if (!rows?.length) return null;
+  const row = rows[0] || {};
+  const defaultCode = String(row.default_currency_code || "").trim();
+  const settlement = String(row.settlement_currency_code || "").trim();
+  const iso2 = String(row.iso2 || "").trim().toUpperCase();
+  const inferred =
+    iso2 === "US"
+      ? "USD"
+      : iso2 === "CA"
+      ? "CAD"
+      : iso2 === "GB" || iso2 === "UK"
+      ? "GBP"
+      : null;
+  let desiredDisplay = (defaultCode || settlement || "NGN").toUpperCase();
+  let desiredSettlement = (settlement || defaultCode || "NGN").toUpperCase();
+  if (inferred && desiredDisplay !== inferred) {
+    desiredDisplay = inferred;
+    desiredSettlement = inferred;
+  }
+  const currentDisplay = String(row.display_currency_code || "").trim().toUpperCase();
+
+  if (row.country_id && desiredDisplay && currentDisplay !== desiredDisplay) {
+    await conn.query(
+      `UPDATE users
+       SET display_currency_code = ?
+       WHERE id = ?
+       LIMIT 1`,
+      [desiredDisplay, userId]
+    );
+
+    await conn.query(
+      `UPDATE linescout_handoffs h
+       JOIN linescout_conversations c ON c.handoff_id = h.id
+       SET h.display_currency_code = ?,
+           h.settlement_currency_code = ?
+       WHERE c.user_id = ?`,
+      [desiredDisplay, desiredSettlement, userId]
+    );
+
+    await conn.query(
+      `UPDATE linescout_quotes q
+       JOIN linescout_conversations c ON c.handoff_id = q.handoff_id
+       SET q.display_currency_code = ?,
+           q.settlement_currency_code = ?,
+           q.updated_at = NOW()
+       WHERE c.user_id = ?`,
+      [desiredDisplay, desiredSettlement, userId]
+    );
+  }
+
+  return {
+    country_id: row.country_id ? Number(row.country_id) : null,
+    display_currency_code: desiredDisplay,
+    settlement_currency_code: desiredSettlement,
+    payment_provider: row.payment_provider ? String(row.payment_provider) : null,
+  };
 }
 
 export async function ensureCountryConfig(conn?: Queryable) {

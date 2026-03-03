@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureCountryConfig, ensureUserCountryColumns, syncUserCountryCurrency } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +53,10 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      await ensureCountryConfig(conn);
+      await ensureUserCountryColumns(conn);
+      await syncUserCountryCurrency(conn, user.id);
+
       // 1) Confirm ownership + paid project
       const [rows]: any = await conn.query(
         `

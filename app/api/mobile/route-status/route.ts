@@ -5,6 +5,7 @@ import {
   ensureCountryConfig,
   ensureUserCountryColumns,
   backfillUserDefaults,
+  syncUserCountryCurrency,
 } from "@/lib/country-config";
 import { convertAmount } from "@/lib/fx";
 
@@ -39,20 +40,11 @@ export async function GET(req: NextRequest) {
       await ensureUserCountryColumns(conn);
       await backfillUserDefaults(conn);
 
-      const [countryRows]: any = await conn.query(
-        `
-        SELECT u.country_id, u.display_currency_code, c.payment_provider, c.settlement_currency_code
-        FROM users u
-        LEFT JOIN linescout_countries c ON c.id = u.country_id
-        WHERE u.id = ?
-        LIMIT 1
-        `,
-        [userId]
-      );
-      if (countryRows?.length) {
-        paymentProvider = countryRows[0]?.payment_provider || null;
-        settlementCurrency = String(countryRows[0]?.settlement_currency_code || "NGN").toUpperCase();
-        displayCurrency = String(countryRows[0]?.display_currency_code || settlementCurrency || "NGN").toUpperCase();
+      const resolved = await syncUserCountryCurrency(conn, userId);
+      if (resolved) {
+        paymentProvider = resolved.payment_provider || null;
+        settlementCurrency = String(resolved.settlement_currency_code || "NGN").toUpperCase();
+        displayCurrency = String(resolved.display_currency_code || settlementCurrency || "NGN").toUpperCase();
       }
 
       const [rows]: any = await conn.query(
