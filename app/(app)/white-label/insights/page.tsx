@@ -150,6 +150,17 @@ export default function WhiteLabelInsightsInfoPage() {
     return "—";
   };
 
+  const sourcingHref =
+    data && data.ok
+      ? `/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(
+          String(data.product.id)
+        )}&product_name=${encodeURIComponent(data.product.name)}&product_category=${encodeURIComponent(
+          data.product.category
+        )}&product_landed_ngn_per_unit=${encodeURIComponent(
+          fmtRange(raw?.landed_per_unit_low ?? null, raw?.landed_per_unit_high ?? null)
+        )} per unit`
+      : null;
+
   const fmtDate = (value: string | null) => {
     if (!value) return "—";
     const ts = Date.parse(value);
@@ -308,12 +319,27 @@ export default function WhiteLabelInsightsInfoPage() {
               Real signals for this product — explained in plain English.
             </p>
           </div>
-          <Link
-            href="/white-label/ideas"
-            className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-xs font-semibold text-neutral-700"
-          >
-            Back to ideas
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            {sourcingHref ? (
+              <div className="flex flex-col gap-1">
+                <Link
+                  href={sourcingHref}
+                  className="rounded-full bg-[var(--agent-blue)] px-5 py-2 text-xs font-semibold text-white"
+                >
+                  Start sourcing
+                </Link>
+                <p className="text-[11px] text-neutral-500">
+                  Your product context will be shared with your assigned specialist.
+                </p>
+              </div>
+            ) : null}
+            <Link
+              href="/white-label/ideas"
+              className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-xs font-semibold text-neutral-700"
+            >
+              Back to ideas
+            </Link>
+          </div>
         </div>
       </div>
 

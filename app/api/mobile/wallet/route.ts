@@ -173,11 +173,12 @@ async function ensureVirtualAccount(
 
   const url = `${normalizeProvidusBaseUrl(cfg.baseUrl)}/PiPCreateReservedAccountNumber`;
   let res: Response;
+  const requestPayload = { account_name: accountName || `User ${userId}`, bvn: "" };
   try {
     res = await fetch(url, {
       method: "POST",
       headers: headers.headers,
-      body: JSON.stringify({ account_name: accountName || `User ${userId}`, bvn: "" }),
+      body: JSON.stringify(requestPayload),
     });
   } catch (e: any) {
     throw new Error(`Providus fetch failed: ${e?.message || "network error"}`);
@@ -196,18 +197,39 @@ async function ensureVirtualAccount(
     throw new Error(`Providus create account failed: ${msg}`);
   }
 
-  await conn.query(
-    `INSERT INTO linescout_virtual_accounts
-      (owner_type, owner_id, provider, account_number, account_name, bvn, meta_json)
-     VALUES ('user', ?, 'providus', ?, ?, ?, ?)`,
-    [
-      userId,
-      String(data.account_number),
-      String(data.account_name || accountName || ""),
-      String(data.bvn || ""),
-      JSON.stringify(data || {}),
-    ]
+  try {
+    await conn.query(
+      `INSERT INTO linescout_virtual_accounts
+        (owner_type, owner_id, provider, account_number, account_name, bvn, meta_json)
+       VALUES ('user', ?, 'providus', ?, ?, ?, ?)`,
+      [
+        userId,
+        String(data.account_number),
+        String(data.account_name || accountName || ""),
+        String(data.bvn || ""),
+        JSON.stringify(data || {}),
+      ]
+    );
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (!msg.includes("uniq_owner_provider")) {
+      throw e;
+    }
+  }
+
+  const [existing]: any = await conn.query(
+    `SELECT account_number, account_name
+     FROM linescout_virtual_accounts
+     WHERE owner_type = 'user' AND owner_id = ? AND provider = 'providus'
+     LIMIT 1`,
+    [userId]
   );
+  if (existing?.[0]) {
+    return {
+      account_number: String(existing[0].account_number || ""),
+      account_name: String(existing[0].account_name || ""),
+    };
+  }
 
   return { account_number: String(data.account_number), account_name: String(data.account_name || "") };
 }
@@ -317,6 +339,12 @@ export async function GET(req: Request) {
     const status = msg === "Unauthorized" ? 401 : 500;
     if (String(msg).toLowerCase().includes("phone number is required")) {
       return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    }
+    if (String(msg).toLowerCase().includes("providus")) {
+      return NextResponse.json(
+        { ok: false, error: "Wallet creation is not available now. Try again later." },
+        { status: 503 }
+      );
     }
     return NextResponse.json({ ok: false, error: msg }, { status });
   }

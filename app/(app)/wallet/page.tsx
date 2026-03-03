@@ -74,6 +74,10 @@ export default function WalletPage() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawMessage, setWithdrawMessage] = useState<string | null>(null);
   const [withdrawLoading, setWithdrawLoading] = useState(false);
+  const walletUnavailableMsg = "Wallet creation is not available now. Try again later.";
+  const isWalletUnavailable = Boolean(
+    message && message.toLowerCase().includes("wallet creation is not available")
+  );
 
   const filteredBanks = useMemo(() => {
     const q = bankQuery.trim().toLowerCase();
@@ -239,7 +243,7 @@ export default function WalletPage() {
         </div>
       ) : null}
 
-      {status === "error" ? (
+      {status === "error" && !isWalletUnavailable ? (
         <div className="mt-6 rounded-3xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">
           {message}
         </div>
@@ -248,6 +252,24 @@ export default function WalletPage() {
       {message && message.toLowerCase().includes("phone number is required") ? (
         <div className="mt-6 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 shadow-sm">
           Add your phone number in Settings to generate a virtual account.
+        </div>
+      ) : null}
+
+      {isWalletUnavailable ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white p-6 shadow-[0_24px_60px_rgba(15,23,42,0.3)]">
+            <h2 className="text-lg font-semibold text-neutral-900">Wallet temporarily unavailable</h2>
+            <p className="mt-2 text-sm text-neutral-600">{walletUnavailableMsg}</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMessage(null)}
+                className="rounded-2xl border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 

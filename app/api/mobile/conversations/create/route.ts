@@ -45,7 +45,7 @@ export async function POST(req: Request) {
           AND c.chat_mode = 'ai_only'
           AND c.payment_status = 'unpaid'
           AND c.handoff_id IS NULL
-          AND c.conversation_kind = 'ai'
+          AND (c.conversation_kind IS NULL OR c.conversation_kind = 'ai')
         GROUP BY c.id
         HAVING COUNT(m.id) = 0
         ORDER BY c.updated_at DESC, c.id DESC
