@@ -5,6 +5,7 @@ import { paypalCaptureOrder } from "@/lib/paypal";
 import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { findPaymentAttempt, updatePaymentAttempt } from "@/lib/payment-attempts";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -325,6 +326,7 @@ export async function POST(req: Request) {
     const token = `${tokenPrefix(purpose)}${randomChunk(6)}-${randomChunk(5)}`;
     const conn = await db.getConnection();
     try {
+      await ensureAffiliateTables(conn);
       let payerUserId = userId;
       let payEmail = userEmail;
 
@@ -423,6 +425,15 @@ export async function POST(req: Request) {
             }),
           ]
         );
+
+        await creditAffiliateEarning(conn, {
+          referred_user_id: payerUserId,
+          transaction_type: "commitment_fee",
+          source_table: "linescout_tokens",
+          source_id: token,
+          base_amount: amountValue,
+          currency: currency || "USD",
+        });
 
         let finalRouteType: RouteType = routeType as RouteType;
         let assignedAgentId: number | null = null;
@@ -856,6 +867,15 @@ export async function POST(req: Request) {
           }),
         ]
       );
+
+      await creditAffiliateEarning(conn, {
+        referred_user_id: payerUserId,
+        transaction_type: "commitment_fee",
+        source_table: "linescout_tokens",
+        source_id: token,
+        base_amount: amountValue,
+        currency: currency || "USD",
+      });
 
       const [convRows]: any = await conn.query(
         `SELECT * FROM linescout_conversations WHERE user_id = ? AND route_type = ? LIMIT 1`,

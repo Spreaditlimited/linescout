@@ -7,6 +7,7 @@ import { paypalCreateOrder } from "@/lib/paypal";
 import { convertAmount } from "@/lib/fx";
 import { ensureCountryConfig, ensureUserCountryColumns } from "@/lib/country-config";
 import { ensureShippingQuoteTables } from "@/lib/shipping-quotes";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,6 +130,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const conn = await db.getConnection();
   try {
+    await ensureAffiliateTables(conn);
     await ensureShippingQuoteTables(conn);
     await ensureCountryConfig(conn);
     await ensureUserCountryColumns(conn);
@@ -325,12 +327,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
       if (walletApplied > 0) {
         const nextBalance = balance - walletApplied;
-        await conn.query(
+        const [walletPayIns]: any = await conn.query(
           `INSERT INTO linescout_shipping_quote_payments
            (shipping_quote_id, user_id, purpose, method, status, amount, currency, provider_ref, created_at, paid_at)
            VALUES (?, ?, ?, 'wallet', 'paid', ?, 'NGN', NULL, NOW(), NOW())`,
           [quote.id, user.id, purpose, walletApplied]
         );
+        const paymentId = Number(walletPayIns?.insertId || 0);
         await conn.query(
           `INSERT INTO linescout_wallet_transactions
            (wallet_id, type, amount, currency, reason, reference_type, reference_id)
@@ -341,6 +344,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           nextBalance,
           walletId,
         ]);
+
+        if (paymentId) {
+          await creditAffiliateEarning(conn, {
+            referred_user_id: Number(user.id),
+            transaction_type: "shipping_payment",
+            source_table: "linescout_shipping_quote_payments",
+            source_id: paymentId,
+            base_amount: walletApplied,
+            currency: "NGN",
+          });
+        }
       }
     }
 

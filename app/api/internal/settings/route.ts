@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 import { cookies } from "next/headers";
 import { ensureCountryConfig } from "@/lib/country-config";
+import { ensureAffiliateSettingsColumns } from "@/lib/affiliates";
 import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 
 const pool = mysql.createPool({
@@ -129,6 +130,8 @@ async function ensureRow(conn: mysql.PoolConnection) {
       `ALTER TABLE linescout_settings ADD COLUMN sticky_notice_title VARCHAR(200) NULL`
     );
   }
+
+  await ensureAffiliateSettingsColumns(conn);
 
   const [stickyBodyCols]: any = await conn.query(
     `
@@ -633,6 +636,25 @@ export async function POST(req: Request) {
     body?.agent_otp_mode === "email" || body?.agent_otp_mode === "phone"
       ? body.agent_otp_mode
       : "phone";
+  const affiliate_enabled = body?.affiliate_enabled ? 1 : 0;
+  const affiliate_terms_url =
+    typeof body?.affiliate_terms_url === "string" ? body.affiliate_terms_url.trim() : "";
+  const affiliate_min_payout_amount = num(body.affiliate_min_payout_amount);
+  const affiliate_min_payout_currency =
+    typeof body?.affiliate_min_payout_currency === "string" ? body.affiliate_min_payout_currency.trim() : "";
+  const affiliate_min_payouts_json_raw = body?.affiliate_min_payouts_json;
+  let affiliate_min_payouts_json: Record<string, number> | null = null;
+  if (affiliate_min_payouts_json_raw && typeof affiliate_min_payouts_json_raw === "object") {
+    const next: Record<string, number> = {};
+    Object.entries(affiliate_min_payouts_json_raw).forEach(([code, value]) => {
+      const currency = String(code || "").trim().toUpperCase();
+      if (!currency) return;
+      const amount = Number(value);
+      if (!Number.isFinite(amount) || amount < 0) return;
+      next[currency] = amount;
+    });
+    affiliate_min_payouts_json = Object.keys(next).length ? next : null;
+  }
   const max_active_claims = num(body.max_active_claims);
   const white_label_trial_days = num(body.white_label_trial_days);
   const white_label_daily_reveals = num(body.white_label_daily_reveals);
@@ -769,10 +791,15 @@ export async function POST(req: Request) {
           white_label_yearly_price_cad = ?,
           white_label_subscription_countries = ?,
           white_label_paypal_product_id = ?,
-          white_label_paypal_plan_monthly_gbp = ?,
-          white_label_paypal_plan_yearly_gbp = ?,
-          white_label_paypal_plan_monthly_cad = ?,
-          white_label_paypal_plan_yearly_cad = ?,
+           white_label_paypal_plan_monthly_gbp = ?,
+           white_label_paypal_plan_yearly_gbp = ?,
+           white_label_paypal_plan_monthly_cad = ?,
+           white_label_paypal_plan_yearly_cad = ?,
+           affiliate_enabled = ?,
+           affiliate_terms_url = ?,
+           affiliate_min_payout_amount = ?,
+           affiliate_min_payout_currency = ?,
+           affiliate_min_payouts_json = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
@@ -806,6 +833,11 @@ export async function POST(req: Request) {
         white_label_paypal_plan_yearly_gbp || null,
         white_label_paypal_plan_monthly_cad || null,
         white_label_paypal_plan_yearly_cad || null,
+        affiliate_enabled,
+        affiliate_terms_url || null,
+        affiliate_min_payout_amount,
+        affiliate_min_payout_currency || null,
+        affiliate_min_payouts_json ? JSON.stringify(affiliate_min_payouts_json) : null,
         effectiveEnabled,
         effectiveTitle || null,
         effectiveBody || null,

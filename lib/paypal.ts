@@ -209,6 +209,52 @@ export async function paypalCaptureOrder(orderId: string) {
   return json;
 }
 
+export async function paypalCreatePayout(params: {
+  receiverEmail: string;
+  amount: string;
+  currency: string;
+  note?: string | null;
+  senderBatchId?: string | null;
+}) {
+  const token = await paypalAccessToken();
+  const batchId = params.senderBatchId || `LS_AFF_${Date.now()}`;
+
+  const res = await fetch(`${paypalBaseUrl()}/v1/payments/payouts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      sender_batch_header: {
+        sender_batch_id: batchId,
+        email_subject: "You have a payout from LineScout",
+      },
+      items: [
+        {
+          recipient_type: "EMAIL",
+          amount: {
+            value: params.amount,
+            currency: params.currency,
+          },
+          receiver: params.receiverEmail,
+          note: params.note || undefined,
+        },
+      ],
+    }),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.batch_header?.payout_batch_id) {
+    throw new Error(json?.message || "PayPal payout failed");
+  }
+
+  return {
+    payoutId: String(json.batch_header.payout_batch_id),
+    raw: json,
+  };
+}
+
 export async function paypalGetSubscription(subscriptionId: string) {
   const token = await paypalAccessToken();
   const res = await fetch(

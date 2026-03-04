@@ -14,6 +14,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
   const isWhiteLabelMarketing = pathname === "/white-label" || isWhiteLabelLeads || isWhiteLabelWebinar;
   const isMachineWebinarMarketing = isMachineSourcingLeads || isMachineSourcingWebinar;
+  const isAffiliate = pathname.startsWith("/affiliates");
   const isMarketing =
     pathname.startsWith("/white-label") ||
     pathname.startsWith("/machines") ||
@@ -55,11 +56,29 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       : "min-h-screen flex flex-col";
 
   const showFloatingWhatsApp =
-    !isInternal && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote;
+    !isInternal &&
+    !isAgents &&
+    !isAgentApp &&
+    !isAuth &&
+    !isApp &&
+    !isAccountDeletion &&
+    !isPublicQuote &&
+    !isAffiliate;
 
   return (
     <div className={shellClass}>
-      {!isInternal && !isLanding && !isAgents && !isAgentApp && !isAuth && !isApp && !isAccountDeletion && !isPublicQuote && !isMarketing ? <Navbar /> : null}
+      {!isInternal &&
+      !isLanding &&
+      !isAgents &&
+      !isAgentApp &&
+      !isAuth &&
+      !isApp &&
+      !isAccountDeletion &&
+      !isPublicQuote &&
+      !isMarketing &&
+      !isAffiliate ? (
+        <Navbar />
+      ) : null}
       {isLanding ? children : (
         <main className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</main>
       )}

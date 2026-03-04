@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensureAffiliateTables(conn);
     const [rows]: any = await conn.query(
       `SELECT id, quote_id, handoff_id, user_id, purpose, status
        FROM linescout_quote_payments
@@ -86,6 +88,19 @@ export async function POST(req: Request) {
         handoffId: Number(row.handoff_id || 0),
         purpose,
         amountNgn: amountValue,
+        currency: currency || "GBP",
+      });
+    }
+
+    if (row.user_id) {
+      const affiliateType =
+        purpose === "shipping_payment" ? "shipping_payment" : "project_payment";
+      await creditAffiliateEarning(conn, {
+        referred_user_id: Number(row.user_id || 0),
+        transaction_type: affiliateType,
+        source_table: "linescout_quote_payments",
+        source_id: Number(row.id),
+        base_amount: amountValue,
         currency: currency || "GBP",
       });
     }

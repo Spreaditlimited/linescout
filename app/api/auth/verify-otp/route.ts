@@ -8,6 +8,7 @@ import {
   ensureUserCountryColumns,
   getNigeriaDefaults,
 } from "@/lib/country-config";
+import { attachAffiliateReferral } from "@/lib/affiliates";
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -25,6 +26,16 @@ function getClientIp(req: Request) {
   const fwd = req.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0].trim();
   return req.headers.get("x-real-ip") || null;
+}
+
+function readCookie(cookieHeader: string | null, name: string) {
+  if (!cookieHeader) return "";
+  const parts = cookieHeader.split(";");
+  for (const part of parts) {
+    const [k, v] = part.trim().split("=");
+    if (k === name) return decodeURIComponent(v || "");
+  }
+  return "";
 }
 
 export async function POST(req: Request) {
@@ -45,6 +56,9 @@ export async function POST(req: Request) {
 
     const ip = getClientIp(req);
     const userAgent = req.headers.get("user-agent");
+    const cookieHeader = req.headers.get("cookie");
+    const cookieAffiliate = readCookie(cookieHeader, "linescout_affiliate_ref");
+    const affiliateCodeRaw = String(body?.affiliate_code || cookieAffiliate || "").trim();
 
     conn = await getDb();
     await ensureCountryConfig(conn);
@@ -106,6 +120,18 @@ export async function POST(req: Request) {
         path: "/",
         maxAge: 60 * 60 * 24 * 30,
       });
+
+      if (affiliateCodeRaw) {
+        try {
+          await attachAffiliateReferral(conn, {
+            affiliate_code: affiliateCodeRaw,
+            referred_user_id: userId,
+            source: body?.source || null,
+          });
+        } catch {
+          // ignore referral attach failures
+        }
+      }
 
       return res;
     }
@@ -196,6 +222,18 @@ export async function POST(req: Request) {
       path: "/",
       maxAge: 60 * 60 * 24 * 30,
     });
+
+    if (affiliateCodeRaw) {
+      try {
+        await attachAffiliateReferral(conn, {
+          affiliate_code: affiliateCodeRaw,
+          referred_user_id: userId,
+          source: body?.source || null,
+        });
+      } catch {
+        // ignore referral attach failures
+      }
+    }
 
     return res;
   } catch (e: any) {

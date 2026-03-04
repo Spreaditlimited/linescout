@@ -6,6 +6,7 @@ import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { ensureMarketingTables, recordMarketingEvent } from "@/lib/marketing-emails";
 import { updatePaymentAttempt } from "@/lib/payment-attempts";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 import type { Transporter } from "nodemailer";
 
 // Use require to avoid default-import interop issues in some TS setups
@@ -523,6 +524,7 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      await ensureAffiliateTables(conn);
       const payerUserId = internal ? paidUserId : userId;
       let resolvedUser = u;
       if (!resolvedUser) {
@@ -577,6 +579,17 @@ export async function POST(req: Request) {
           customerPhone,
         ]
       );
+
+      if (purpose !== "business_plan" && typeof amountNaira === "number" && amountNaira > 0) {
+        await creditAffiliateEarning(conn, {
+          referred_user_id: payerUserId,
+          transaction_type: "commitment_fee",
+          source_table: "linescout_tokens",
+          source_id: token,
+          base_amount: amountNaira,
+          currency: currency || "NGN",
+        });
+      }
 
       // 1) Resolve re-order context + agent assignment (if applicable)
       let assignedAgentId: number | null = null;

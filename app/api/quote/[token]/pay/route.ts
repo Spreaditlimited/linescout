@@ -5,6 +5,7 @@ import { selectPaymentProvider } from "@/lib/payment-provider";
 import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/lib/providus";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 import { paypalCreateOrder } from "@/lib/paypal";
 import { convertAmount, getFxRate } from "@/lib/fx";
 import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/lib/quote-payment-provider";
@@ -218,6 +219,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
   const conn = await db.getConnection();
   try {
+    await ensureAffiliateTables(conn);
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
@@ -383,6 +385,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
             handoffId: Number(handoffId),
             purpose,
             amountNgn: walletApplied,
+            currency: "NGN",
+          });
+        }
+
+        if (quotePaymentId && user?.id) {
+          const affiliateType =
+            purpose === "shipping_payment" ? "shipping_payment" : "project_payment";
+          await creditAffiliateEarning(conn, {
+            referred_user_id: Number(user.id),
+            transaction_type: affiliateType,
+            source_table: "linescout_quote_payments",
+            source_id: quotePaymentId,
+            base_amount: walletApplied,
             currency: "NGN",
           });
         }

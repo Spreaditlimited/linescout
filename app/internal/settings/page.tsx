@@ -61,6 +61,11 @@ type SettingsItem = {
   white_label_paypal_plan_yearly_gbp?: string | null;
   white_label_paypal_plan_monthly_cad?: string | null;
   white_label_paypal_plan_yearly_cad?: string | null;
+  affiliate_enabled?: number | boolean;
+  affiliate_terms_url?: string | null;
+  affiliate_min_payout_amount?: number | null;
+  affiliate_min_payout_currency?: string | null;
+  affiliate_min_payouts_json?: any;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -194,6 +199,9 @@ export default function InternalSettingsPage() {
   const [exchangeRmb, setExchangeRmb] = useState("0");
   const [payoutSummaryEmail, setPayoutSummaryEmail] = useState("");
   const [agentOtpMode, setAgentOtpMode] = useState<"phone" | "email">("phone");
+  const [affiliateEnabled, setAffiliateEnabled] = useState(false);
+  const [affiliateTermsUrl, setAffiliateTermsUrl] = useState("");
+  const [affiliateMinPayouts, setAffiliateMinPayouts] = useState<Record<string, string>>({});
   const [testEmailsText, setTestEmailsText] = useState("");
   const [maxActiveClaims, setMaxActiveClaims] = useState("3");
   const [whiteLabelTrialDays, setWhiteLabelTrialDays] = useState("3");
@@ -375,6 +383,33 @@ export default function InternalSettingsPage() {
       setExchangeRmb(String(item.exchange_rate_rmb ?? 0));
       setPayoutSummaryEmail(String(item.payout_summary_email || ""));
       setAgentOtpMode(item.agent_otp_mode === "email" ? "email" : "phone");
+      setAffiliateEnabled(Boolean(item.affiliate_enabled));
+      setAffiliateTermsUrl(String(item.affiliate_terms_url || ""));
+      const minPayoutRaw = item.affiliate_min_payouts_json;
+      const parsedMinPayouts =
+        typeof minPayoutRaw === "string"
+          ? (() => {
+              try {
+                return JSON.parse(minPayoutRaw);
+              } catch {
+                return null;
+              }
+            })()
+          : minPayoutRaw;
+      const nextMinPayouts: Record<string, string> = {};
+      const currencyList: CurrencyItem[] = (data.currencies || []) as CurrencyItem[];
+      currencyList.forEach((cur) => {
+        const code = String(cur.code || "").toUpperCase();
+        if (!code) return;
+        const rawVal = parsedMinPayouts?.[code];
+        const legacyMatch =
+          code === String(item.affiliate_min_payout_currency || "NGN").toUpperCase()
+            ? Number(item.affiliate_min_payout_amount || 0)
+            : 0;
+        const amount = Number.isFinite(Number(rawVal)) ? Number(rawVal) : legacyMatch;
+        nextMinPayouts[code] = Number(amount || 0).toFixed(2);
+      });
+      setAffiliateMinPayouts(nextMinPayouts);
       setMaxActiveClaims(String(item.max_active_claims ?? 3));
       setWhiteLabelTrialDays(String(item.white_label_trial_days ?? 3));
       setWhiteLabelDailyReveals(String(item.white_label_daily_reveals ?? 10));
@@ -458,6 +493,23 @@ export default function InternalSettingsPage() {
       setWlExemptionsLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!currencies.length) return;
+    setAffiliateMinPayouts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      currencies.forEach((cur) => {
+        const code = String(cur.code || "").toUpperCase();
+        if (!code) return;
+        if (next[code] == null) {
+          next[code] = "0.00";
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [currencies]);
 
   async function createWhiteLabelExemption() {
     setWlExemptionsErr(null);
@@ -738,6 +790,14 @@ export default function InternalSettingsPage() {
     }
     setSettingsLoading(true);
     try {
+      const affiliateMinPayoutMap: Record<string, number> = {};
+      Object.entries(affiliateMinPayouts).forEach(([code, value]) => {
+        const currency = String(code || "").trim().toUpperCase();
+        if (!currency) return;
+        const amount = Number(value);
+        if (!Number.isFinite(amount) || amount < 0) return;
+        affiliateMinPayoutMap[currency] = Number(amount.toFixed(2));
+      });
       const payload = {
         commitment_due_ngn: Number(commitmentDue),
         agent_percent: Number(agentPercent),
@@ -749,6 +809,11 @@ export default function InternalSettingsPage() {
         exchange_rate_rmb: Number(exchangeRmb),
         payout_summary_email: payoutSummaryEmail.trim(),
         agent_otp_mode: agentOtpMode,
+        affiliate_enabled: affiliateEnabled ? 1 : 0,
+        affiliate_terms_url: affiliateTermsUrl.trim() || null,
+        affiliate_min_payout_amount: affiliateMinPayoutMap.NGN || 0,
+        affiliate_min_payout_currency: "NGN",
+        affiliate_min_payouts_json: affiliateMinPayoutMap,
         test_emails_json: testEmailsText
           .split(/[\n,]/)
           .map((v) => v.trim().toLowerCase())
@@ -1124,6 +1189,12 @@ export default function InternalSettingsPage() {
     if (!Number.isFinite(agentCommitPct) || agentCommitPct < 0 || agentCommitPct > 100) {
       errors.push("Agent earning (commitment) must be between 0 and 100.");
     }
+    Object.entries(affiliateMinPayouts).forEach(([code, value]) => {
+      const amount = Number(value);
+      if (!Number.isFinite(amount) || amount < 0) {
+        errors.push(`Affiliate minimum payout for ${code} must be 0 or more.`);
+      }
+    });
     if (!Number.isFinite(markupPct) || markupPct < 0 || markupPct > 100) {
       errors.push("Markup percent must be between 0 and 100.");
     }
@@ -1199,6 +1270,7 @@ export default function InternalSettingsPage() {
     whiteLabelPaypalYearlyGbp,
     whiteLabelPaypalMonthlyCad,
     whiteLabelPaypalYearlyCad,
+    affiliateMinPayouts,
   ]);
 
   const rateReady = useMemo(() => {
@@ -2601,6 +2673,85 @@ export default function InternalSettingsPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Affiliate settings */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-neutral-100">Affiliate program</h3>
+            <p className="mt-1 text-sm text-neutral-400">
+              Enable affiliates and set the minimum payout threshold.
+            </p>
+          </div>
+          <button
+            onClick={saveSettings}
+            disabled={settingsLoading || !settingsValidation.ok}
+            className="inline-flex items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white disabled:opacity-60"
+          >
+            {settingsLoading ? "Saving..." : "Save settings"}
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm text-neutral-200">
+            <input
+              type="checkbox"
+              checked={affiliateEnabled}
+              onChange={(e) => setAffiliateEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+            />
+            Enable affiliate program
+          </label>
+          <input
+            value={affiliateTermsUrl}
+            onChange={(e) => setAffiliateTermsUrl(e.target.value)}
+            placeholder="Affiliate terms URL"
+            className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+          />
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            Minimum payout per currency
+          </div>
+          <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
+            {(currencies || []).map((cur) => {
+              const code = String(cur.code || "").toUpperCase();
+              if (!code) return null;
+              return (
+                <div
+                  key={code}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200"
+                >
+                  <div className="text-xs font-semibold text-neutral-400">{code}</div>
+                  <input
+                    value={affiliateMinPayouts[code] ?? "0.00"}
+                    onChange={(e) =>
+                      setAffiliateMinPayouts((prev) => ({
+                        ...prev,
+                        [code]: e.target.value,
+                      }))
+                    }
+                    onBlur={() =>
+                      setAffiliateMinPayouts((prev) => {
+                        const raw = prev[code];
+                        const num = Number(raw);
+                        return {
+                          ...prev,
+                          [code]: Number.isFinite(num) ? num.toFixed(2) : "0.00",
+                        };
+                      })
+                    }
+                    className="w-40 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

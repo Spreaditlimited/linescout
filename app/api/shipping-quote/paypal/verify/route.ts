@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
 import { ensureShippingQuoteTables } from "@/lib/shipping-quotes";
 import { ensureShipmentTables } from "@/lib/shipments";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,9 +33,10 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
+    await ensureAffiliateTables(conn);
     await ensureShippingQuoteTables(conn);
     const [rows]: any = await conn.query(
-      `SELECT id, shipping_quote_id, status
+      `SELECT id, shipping_quote_id, user_id, status
        FROM linescout_shipping_quote_payments
        WHERE provider_ref = ?
        LIMIT 1`,
@@ -65,6 +67,17 @@ export async function POST(req: Request) {
        WHERE id = ?`,
       [row.id]
     );
+
+    if (row.user_id) {
+      await creditAffiliateEarning(conn, {
+        referred_user_id: Number(row.user_id || 0),
+        transaction_type: "shipping_payment",
+        source_table: "linescout_shipping_quote_payments",
+        source_id: Number(row.id),
+        base_amount: amountValue,
+        currency: currency || "GBP",
+      });
+    }
 
     const [qRows]: any = await conn.query(
       `SELECT token, shipment_id FROM linescout_shipping_quotes WHERE id = ? LIMIT 1`,
