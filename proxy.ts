@@ -45,6 +45,10 @@ export default async function proxy(req: NextRequest) {
     }
   }
 
+  if (!pathname.startsWith("/internal") && !pathname.startsWith("/api/internal")) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith("/api/internal/")) {
     return handleInternalApi(req);
   }
