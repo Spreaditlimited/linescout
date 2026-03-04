@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
 export const config = {
-  matcher: ["/internal/:path*", "/api/internal/:path*"],
+  matcher: ["/internal/:path*", "/api/internal/:path*", "/affiliates", "/affiliates/:path*"],
 };
 
 const pool = mysql.createPool({
@@ -14,6 +14,36 @@ const pool = mysql.createPool({
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (pathname.startsWith("/affiliates/")) {
+    const segments = pathname.split("/").filter(Boolean);
+    const slug = segments[1] || "";
+    const reserved = new Set([
+      "sign-in",
+      "dashboard",
+      "referrals",
+      "activity",
+      "payouts",
+      "payout-history",
+    ]);
+
+    if (segments.length === 2 && slug && !reserved.has(slug)) {
+      const referral = slug.trim().toUpperCase();
+      const url = req.nextUrl.clone();
+      url.pathname = "/sign-in";
+      const res = NextResponse.redirect(url);
+      res.cookies.set({
+        name: "linescout_affiliate_ref",
+        value: referral,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 90,
+      });
+      return res;
+    }
+  }
 
   if (pathname.startsWith("/api/internal/")) {
     return handleInternalApi(req);

@@ -25,7 +25,7 @@ export default function AffiliatesLandingPage() {
             </h1>
             <p className="mt-4 text-base text-neutral-600 sm:text-lg">
               You get a permanent referral link. We track your referrals across web and mobile. Earnings are
-              calculated per transaction type — exactly as configured by LineScout admin.
+              calculated per transaction type.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
@@ -57,7 +57,7 @@ export default function AffiliatesLandingPage() {
               </div>
               <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-4">
                 <div className="text-xs font-semibold text-[var(--agent-blue)]">3. Request payout</div>
-                <div className="mt-1">Request payouts once you hit the admin‑configured minimum.</div>
+                <div className="mt-1">Request payout once you hit the minimum payout for your country.</div>
               </div>
             </div>
           </section>
@@ -68,4 +68,3 @@ export default function AffiliatesLandingPage() {
     </div>
   );
 }
-
