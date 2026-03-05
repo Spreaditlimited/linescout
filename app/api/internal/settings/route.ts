@@ -133,6 +133,22 @@ async function ensureRow(conn: mysql.PoolConnection) {
 
   await ensureAffiliateSettingsColumns(conn);
 
+  const [serviceChargeCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'service_charge_bands_json'
+    LIMIT 1
+    `
+  );
+  if (!serviceChargeCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN service_charge_bands_json JSON NULL`
+    );
+  }
+
   const [stickyBodyCols]: any = await conn.query(
     `
     SELECT COLUMN_NAME
@@ -655,6 +671,11 @@ export async function POST(req: Request) {
     });
     affiliate_min_payouts_json = Object.keys(next).length ? next : null;
   }
+  const service_charge_bands_json_raw = body?.service_charge_bands_json;
+  let service_charge_bands_json: any = null;
+  if (service_charge_bands_json_raw && typeof service_charge_bands_json_raw === "object") {
+    service_charge_bands_json = service_charge_bands_json_raw;
+  }
   const affiliate_promo_videos_json_raw = body?.affiliate_promo_videos_json;
   let affiliate_promo_videos_json: { title: string; url: string | null }[] | null = null;
   if (Array.isArray(affiliate_promo_videos_json_raw)) {
@@ -814,6 +835,7 @@ export async function POST(req: Request) {
            affiliate_min_payout_currency = ?,
            affiliate_min_payouts_json = ?,
            affiliate_promo_videos_json = ?,
+           service_charge_bands_json = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
@@ -853,6 +875,7 @@ export async function POST(req: Request) {
         affiliate_min_payout_currency || null,
         affiliate_min_payouts_json ? JSON.stringify(affiliate_min_payouts_json) : null,
         affiliate_promo_videos_json ? JSON.stringify(affiliate_promo_videos_json) : null,
+        service_charge_bands_json ? JSON.stringify(service_charge_bands_json) : null,
         effectiveEnabled,
         effectiveTitle || null,
         effectiveBody || null,

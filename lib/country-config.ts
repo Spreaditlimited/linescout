@@ -352,6 +352,7 @@ export async function ensureQuoteCountryColumns(conn?: Queryable) {
   await ensureColumn(q, "linescout_quotes", "country_id", "INT NULL");
   await ensureColumn(q, "linescout_quotes", "display_currency_code", "VARCHAR(8) NULL");
   await ensureColumn(q, "linescout_quotes", "settlement_currency_code", "VARCHAR(8) NULL");
+  await ensureColumn(q, "linescout_quotes", "service_charge_percent", "DECIMAL(6,2) NULL");
 }
 
 export async function ensureWhiteLabelCountryColumns(conn?: Queryable) {

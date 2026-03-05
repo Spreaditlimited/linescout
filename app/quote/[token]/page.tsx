@@ -134,6 +134,11 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
     const markupPercent = Number(settings?.markup_percent || quote.markup_percent || 0);
+    const agentPercent = Number(quote.agent_percent || settings?.agent_percent || 0);
+    const lineScoutMarginPercent = Math.max(0, markupPercent - agentPercent);
+    const serviceChargePercent = Number.isFinite(Number(quote.service_charge_percent))
+      ? Number(quote.service_charge_percent)
+      : lineScoutMarginPercent;
 
     const resolved = await resolveCountryCurrency(conn, quote.country_id, null);
     const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
@@ -234,6 +239,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           exchangeRmb={exchangeRmb}
           exchangeUsd={exchangeUsd}
           markupPercent={markupPercent}
+          agentPercent={agentPercent}
+          lineScoutMarginPercent={lineScoutMarginPercent}
+          serviceChargePercent={serviceChargePercent}
           shippingRates={shippingRates}
           defaultShippingTypeId={quote.shipping_type_id}
           depositEnabled={!!quote.deposit_enabled}

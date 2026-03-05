@@ -24,12 +24,17 @@ type QuoteSummary = {
   shipping_type: string | null;
   product_balance: number;
   shipping_balance: number;
+  display_currency_code?: string | null;
+  due_amount_display?: number;
+  product_balance_display?: number;
+  shipping_balance_display?: number;
 };
 
 type SummaryRow = {
   conversation_id: number;
   stage: string;
   quote_summary: QuoteSummary | null;
+  quote_summaries?: QuoteSummary[] | null;
 };
 
 export default function QuotesPage() {
@@ -75,9 +80,7 @@ export default function QuotesPage() {
         })
       );
 
-      const filtered = summaries.filter(
-        (item): item is SummaryRow => !!item && !!item.quote_summary
-      );
+      const filtered = summaries.filter((item): item is SummaryRow => !!item && (!!item.quote_summary || !!item.quote_summaries?.length));
 
       if (active) {
         setRows(filtered);
@@ -135,30 +138,51 @@ export default function QuotesPage() {
           </div>
         ) : null}
 
-        {rows.map((row) => (
-          <Link
-            key={row.conversation_id}
-            href={`/projects/${row.conversation_id}`}
-            className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[rgba(45,52,97,0.2)]"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Quote</p>
-                <h2 className="mt-2 text-lg font-semibold text-neutral-900">
-                  {row.quote_summary?.product_name || "Quoted items"}
-                </h2>
-                <p className="mt-2 text-xs text-neutral-600">Stage: {row.stage}</p>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-900">
-                {money.format(row.quote_summary?.due_amount || 0)} due
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2 text-xs text-neutral-600 sm:grid-cols-2">
-              <span>Product balance: {money.format(row.quote_summary?.product_balance || 0)}</span>
-              <span>Shipping balance: {money.format(row.quote_summary?.shipping_balance || 0)}</span>
-            </div>
-          </Link>
-        ))}
+        {rows.flatMap((row) => {
+          const summaries = row.quote_summaries?.length ? row.quote_summaries : row.quote_summary ? [row.quote_summary] : [];
+          return summaries.map((summary) => {
+            const currency = summary.display_currency_code || "NGN";
+            const formatter = new Intl.NumberFormat("en-NG", {
+              style: "currency",
+              currency,
+              maximumFractionDigits: 0,
+            });
+            const dueDisplay = Number.isFinite(Number(summary.due_amount_display))
+              ? Number(summary.due_amount_display)
+              : summary.due_amount || 0;
+            const productBalanceDisplay = Number.isFinite(Number(summary.product_balance_display))
+              ? Number(summary.product_balance_display)
+              : summary.product_balance || 0;
+            const shippingBalanceDisplay = Number.isFinite(Number(summary.shipping_balance_display))
+              ? Number(summary.shipping_balance_display)
+              : summary.shipping_balance || 0;
+
+            return (
+              <Link
+                key={`${row.conversation_id}-${summary.quote_id}`}
+                href={summary.quote_token ? `/quote/${summary.quote_token}` : `/projects/${row.conversation_id}`}
+                className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-[rgba(45,52,97,0.2)]"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Quote</p>
+                    <h2 className="mt-2 text-lg font-semibold text-neutral-900">
+                      {summary.product_name || "Quoted items"}
+                    </h2>
+                    <p className="mt-2 text-xs text-neutral-600">Stage: {row.stage}</p>
+                  </div>
+                  <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-900">
+                    {formatter.format(dueDisplay)} due
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 text-xs text-neutral-600 sm:grid-cols-2">
+                  <span>Product balance: {formatter.format(productBalanceDisplay)}</span>
+                  <span>Shipping balance: {formatter.format(shippingBalanceDisplay)}</span>
+                </div>
+              </Link>
+            );
+          });
+        })}
       </div>
     </div>
   );

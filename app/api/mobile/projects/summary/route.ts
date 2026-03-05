@@ -136,6 +136,7 @@ export async function GET(req: Request) {
       const summaryText = parts.join("\n\n") || null;
 
       let quoteSummary: any = null;
+      let quoteSummaries: any[] = [];
       let quotePayments: any[] = [];
       let commitmentPayment: any | null = null;
 
@@ -177,21 +178,12 @@ export async function GET(req: Request) {
            q.total_shipping_usd,
            q.display_currency_code,
            q.items_json,
+           q.created_at,
            st.name AS shipping_type_name
          FROM linescout_quotes q
          LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
          WHERE q.handoff_id = ?
-         ORDER BY
-           CASE
-             WHEN EXISTS (
-               SELECT 1
-               FROM linescout_quote_payments p
-               WHERE p.quote_id = q.id
-             ) THEN 0
-             ELSE 1
-           END ASC,
-           q.id DESC
-         LIMIT 1`,
+         ORDER BY q.id DESC`,
         [Number(c.handoff_id)]
       );
       let handoffDisplayCurrency = "NGN";
@@ -207,9 +199,10 @@ export async function GET(req: Request) {
       }
 
       if (quoteRows?.length) {
-        const q = quoteRows[0];
         const displayCurrencyCode =
-          String(q.display_currency_code || handoffDisplayCurrency || "NGN").trim().toUpperCase() || "NGN";
+          String(quoteRows?.[0]?.display_currency_code || handoffDisplayCurrency || "NGN")
+            .trim()
+            .toUpperCase() || "NGN";
 
         let ngnToDisplay = 1;
         let rmbToDisplay = 0;
@@ -252,94 +245,114 @@ export async function GET(req: Request) {
           rmbToNgn = Number.isFinite(rate) && rate > 0 ? rate : 0;
         }
 
-        const productDue = Math.max(
-          0,
-          Math.round(
-            Number(q.total_product_ngn || 0) +
-              Number(q.total_markup_ngn || 0) -
-              Number(q.commitment_due_ngn || 0)
-          )
-        );
-        const shippingDue = Math.max(0, Math.round(Number(q.total_shipping_ngn || 0)));
-
-        const [qPayRows]: any = await conn.query(
-          `SELECT
-             id, purpose, method, status, amount, currency, provider_ref, created_at, paid_at
-           FROM linescout_quote_payments
-           WHERE quote_id = ?
-           ORDER BY id DESC`,
-          [Number(q.id)]
-        );
-        quotePayments = Array.isArray(qPayRows) ? qPayRows : [];
-
-        const productPaid = quotePayments.reduce((sum, p) => {
-          const purpose = String(p?.purpose || "");
-          const status = String(p?.status || "");
-          if (status === "paid" && (purpose === "deposit" || purpose === "product_balance" || purpose === "full_product_payment")) {
-            return sum + Number(p?.amount || 0);
-          }
-          return sum;
-        }, 0);
-        const shippingPaid = quotePayments.reduce((sum, p) => {
-          if (String(p?.status || "") === "paid" && String(p?.purpose || "") === "shipping_payment") {
-            return sum + Number(p?.amount || 0);
-          }
-          return sum;
-        }, 0);
-
-        const items = pickItems(q.items_json);
-        const firstItem = items?.[0] || null;
-        const quantity = items.reduce((sum: number, item: any) => {
-          const n = Number(item?.quantity || 0);
-          return Number.isFinite(n) ? sum + n : sum;
-        }, 0);
-        const productBalance = Math.max(0, productDue - productPaid);
-        const shippingBalance = Math.max(0, shippingDue - shippingPaid);
-
-        let productWithMarkupDisplay = 0;
-        let shippingDisplay = 0;
-        let productDueDisplay = 0;
-        let shippingDueDisplay = 0;
-        if (displayCurrencyCode === "NGN") {
-          productWithMarkupDisplay = Number(q.total_product_ngn || 0) + Number(q.total_markup_ngn || 0);
-          shippingDisplay = Number(q.total_shipping_ngn || 0);
-          productDueDisplay = productDue;
-          shippingDueDisplay = shippingDue;
-        } else if (rmbToDisplay > 0 && usdToDisplay > 0 && rmbToNgn > 0) {
-          const productWithMarkupRmb =
-            Number(q.total_product_rmb || 0) + Number(q.total_markup_ngn || 0) / rmbToNgn;
-          productWithMarkupDisplay = productWithMarkupRmb * rmbToDisplay;
-          shippingDisplay = Number(q.total_shipping_usd || 0) * usdToDisplay;
-          productDueDisplay = Math.max(0, productWithMarkupDisplay - Number(q.commitment_due_ngn || 0) * ngnToDisplay);
-          shippingDueDisplay = shippingDisplay;
+        const quoteIds = quoteRows.map((row: any) => Number(row.id)).filter((id: number) => Number.isFinite(id));
+        if (quoteIds.length) {
+          const placeholders = quoteIds.map(() => "?").join(", ");
+          const [qPayRows]: any = await conn.query(
+            `SELECT
+               id, quote_id, purpose, method, status, amount, currency, provider_ref, created_at, paid_at
+             FROM linescout_quote_payments
+             WHERE quote_id IN (${placeholders})
+             ORDER BY id DESC`,
+            quoteIds
+          );
+          quotePayments = Array.isArray(qPayRows) ? qPayRows : [];
         }
 
-        const productPaidDisplay = displayCurrencyCode === "NGN" ? productPaid : productPaid * ngnToDisplay;
-        const shippingPaidDisplay = displayCurrencyCode === "NGN" ? shippingPaid : shippingPaid * ngnToDisplay;
+        const paymentsByQuote = quotePayments.reduce((acc: Record<number, any[]>, payment: any) => {
+          const quoteId = Number(payment?.quote_id || 0);
+          if (!quoteId) return acc;
+          if (!acc[quoteId]) acc[quoteId] = [];
+          acc[quoteId].push(payment);
+          return acc;
+        }, {});
 
-        quoteSummary = {
-          quote_id: Number(q.id),
-          quote_token: String(q.token || ""),
-          product_name: firstItem?.product_name ? String(firstItem.product_name) : null,
-          quantity,
-          // User-facing due should represent total outstanding on the project.
-          due_amount: productBalance + shippingBalance,
-          display_currency_code: displayCurrencyCode,
-          due_amount_display: Math.max(0, productDueDisplay - productPaidDisplay) + Math.max(0, shippingDueDisplay - shippingPaidDisplay),
-          shipping_type: q.shipping_type_name ? String(q.shipping_type_name) : null,
-          product_due: productDue,
-          product_paid: productPaid,
-          product_balance: productBalance,
-          shipping_due: shippingDue,
-          shipping_paid: shippingPaid,
-          shipping_balance: shippingBalance,
-          product_due_display: productDueDisplay,
-          shipping_due_display: shippingDueDisplay,
-          product_paid_display: productPaidDisplay,
-          shipping_paid_display: shippingPaidDisplay,
-          product_balance_display: Math.max(0, productDueDisplay - productPaidDisplay),
-          shipping_balance_display: Math.max(0, shippingDueDisplay - shippingPaidDisplay),
-        };
+        quoteSummaries = quoteRows.map((q: any) => {
+          const productDue = Math.max(
+            0,
+            Math.round(
+              Number(q.total_product_ngn || 0) +
+                Number(q.total_markup_ngn || 0) -
+                Number(q.commitment_due_ngn || 0)
+            )
+          );
+          const shippingDue = Math.max(0, Math.round(Number(q.total_shipping_ngn || 0)));
+
+          const payments = paymentsByQuote[Number(q.id)] || [];
+          const productPaid = payments.reduce((sum, p) => {
+            const purpose = String(p?.purpose || "");
+            const status = String(p?.status || "");
+            if (
+              status === "paid" &&
+              (purpose === "deposit" || purpose === "product_balance" || purpose === "full_product_payment")
+            ) {
+              return sum + Number(p?.amount || 0);
+            }
+            return sum;
+          }, 0);
+          const shippingPaid = payments.reduce((sum, p) => {
+            if (String(p?.status || "") === "paid" && String(p?.purpose || "") === "shipping_payment") {
+              return sum + Number(p?.amount || 0);
+            }
+            return sum;
+          }, 0);
+
+          const items = pickItems(q.items_json);
+          const firstItem = items?.[0] || null;
+          const quantity = items.reduce((sum: number, item: any) => {
+            const n = Number(item?.quantity || 0);
+            return Number.isFinite(n) ? sum + n : sum;
+          }, 0);
+          const productBalance = Math.max(0, productDue - productPaid);
+          const shippingBalance = Math.max(0, shippingDue - shippingPaid);
+
+          let productWithMarkupDisplay = 0;
+          let shippingDisplay = 0;
+          let productDueDisplay = 0;
+          let shippingDueDisplay = 0;
+          if (displayCurrencyCode === "NGN") {
+            productWithMarkupDisplay = Number(q.total_product_ngn || 0) + Number(q.total_markup_ngn || 0);
+            shippingDisplay = Number(q.total_shipping_ngn || 0);
+            productDueDisplay = productDue;
+            shippingDueDisplay = shippingDue;
+          } else if (rmbToDisplay > 0 && usdToDisplay > 0 && rmbToNgn > 0) {
+            const productWithMarkupRmb =
+              Number(q.total_product_rmb || 0) + Number(q.total_markup_ngn || 0) / rmbToNgn;
+            productWithMarkupDisplay = productWithMarkupRmb * rmbToDisplay;
+            shippingDisplay = Number(q.total_shipping_usd || 0) * usdToDisplay;
+            productDueDisplay = Math.max(0, productWithMarkupDisplay - Number(q.commitment_due_ngn || 0) * ngnToDisplay);
+            shippingDueDisplay = shippingDisplay;
+          }
+
+          const productPaidDisplay = displayCurrencyCode === "NGN" ? productPaid : productPaid * ngnToDisplay;
+          const shippingPaidDisplay = displayCurrencyCode === "NGN" ? shippingPaid : shippingPaid * ngnToDisplay;
+
+          return {
+            quote_id: Number(q.id),
+            quote_token: String(q.token || ""),
+            product_name: firstItem?.product_name ? String(firstItem.product_name) : null,
+            quantity,
+            due_amount: productBalance + shippingBalance,
+            display_currency_code: displayCurrencyCode,
+            due_amount_display:
+              Math.max(0, productDueDisplay - productPaidDisplay) + Math.max(0, shippingDueDisplay - shippingPaidDisplay),
+            shipping_type: q.shipping_type_name ? String(q.shipping_type_name) : null,
+            product_due: productDue,
+            product_paid: productPaid,
+            product_balance: productBalance,
+            shipping_due: shippingDue,
+            shipping_paid: shippingPaid,
+            shipping_balance: shippingBalance,
+            product_due_display: productDueDisplay,
+            shipping_due_display: shippingDueDisplay,
+            product_paid_display: productPaidDisplay,
+            shipping_paid_display: shippingPaidDisplay,
+            product_balance_display: Math.max(0, productDueDisplay - productPaidDisplay),
+            shipping_balance_display: Math.max(0, shippingDueDisplay - shippingPaidDisplay),
+          };
+        });
+
+        quoteSummary = quoteSummaries[0] || null;
       }
 
       const allPayments = commitmentPayment
@@ -354,6 +367,7 @@ export async function GET(req: Request) {
         summary: summaryText,
         handoff_context: c.handoff_context || null,
         quote_summary: quoteSummary,
+        quote_summaries: quoteSummaries,
         payments: allPayments,
       });
     } finally {

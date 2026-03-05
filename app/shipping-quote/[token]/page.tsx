@@ -189,6 +189,9 @@ export default async function ShippingQuotePage({ params }: { params: Promise<{ 
           exchangeRmb={exchangeRmb}
           exchangeUsd={exchangeUsd}
           markupPercent={markupPercent}
+          agentPercent={0}
+          lineScoutMarginPercent={0}
+          serviceChargePercent={0}
           shippingRates={shippingRates}
           defaultShippingTypeId={quote.shipping_type_id}
           depositEnabled={!!quote.deposit_enabled}

@@ -26,7 +26,9 @@ function computeTotals(
   exchangeUsd: number,
   shippingRateUsd: number,
   shippingUnit: string,
-  markupPercent: number
+  agentPercent: number,
+  lineScoutMarginPercent: number,
+  serviceChargePercent: number
 ) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
@@ -51,11 +53,14 @@ function computeTotals(
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const agentPercent = Math.min(10, Math.max(0, markupPercent));
-  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
-  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
-  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const safeAgentPercent = Math.max(0, agentPercent);
+  const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
+  const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
+  const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
+  const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
+  const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
@@ -255,6 +260,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
     const markupPercent = num(quote.markup_percent, 0);
+    const agentPercent = num(quote.agent_percent, 0);
+    const lineScoutMarginPercent = Math.max(0, markupPercent - agentPercent);
+    const serviceChargePercent = Number.isFinite(Number(quote.service_charge_percent))
+      ? Number(quote.service_charge_percent)
+      : lineScoutMarginPercent;
     const vatRate = num(quote.vat_rate_percent, 0);
 
     const shipType = shippingTypeId || quote.shipping_type_id;
@@ -282,7 +292,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       return NextResponse.json({ ok: false, error: "FX rates for NGN are not configured." }, { status: 500 });
     }
 
-    const totals = computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
+    const totals = computeTotals(
+      items,
+      exchangeRmb,
+      exchangeUsd,
+      shippingRateUsd,
+      shippingRateUnit,
+      agentPercent,
+      lineScoutMarginPercent,
+      serviceChargePercent
+    );
 
     let excludedAddonIds: number[] = [];
     if (Array.isArray(body?.excluded_addon_ids)) {

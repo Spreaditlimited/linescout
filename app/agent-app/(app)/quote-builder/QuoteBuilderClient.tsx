@@ -83,6 +83,19 @@ type FxRate = {
   created_at?: string | null;
 };
 
+type ServiceChargeBand = {
+  min: number;
+  max: number | null;
+  percent: number;
+};
+
+type ServiceChargeConfig = {
+  currency: string;
+  bands: ServiceChargeBand[];
+};
+
+type ServiceChargeBands = Record<string, ServiceChargeConfig>;
+
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -101,7 +114,48 @@ function ensureItems(raw: any): QuoteItem[] {
   }));
 }
 
-function computeTotals(items: QuoteItem[], exchangeRmb: number, exchangeUsd: number, shippingRateUsd: number, shippingUnit: string, markupPercent: number) {
+function normalizeRouteType(raw?: string | null) {
+  const route = String(raw || "").trim().toLowerCase();
+  if (route === "machine_sourcing" || route === "simple_sourcing" || route === "white_label") return route;
+  return "";
+}
+
+function getFxRateFromList(rates: FxRate[], base: string, quote: string) {
+  const row = rates.find(
+    (r) =>
+      String(r.base_currency_code || "").toUpperCase() === base &&
+      String(r.quote_currency_code || "").toUpperCase() === quote
+  );
+  const rate = Number(row?.rate || 0);
+  return Number.isFinite(rate) && rate > 0 ? rate : 0;
+}
+
+function resolveBandPercent(bands: ServiceChargeBands, routeType: string, amount: number, fallback: number) {
+  if (!bands || typeof bands !== "object") return fallback;
+  const config = bands[routeType];
+  if (!config || !Array.isArray(config.bands)) return fallback;
+  for (const band of config.bands) {
+    const min = Number(band.min || 0);
+    const max = band.max == null ? null : Number(band.max);
+    const percent = Number(band.percent || 0);
+    if (!Number.isFinite(min) || !Number.isFinite(percent)) continue;
+    if (amount >= min && (max == null || amount <= max)) {
+      return Math.max(0, percent);
+    }
+  }
+  return fallback;
+}
+
+function computeTotals(
+  items: QuoteItem[],
+  exchangeRmb: number,
+  exchangeUsd: number,
+  shippingRateUsd: number,
+  shippingUnit: string,
+  agentPercent: number,
+  lineScoutMarginPercent: number,
+  serviceChargePercent: number
+) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
   let totalWeightKg = 0;
@@ -120,14 +174,18 @@ function computeTotals(items: QuoteItem[], exchangeRmb: number, exchangeUsd: num
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const agentPercent = Math.min(10, Math.max(0, markupPercent));
-  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
-  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
-  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
-  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * serviceChargePercent) / 100;
+  const safeAgentPercent = Math.max(0, agentPercent);
+  const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
+  const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
+  const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
@@ -157,6 +215,7 @@ function QuoteBuilderInner() {
   const [activeConversationId, setActiveConversationId] = useState<number | null>(
     queryConversationId > 0 ? queryConversationId : null
   );
+  const [activeRouteType, setActiveRouteType] = useState<string>("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -180,6 +239,7 @@ function QuoteBuilderInner() {
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [displayCurrencyCode, setDisplayCurrencyCode] = useState<string | null>(null);
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
+  const [serviceChargeBands, setServiceChargeBands] = useState<ServiceChargeBands>({});
   const suppressAutoSelectRef = useRef(false);
   const viewingSavedQuoteRef = useRef(false);
   const draftRef = useRef<{
@@ -246,9 +306,41 @@ function QuoteBuilderInner() {
     commitmentDueNgn: 0,
   });
 
+  const normalizedRouteType = normalizeRouteType(activeRouteType);
+  const lineScoutMarginPercent = Math.max(0, markupPercent - agentPercent);
+  const serviceChargePercent = useMemo(() => {
+    const config = serviceChargeBands[normalizedRouteType];
+    if (!config || !Array.isArray(config.bands) || !items.length) return lineScoutMarginPercent;
+    let baseProductNgn = 0;
+    for (const item of items) {
+      const qty = num(item.quantity, 0);
+      const unitPrice = num(item.unit_price_rmb, 0);
+      const localTransport = num(item.local_transport_rmb, 0);
+      baseProductNgn += (qty * unitPrice + localTransport) * exchangeRmb;
+    }
+    const bandCurrency = String(config.currency || "GBP").toUpperCase();
+    let amountForBand = baseProductNgn;
+    if (bandCurrency !== "NGN") {
+      const fx = getFxRateFromList(fxRates, "NGN", bandCurrency);
+      if (fx > 0) {
+        amountForBand = baseProductNgn * fx;
+      }
+    }
+    return resolveBandPercent(serviceChargeBands, normalizedRouteType, amountForBand, lineScoutMarginPercent);
+  }, [items, exchangeRmb, fxRates, normalizedRouteType, serviceChargeBands, lineScoutMarginPercent]);
+
   const totals = useMemo(() => {
-    return computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
-  }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent]);
+    return computeTotals(
+      items,
+      exchangeRmb,
+      exchangeUsd,
+      shippingRateUsd,
+      shippingRateUnit,
+      agentPercent,
+      lineScoutMarginPercent,
+      serviceChargePercent
+    );
+  }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, agentPercent, lineScoutMarginPercent, serviceChargePercent]);
 
   const displayRates = useMemo(() => {
     const code = String(displayCurrencyCode || "NGN").toUpperCase();
@@ -410,6 +502,22 @@ function QuoteBuilderInner() {
       setAgentPercent(num(json.settings.agent_percent, 0));
       setAgentCommitmentPercent(num(json.settings.agent_commitment_percent, 0));
       setCommitmentDueNgn(num(json.settings.commitment_due_ngn, 0));
+      if (json.settings.service_charge_bands_json) {
+        const raw = json.settings.service_charge_bands_json;
+        const parsed =
+          typeof raw === "string"
+            ? (() => {
+                try {
+                  return JSON.parse(raw);
+                } catch {
+                  return null;
+                }
+              })()
+            : raw;
+        if (parsed && typeof parsed === "object") {
+          setServiceChargeBands(parsed as ServiceChargeBands);
+        }
+      }
       if (fxRmbNgn <= 0) setExchangeRmb(num(json.settings.exchange_rate_rmb, 0));
       if (fxUsdNgn <= 0) setExchangeUsd(num(json.settings.exchange_rate_usd, 0));
       setDefaultSettings({
@@ -438,7 +546,7 @@ function QuoteBuilderInner() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [activeHandoffId]);
 
   const selectQuote = useCallback((quote: QuoteRecord) => {
     if (!quote) return;
@@ -515,6 +623,12 @@ function QuoteBuilderInner() {
         )
       );
       setProjects(allowed);
+      if (activeHandoffId) {
+        const match = allowed.find((item: ProjectItem) => Number(item.handoff_id) === Number(activeHandoffId));
+        if (match) {
+          setActiveRouteType(String(match.route_type || ""));
+        }
+      }
     } finally {
       setProjectsLoading(false);
     }
@@ -1423,6 +1537,7 @@ function QuoteBuilderInner() {
                         if (proj.handoff_id) {
                           setActiveHandoffId(proj.handoff_id);
                           setActiveConversationId(proj.conversation_id || null);
+                          setActiveRouteType(String(proj.route_type || ""));
                           const preferredCountry =
                             proj.user_country_id || proj.handoff_country_id || null;
                           if (preferredCountry) {

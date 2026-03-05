@@ -68,6 +68,7 @@ type SettingsItem = {
   affiliate_min_payout_currency?: string | null;
   affiliate_min_payouts_json?: any;
   affiliate_promo_videos_json?: any;
+  service_charge_bands_json?: any;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -123,6 +124,48 @@ type FxRateItem = {
   rate: number;
   effective_at?: string | null;
   created_at?: string | null;
+};
+
+type ServiceChargeBand = {
+  min: string;
+  max: string;
+  percent: string;
+};
+
+type ServiceChargeConfig = {
+  currency: string;
+  bands: ServiceChargeBand[];
+};
+
+type ServiceChargeBands = Record<string, ServiceChargeConfig>;
+
+const DEFAULT_SERVICE_CHARGE_BANDS: ServiceChargeBands = {
+  machine_sourcing: {
+    currency: "GBP",
+    bands: [
+      { min: "0", max: "5000", percent: "10" },
+      { min: "5000", max: "10000", percent: "8" },
+      { min: "10000", max: "15000", percent: "7" },
+      { min: "15000", max: "", percent: "6" },
+    ],
+  },
+  white_label: {
+    currency: "GBP",
+    bands: [
+      { min: "0", max: "2000", percent: "10" },
+      { min: "2000", max: "3500", percent: "8" },
+      { min: "3500", max: "5000", percent: "7" },
+      { min: "5000", max: "", percent: "6" },
+    ],
+  },
+  simple_sourcing: {
+    currency: "GBP",
+    bands: [
+      { min: "0", max: "2000", percent: "10" },
+      { min: "2000", max: "5000", percent: "8" },
+      { min: "5000", max: "", percent: "6" },
+    ],
+  },
 };
 
 type Threshold = { max: number; points: number };
@@ -212,6 +255,9 @@ export default function InternalSettingsPage() {
     { title: "Creating a Simple Sourcing project", url: "" },
     { title: "Creating a Machine Sourcing project", url: "" },
   ]);
+  const [serviceChargeBands, setServiceChargeBands] = useState<ServiceChargeBands>(
+    DEFAULT_SERVICE_CHARGE_BANDS
+  );
   const [testEmailsText, setTestEmailsText] = useState("");
   const [maxActiveClaims, setMaxActiveClaims] = useState("3");
   const [whiteLabelTrialDays, setWhiteLabelTrialDays] = useState("3");
@@ -395,6 +441,25 @@ export default function InternalSettingsPage() {
       setAgentOtpMode(item.agent_otp_mode === "email" ? "email" : "phone");
       setAffiliateEnabled(Boolean(item.affiliate_enabled));
       setAffiliateTermsUrl(String(item.affiliate_terms_url || ""));
+      const bandsRaw = item.service_charge_bands_json;
+      const parsedBands =
+        typeof bandsRaw === "string"
+          ? (() => {
+              try {
+                return JSON.parse(bandsRaw);
+              } catch {
+                return null;
+              }
+            })()
+          : bandsRaw;
+      if (parsedBands && typeof parsedBands === "object") {
+        setServiceChargeBands((prev) => ({
+          ...prev,
+          ...parsedBands,
+        }));
+      } else {
+        setServiceChargeBands(DEFAULT_SERVICE_CHARGE_BANDS);
+      }
       const promoRaw = item.affiliate_promo_videos_json;
       const promoParsed =
         typeof promoRaw === "string"
@@ -852,6 +917,7 @@ export default function InternalSettingsPage() {
           title: entry.title,
           url: entry.url.trim() || null,
         })),
+        service_charge_bands_json: serviceChargeBands,
         test_emails_json: testEmailsText
           .split(/[\n,]/)
           .map((v) => v.trim().toLowerCase())
@@ -2744,6 +2810,139 @@ export default function InternalSettingsPage() {
               Set country VAT percentages applied to service charge + add-ons.
             </div>
           </Link>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-100">Service charge bands</h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Configure the customer-facing service charge by route type and project value.
+            </p>
+          </div>
+          <div className="text-xs text-neutral-500">LineScout margin stays fixed.</div>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          {[
+            { key: "machine_sourcing", label: "Machine sourcing" },
+            { key: "white_label", label: "White label" },
+            { key: "simple_sourcing", label: "Simple sourcing" },
+          ].map((route) => {
+            const config = serviceChargeBands[route.key] || { currency: "GBP", bands: [] };
+            return (
+              <div
+                key={route.key}
+                className="min-w-0 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-neutral-100">{route.label}</div>
+                  <input
+                    value={config.currency || "GBP"}
+                    onChange={(e) =>
+                      setServiceChargeBands((prev) => ({
+                        ...prev,
+                        [route.key]: {
+                          ...config,
+                          currency: e.target.value.toUpperCase(),
+                        },
+                      }))
+                    }
+                    className="w-20 rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                    placeholder="GBP"
+                  />
+                </div>
+                <div className="mt-3 space-y-2 text-xs text-neutral-300">
+                  {config.bands.map((band, idx) => (
+                    <div
+                      key={`${route.key}-${idx}`}
+                      className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto] items-center gap-2"
+                    >
+                      <input
+                        value={band.min}
+                        onChange={(e) =>
+                          setServiceChargeBands((prev) => {
+                            const next = { ...(prev || {}) } as ServiceChargeBands;
+                            const nextConfig = { ...config };
+                            const bands = [...(nextConfig.bands || [])];
+                            bands[idx] = { ...bands[idx], min: e.target.value };
+                            nextConfig.bands = bands;
+                            next[route.key] = nextConfig;
+                            return next;
+                          })
+                        }
+                        className="w-full min-w-0 rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                        placeholder="Min"
+                      />
+                      <input
+                        value={band.max}
+                        onChange={(e) =>
+                          setServiceChargeBands((prev) => {
+                            const next = { ...(prev || {}) } as ServiceChargeBands;
+                            const nextConfig = { ...config };
+                            const bands = [...(nextConfig.bands || [])];
+                            bands[idx] = { ...bands[idx], max: e.target.value };
+                            nextConfig.bands = bands;
+                            next[route.key] = nextConfig;
+                            return next;
+                          })
+                        }
+                        className="w-full min-w-0 rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                        placeholder="Max"
+                      />
+                      <input
+                        value={band.percent}
+                        onChange={(e) =>
+                          setServiceChargeBands((prev) => {
+                            const next = { ...(prev || {}) } as ServiceChargeBands;
+                            const nextConfig = { ...config };
+                            const bands = [...(nextConfig.bands || [])];
+                            bands[idx] = { ...bands[idx], percent: e.target.value };
+                            nextConfig.bands = bands;
+                            next[route.key] = nextConfig;
+                            return next;
+                          })
+                        }
+                        className="w-full min-w-0 rounded-xl border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                        placeholder="%"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setServiceChargeBands((prev) => {
+                            const next = { ...(prev || {}) } as ServiceChargeBands;
+                            const nextConfig = { ...config };
+                            nextConfig.bands = nextConfig.bands.filter((_, i) => i !== idx);
+                            next[route.key] = nextConfig;
+                            return next;
+                          })
+                        }
+                        className="whitespace-nowrap rounded-xl border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-300 hover:border-neutral-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setServiceChargeBands((prev) => {
+                      const next = { ...(prev || {}) } as ServiceChargeBands;
+                      const nextConfig = { ...config };
+                      nextConfig.bands = [...(nextConfig.bands || []), { min: "", max: "", percent: "" }];
+                      next[route.key] = nextConfig;
+                      return next;
+                    })
+                  }
+                  className="mt-3 w-full rounded-xl border border-neutral-800 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+                >
+                  Add band
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 

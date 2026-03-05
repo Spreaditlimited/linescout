@@ -37,6 +37,9 @@ type QuoteClientProps = {
   exchangeRmb: number;
   exchangeUsd: number;
   markupPercent: number;
+  agentPercent?: number;
+  lineScoutMarginPercent?: number;
+  serviceChargePercent?: number;
   shippingRates: ShippingRate[];
   defaultShippingTypeId?: number | null;
   depositEnabled?: boolean;
@@ -116,7 +119,9 @@ function computeTotals(
   exchangeUsd: number,
   shippingRateUsd: number,
   shippingUnit: "per_kg" | "per_cbm",
-  markupPercent: number
+  agentPercent: number,
+  lineScoutMarginPercent: number,
+  serviceChargePercent: number
 ) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
@@ -141,14 +146,18 @@ function computeTotals(
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const agentPercent = Math.min(10, Math.max(0, markupPercent));
-  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
-  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
-  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
-  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * serviceChargePercent) / 100;
+  const safeAgentPercent = Math.max(0, agentPercent);
+  const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
+  const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
+  const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
@@ -184,6 +193,9 @@ export default function QuoteClient({
   exchangeRmb,
   exchangeUsd,
   markupPercent,
+  agentPercent: agentPercentProp,
+  lineScoutMarginPercent: lineScoutMarginPercentProp,
+  serviceChargePercent: serviceChargePercentProp,
   shippingRates,
   defaultShippingTypeId,
   depositEnabled = false,
@@ -205,6 +217,14 @@ export default function QuoteClient({
   const safeAddonLines = Array.isArray(addonLines) ? addonLines : [];
   const totalAddonsNgn = Math.max(0, Number(totalAddonsNgnProp || 0));
   const safeVatRate = Math.max(0, Number(vatRatePercent || 0));
+  const agentPercent = Number.isFinite(Number(agentPercentProp)) ? Number(agentPercentProp) : 0;
+  const lineScoutMarginPercent = Number.isFinite(Number(lineScoutMarginPercentProp))
+    ? Number(lineScoutMarginPercentProp)
+    : Math.max(0, Number(markupPercent || 0) - agentPercent);
+  const serviceChargePercent = Number.isFinite(Number(serviceChargePercentProp))
+    ? Number(serviceChargePercentProp)
+    : lineScoutMarginPercent;
+  const hiddenUpliftPercent = Math.max(0, lineScoutMarginPercent - serviceChargePercent);
   const searchParams = useSearchParams();
   const showFxDebug = String(searchParams?.get("fxdebug") || "") === "1";
   const initialRateId = useMemo(() => {
@@ -396,8 +416,17 @@ export default function QuoteClient({
   const totals = useMemo(() => {
     const rateUsd = Number(selectedRate?.rate_value || 0);
     const unit = (selectedRate?.rate_unit || "per_kg") as "per_kg" | "per_cbm";
-    return computeTotals(items, exchangeRmb, exchangeUsd, rateUsd, unit, markupPercent);
-  }, [items, exchangeRmb, exchangeUsd, markupPercent, selectedRate]);
+    return computeTotals(
+      items,
+      exchangeRmb,
+      exchangeUsd,
+      rateUsd,
+      unit,
+      agentPercent,
+      lineScoutMarginPercent,
+      serviceChargePercent
+    );
+  }, [items, exchangeRmb, exchangeUsd, agentPercent, lineScoutMarginPercent, serviceChargePercent, selectedRate]);
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
 
@@ -815,7 +844,7 @@ export default function QuoteClient({
     if (!shippingOnly && items.length) {
       ensureSpace(36);
       cursorY -= 16;
-      page.drawText("Items (RMB, incl. 10% agent uplift)", {
+      page.drawText("Items (RMB, incl. sourcing uplift)", {
         x: margin,
         y: cursorY,
         size: 9,
@@ -835,12 +864,12 @@ export default function QuoteClient({
         color: rule,
       });
 
-      const agentPercent = Math.min(10, Math.max(0, Number(markupPercent || 0)));
+      const upliftPercent = agentPercent + hiddenUpliftPercent;
       for (const item of items) {
         ensureSpace(16);
         const qty = Number(item.quantity || 0);
         const unitBase = Number(item.unit_price_rmb || 0);
-        const unitWithAgent = unitBase * (1 + agentPercent / 100);
+        const unitWithAgent = unitBase * (1 + upliftPercent / 100);
         const lineTotal = unitWithAgent * qty;
         const name = String(item.product_name || "Item").slice(0, 34);
         cursorY -= 14;
@@ -1005,8 +1034,7 @@ export default function QuoteClient({
                     {items.map((item: any, idx: number) => {
                       const qty = Number(item.quantity || 0);
                       const unitBase = Number(item.unit_price_rmb || 0);
-                      const agentPercent = Math.min(10, Math.max(0, Number(markupPercent || 0)));
-                      const uplift = 1 + agentPercent / 100;
+                      const uplift = 1 + (agentPercent + hiddenUpliftPercent) / 100;
                       const unitWithAgent = unitBase * uplift;
                       const lineTotal = unitWithAgent * qty;
                       return (

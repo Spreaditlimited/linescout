@@ -9,7 +9,7 @@ import {
   backfillQuoteDefaults,
   backfillHandoffDefaults,
 } from "@/lib/country-config";
-import { ensureQuoteAddonTables } from "@/lib/quote-addons";
+import { ensureQuoteAddonTables, normalizeRouteType } from "@/lib/quote-addons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,7 +106,50 @@ function num(v: any, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, shippingRateUsd: number, shippingUnit: string, markupPercent: number) {
+function parseServiceChargeBands(raw: any) {
+  if (!raw) return null;
+  const parsed =
+    typeof raw === "string"
+      ? (() => {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return null;
+          }
+        })()
+      : raw;
+  if (!parsed || typeof parsed !== "object") return null;
+  return parsed;
+}
+
+function resolveBandPercent(bands: any, routeType: string, amount: number, fallback: number) {
+  if (!bands || typeof bands !== "object") return fallback;
+  const config = bands[normalizeRouteType(routeType || "")] || bands[routeType] || null;
+  if (!config || !Array.isArray(config.bands)) return fallback;
+  const cleaned = config.bands
+    .map((band: any) => ({
+      min: num(band?.min, 0),
+      max: band?.max === "" || band?.max == null ? null : num(band?.max, 0),
+      percent: num(band?.percent, 0),
+    }))
+    .filter((band: any) => Number.isFinite(band.min) && Number.isFinite(band.percent));
+  for (const band of cleaned) {
+    const maxOk = band.max == null || amount <= band.max;
+    if (amount >= band.min && maxOk) return Math.max(0, band.percent);
+  }
+  return fallback;
+}
+
+function computeTotals(
+  items: any[],
+  exchangeRmb: number,
+  exchangeUsd: number,
+  shippingRateUsd: number,
+  shippingUnit: string,
+  agentPercent: number,
+  lineScoutMarginPercent: number,
+  serviceChargePercent: number
+) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
   let totalWeightKg = 0;
@@ -130,13 +173,17 @@ function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, s
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const agentPercent = Math.min(10, Math.max(0, markupPercent));
-  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
-  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
-  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
-  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const safeAgentPercent = Math.max(0, agentPercent);
+  const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
+  const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
+  const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
@@ -285,13 +332,54 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ ok: false, error: "FX rates for NGN are not configured." }, { status: 500 });
     }
 
+    const [settingsRows]: any = await conn.query(
+      `SELECT service_charge_bands_json
+       FROM linescout_settings
+       ORDER BY id DESC
+       LIMIT 1`
+    );
+    const bands = parseServiceChargeBands(settingsRows?.[0]?.service_charge_bands_json);
+    const lineScoutMarginPercent = Math.max(0, markup_percent - agent_percent);
+
+    let baseProductNgn = 0;
+    for (const item of items) {
+      const qty = num(item.quantity, 0);
+      const unitPrice = num(item.unit_price_rmb, 0);
+      const localTransport = num(item.local_transport_rmb, 0);
+      baseProductNgn += (qty * unitPrice + localTransport) * exchange_rate_rmb;
+    }
+
+    const [routeRows]: any = await conn.query(
+      `SELECT c.route_type
+       FROM linescout_quotes q
+       JOIN linescout_conversations c ON c.handoff_id = q.handoff_id
+       WHERE q.id = ?
+       ORDER BY c.id DESC
+       LIMIT 1`,
+      [quoteId]
+    );
+    const routeType = normalizeRouteType(routeRows?.[0]?.route_type || "");
+    const bandConfig = bands?.[routeType] || null;
+    const bandCurrency = String(bandConfig?.currency || "GBP").trim().toUpperCase() || "GBP";
+    let amountForBand = baseProductNgn;
+    if (bandCurrency !== "NGN") {
+      const fx = await getFxRate(conn, "NGN", bandCurrency);
+      if (fx && fx > 0) {
+        amountForBand = baseProductNgn * fx;
+      }
+    }
+    const resolvedServiceCharge = resolveBandPercent(bands, routeType, amountForBand, lineScoutMarginPercent);
+    const service_charge_percent = Math.max(0, Math.min(resolvedServiceCharge, lineScoutMarginPercent));
+
     const totals = computeTotals(
       items,
       exchange_rate_rmb,
       exchange_rate_usd,
       shipping_rate_usd,
       shipping_rate_unit,
-      markup_percent
+      agent_percent,
+      lineScoutMarginPercent,
+      service_charge_percent
     );
     const [extraRows]: any = await conn.query(
       `SELECT total_addons_ngn, vat_rate_percent
@@ -320,6 +408,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       agent_percent,
       agent_commitment_percent,
       commitment_due_ngn,
+      service_charge_percent,
       deposit_enabled ? 1 : 0,
       deposit_percent || null,
       ...(updateAgentNote ? [agent_note || null] : []),
@@ -352,6 +441,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
            agent_percent = ?,
            agent_commitment_percent = ?,
            commitment_due_ngn = ?,
+           service_charge_percent = ?,
            deposit_enabled = ?,
            deposit_percent = ?,
            ${setNoteSql}
