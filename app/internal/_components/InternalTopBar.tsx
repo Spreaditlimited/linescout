@@ -228,6 +228,8 @@ export default function InternalTopBar() {
   if (isAdmin) operationsItems.push({ label: "Shipments", href: "/internal/shipments" });
   if (isAdmin) operationsItems.push({ label: "Reorders", href: "/internal/admin/reorders" });
   if (isAdmin) operationsItems.push({ label: "Agent Support", href: "/internal/agent-support" });
+  if (isAdmin) operationsItems.push({ label: "Accounting", href: "/internal/accounting" });
+  if (canAnalytics) operationsItems.push({ label: "Analytics", href: "/internal/analytics" });
 
   const adminItems: NavItem[] = [];
   if (isAdmin) {
@@ -245,7 +247,6 @@ export default function InternalTopBar() {
     adminItems.push({ label: "White Label Products", href: "/internal/admin/white-label-products" });
     adminItems.push({ label: "Machines", href: "/internal/admin/machines" });
 
-    if (canAnalytics) adminItems.push({ label: "Analytics", href: "/internal/analytics" });
     adminItems.push({ label: "Notifications", href: "/internal/notifications" });
     adminItems.push({ label: "Settings", href: "/internal/settings" });
   }

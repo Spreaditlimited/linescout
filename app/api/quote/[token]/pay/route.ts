@@ -6,6 +6,7 @@ import { getProvidusConfig, normalizeProvidusBaseUrl, providusHeaders } from "@/
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
+import { ensureQuoteAddonTables } from "@/lib/quote-addons";
 import { paypalCreateOrder } from "@/lib/paypal";
 import { convertAmount, getFxRate } from "@/lib/fx";
 import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/lib/quote-payment-provider";
@@ -46,15 +47,20 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
-  const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
+  const agentPercent = Math.min(10, Math.max(0, markupPercent));
+  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
+  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
-    totalProductNgn,
+    totalProductNgn: totalProductNgnWithAgent,
+    baseProductNgn,
     totalShippingNgn,
     totalMarkupNgn,
     totalDueNgn,
@@ -220,6 +226,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const conn = await db.getConnection();
   try {
     await ensureAffiliateTables(conn);
+    await ensureQuoteAddonTables(conn);
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
@@ -248,6 +255,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
     const markupPercent = num(quote.markup_percent, 0);
+    const vatRate = num(quote.vat_rate_percent, 0);
 
     const shipType = shippingTypeId || quote.shipping_type_id;
     let shippingRateUsd = num(quote.shipping_rate_usd, 0);
@@ -275,7 +283,70 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     }
 
     const totals = computeTotals(items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent);
-    const productTarget = Math.max(0, Math.round(totals.totalProductNgn + totals.totalMarkupNgn - commitmentDue));
+
+    let excludedAddonIds: number[] = [];
+    if (Array.isArray(body?.excluded_addon_ids)) {
+      excludedAddonIds = body.excluded_addon_ids
+        .map((id: any) => Number(id))
+        .filter((id: number) => Number.isFinite(id) && id > 0);
+    }
+
+    const [addonRows]: any = await conn.query(
+      `SELECT id, currency_code, amount
+       FROM linescout_quote_addon_lines
+       WHERE quote_id = ?`,
+      [quote.id]
+    );
+    let totalAddonsNgn = 0;
+    for (const row of addonRows || []) {
+      const lineId = Number(row.id || 0);
+      if (excludedAddonIds.includes(lineId)) continue;
+      const amount = num(row.amount, 0);
+      const code = String(row.currency_code || "NGN").trim().toUpperCase() || "NGN";
+      if (amount <= 0) continue;
+      if (code === "NGN") {
+        totalAddonsNgn += amount;
+      } else {
+        const fx = await getFxRate(conn, code, "NGN");
+        if (!fx || fx <= 0) {
+          return NextResponse.json(
+            { ok: false, error: `Missing FX rate for ${code} to NGN (add-on).` },
+            { status: 500 }
+          );
+        }
+        totalAddonsNgn += amount * fx;
+      }
+    }
+    totalAddonsNgn = Number(totalAddonsNgn.toFixed(2));
+
+    if (excludedAddonIds.length && addonRows?.length) {
+      await conn.query(
+        `UPDATE linescout_quote_addon_lines
+         SET is_removed = CASE WHEN id IN (${excludedAddonIds.map(() => "?").join(", ")}) THEN 1 ELSE 0 END
+         WHERE quote_id = ?`,
+        [...excludedAddonIds, quote.id]
+      );
+    } else if (!excludedAddonIds.length && addonRows?.length) {
+      await conn.query(
+        `UPDATE linescout_quote_addon_lines
+         SET is_removed = 0
+         WHERE quote_id = ?`,
+        [quote.id]
+      );
+    }
+
+    const vatBaseNgn = totals.totalMarkupNgn + totalAddonsNgn;
+    const totalVatNgn = Math.max(0, Number(((vatBaseNgn * vatRate) / 100).toFixed(2)));
+    const productTotalWithAddons = totals.totalProductNgn + totals.totalMarkupNgn + totalAddonsNgn + totalVatNgn;
+
+    const totalDueNgn = totals.totalProductNgn + totals.totalShippingNgn + totals.totalMarkupNgn + totalAddonsNgn + totalVatNgn;
+    await conn.query(
+      `UPDATE linescout_quotes
+       SET total_addons_ngn = ?, total_vat_ngn = ?, total_due_ngn = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [totalAddonsNgn, totalVatNgn, totalDueNgn, quote.id]
+    );
+    const productTarget = Math.max(0, Math.round(productTotalWithAddons - commitmentDue));
 
     const [paidRows]: any = await conn.query(
       `SELECT
@@ -294,7 +365,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       if (!depositEnabled || depositPercent <= 0) {
         return NextResponse.json({ ok: false, error: "Deposit is not enabled for this quote" }, { status: 400 });
       }
-      const depositAmount = computeDepositAmount(totals.totalProductNgn + totals.totalMarkupNgn, depositPercent);
+      const depositAmount = computeDepositAmount(productTotalWithAddons, depositPercent);
       if (productPaid >= depositAmount) {
         return NextResponse.json({ ok: false, error: "Deposit already paid" }, { status: 400 });
       }

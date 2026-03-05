@@ -116,18 +116,24 @@ function computeTotals(items: QuoteItem[], exchangeRmb: number, exchangeUsd: num
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * markupPercent) / 100;
-  const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
+  const agentPercent = Math.min(10, Math.max(0, markupPercent));
+  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * serviceChargePercent) / 100;
+  const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
-    totalProductRmb: totalProductRmbWithLocal,
+    totalProductRmb: totalProductRmbWithAgent,
     totalProductRmbWithLocal,
-    totalProductNgn,
+    totalProductNgn: totalProductNgnWithAgent,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,

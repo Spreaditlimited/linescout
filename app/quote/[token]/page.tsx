@@ -8,6 +8,7 @@ import { resolveCountryCurrency } from "@/lib/country-config";
 import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults } from "@/lib/country-config";
 import { selectPaymentProvider } from "@/lib/payment-provider";
 import { ensureQuotePaymentProviderTable, resolveQuotePaymentProvider } from "@/lib/quote-payment-provider";
+import { getQuoteAddonLines } from "@/lib/quote-addons";
 import QuoteClient from "./QuoteClient";
 
 export const dynamic = "force-dynamic";
@@ -217,6 +218,8 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       }
     }
 
+    const addonLines = await getQuoteAddonLines(conn, Number(quote.id || 0));
+
     return (
       <Suspense fallback={null}>
         <QuoteClient
@@ -224,6 +227,10 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           customerName={userDisplayName || quote.customer_name}
           agentNote={quote.agent_note}
           items={items}
+          addonLines={addonLines}
+          totalAddonsNgn={Number(quote.total_addons_ngn || 0)}
+          totalVatNgn={Number(quote.total_vat_ngn || 0)}
+          vatRatePercent={Number(quote.vat_rate_percent || 0)}
           exchangeRmb={exchangeRmb}
           exchangeUsd={exchangeUsd}
           markupPercent={markupPercent}

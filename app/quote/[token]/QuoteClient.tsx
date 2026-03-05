@@ -23,6 +23,17 @@ type QuoteClientProps = {
   customerPhone?: string | null;
   agentNote?: string | null;
   items: any[];
+  addonLines?: Array<{
+    id?: number;
+    addon_id?: number | null;
+    title?: string | null;
+    currency_code?: string | null;
+    amount?: number | null;
+    is_removed?: number | null;
+  }>;
+  totalAddonsNgn?: number | null;
+  totalVatNgn?: number | null;
+  vatRatePercent?: number | null;
   exchangeRmb: number;
   exchangeUsd: number;
   markupPercent: number;
@@ -126,18 +137,26 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * markupPercent) / 100;
-  const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
+  const agentPercent = Math.min(10, Math.max(0, markupPercent));
+  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmbWithLocal * serviceChargePercent) / 100;
+  const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
     totalProductRmb,
     totalProductRmbWithLocal,
-    totalProductNgn,
+    totalProductRmbWithAgent,
+    totalProductNgn: totalProductNgnWithAgent,
+    baseProductNgn,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,
@@ -158,6 +177,10 @@ export default function QuoteClient({
   customerPhone,
   agentNote,
   items,
+  addonLines,
+  totalAddonsNgn: totalAddonsNgnProp,
+  totalVatNgn: totalVatNgnProp,
+  vatRatePercent,
   exchangeRmb,
   exchangeUsd,
   markupPercent,
@@ -179,6 +202,9 @@ export default function QuoteClient({
   const shippingFx = Number(shippingFxRate || 0);
   const productFx = Number(productFxRate || 0);
   const shippingDisplayRate = effectiveDisplayCurrency === "NGN" ? exchangeUsd : shippingFx;
+  const safeAddonLines = Array.isArray(addonLines) ? addonLines : [];
+  const totalAddonsNgn = Math.max(0, Number(totalAddonsNgnProp || 0));
+  const safeVatRate = Math.max(0, Number(vatRatePercent || 0));
   const searchParams = useSearchParams();
   const showFxDebug = String(searchParams?.get("fxdebug") || "") === "1";
   const initialRateId = useMemo(() => {
@@ -226,6 +252,17 @@ export default function QuoteClient({
   });
   const [payments, setPayments] = useState<QuotePayment[]>([]);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [addonSelection, setAddonSelection] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    for (const line of safeAddonLines) {
+      const key = String(line.id ?? line.addon_id ?? "");
+      if (!key) continue;
+      next[key] = line.is_removed ? false : true;
+    }
+    setAddonSelection(next);
+  }, [safeAddonLines]);
 
   useEffect(() => {
     const pay = String(searchParams?.get("pay") || "").toLowerCase();
@@ -363,13 +400,6 @@ export default function QuoteClient({
   }, [items, exchangeRmb, exchangeUsd, markupPercent, selectedRate]);
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
-  const productTotalNgn = totals.totalProductNgn + totals.totalMarkupNgn;
-  const productPaidTotalNgn = paidTotals.deposit_paid + paidTotals.product_paid;
-  const productTargetNgn = Math.max(0, Math.round(productTotalNgn - commitmentDueNgn));
-  const depositAmountNgn = depositEnabled ? Math.round((productTotalNgn * depositPercent) / 100) : 0;
-  const depositRemainingNgn = Math.max(0, depositAmountNgn - paidTotals.deposit_paid);
-  const productRemainingNgn = Math.max(0, Math.round(productTargetNgn - productPaidTotalNgn));
-  const shippingRemainingNgn = Math.max(0, Math.round(totals.totalShippingNgn - paidTotals.shipping_paid));
 
   const paymentDisplayTotals = useMemo(() => {
     const convert = (amount: number, currency: string) => {
@@ -396,10 +426,88 @@ export default function QuoteClient({
     return totals;
   }, [payments, effectiveDisplayCurrency, effectiveDisplayRate, shippingFx]);
 
-  const productTotalDisplay =
+  const convertAddonDisplay = (amount: number, currency: string) => {
+    const code = String(currency || "").toUpperCase();
+    if (!amount || !Number.isFinite(amount)) return 0;
+    if (code === effectiveDisplayCurrency) return amount;
+    if (code === "NGN") return amount * effectiveDisplayRate;
+    if (code === "USD") {
+      if (effectiveDisplayCurrency === "USD") return amount;
+      if (shippingFx > 0) return amount * shippingFx;
+    }
+    return 0;
+  };
+
+  const addonTotalDisplay = useMemo(() => {
+    if (shippingOnly || !safeAddonLines.length) return 0;
+    let sum = 0;
+    for (const line of safeAddonLines) {
+      const key = String(line.id ?? line.addon_id ?? "");
+      if (key && addonSelection[key] === false) continue;
+      const amount = Number(line.amount || 0);
+      const code = String(line.currency_code || "NGN");
+      sum += convertAddonDisplay(amount, code);
+    }
+    return Number(sum.toFixed(2));
+  }, [shippingOnly, safeAddonLines, addonSelection, effectiveDisplayCurrency, effectiveDisplayRate, shippingFx]);
+
+  const totalAddonsNgnSelected = useMemo(() => {
+    if (shippingOnly || !safeAddonLines.length) return 0;
+    let sum = 0;
+    for (const line of safeAddonLines) {
+      const key = String(line.id ?? line.addon_id ?? "");
+      if (key && addonSelection[key] === false) continue;
+      const amount = Number(line.amount || 0);
+      const code = String(line.currency_code || "NGN").toUpperCase();
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      if (code === "NGN") {
+        sum += amount;
+      } else if (code === effectiveDisplayCurrency && effectiveDisplayRate > 0) {
+        sum += amount / effectiveDisplayRate;
+      }
+    }
+    return Number(sum.toFixed(2));
+  }, [shippingOnly, safeAddonLines, addonSelection, effectiveDisplayCurrency, effectiveDisplayRate]);
+
+  const serviceChargeDisplay =
+    shippingOnly
+      ? 0
+      : effectiveDisplayCurrency === "NGN"
+      ? totals.totalMarkupNgn
+      : totals.totalMarkupNgn * effectiveDisplayRate;
+
+  const computedVatNgn = Math.max(
+    0,
+    Number((((totals.totalMarkupNgn + totalAddonsNgnSelected) * safeVatRate) / 100).toFixed(2))
+  );
+  const totalVatNgn = shippingOnly
+    ? 0
+    : safeVatRate > 0
+    ? computedVatNgn
+    : Math.max(0, Number(totalVatNgnProp || 0));
+
+  const baseProductNgn = totals.totalProductNgn;
+  const productTotalNgn =
+    baseProductNgn + (shippingOnly ? 0 : totals.totalMarkupNgn + totalAddonsNgnSelected + totalVatNgn);
+  const productPaidTotalNgn = paidTotals.deposit_paid + paidTotals.product_paid;
+  const productTargetNgn = Math.max(0, Math.round(productTotalNgn - commitmentDueNgn));
+  const depositAmountNgn = depositEnabled ? Math.round((productTotalNgn * depositPercent) / 100) : 0;
+  const depositRemainingNgn = Math.max(0, depositAmountNgn - paidTotals.deposit_paid);
+  const productRemainingNgn = Math.max(0, Math.round(productTargetNgn - productPaidTotalNgn));
+  const shippingRemainingNgn = Math.max(0, Math.round(totals.totalShippingNgn - paidTotals.shipping_paid));
+
+  const totalVatDisplay =
+    shippingOnly
+      ? 0
+      : effectiveDisplayCurrency === "NGN"
+      ? totalVatNgn
+      : totalVatNgn * effectiveDisplayRate;
+
+  const baseProductDisplay =
     effectiveDisplayCurrency === "NGN"
-      ? productTotalNgn
-      : (totals.totalProductRmbWithLocal + totals.totalMarkupRmb) * productFx;
+      ? totals.totalProductNgn
+      : totals.totalProductRmbWithAgent * productFx;
+  const productTotalDisplay = baseProductDisplay + (shippingOnly ? 0 : serviceChargeDisplay + addonTotalDisplay + totalVatDisplay);
   const productTargetDisplay =
     effectiveDisplayCurrency === "NGN"
       ? productTargetNgn
@@ -469,6 +577,13 @@ export default function QuoteClient({
     }
     setPaying(true);
     try {
+      const excludedAddonIds = safeAddonLines
+        .filter((line) => {
+          const key = String(line.id ?? line.addon_id ?? "");
+          return key && addonSelection[key] === false;
+        })
+        .map((line) => Number(line.id || line.addon_id))
+        .filter((id) => Number.isFinite(id) && id > 0);
       const res = await fetch(`${apiBase}/${token}/pay`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -477,6 +592,7 @@ export default function QuoteClient({
           use_wallet: useWallet,
           shipping_type_id: selectedRate?.shipping_type_id || null,
           shipping_rate_id: selectedRate?.id || null,
+          excluded_addon_ids: excludedAddonIds,
         }),
       });
       const json = await res.json().catch(() => null);
@@ -549,7 +665,7 @@ export default function QuoteClient({
     const tokenLabel = token || "—";
 
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595.28, 841.89]); // A4
+    let page = pdfDoc.addPage([595.28, 841.89]); // A4
     const { width, height } = page.getSize();
     const margin = 48;
     const textColor = rgb(0.1, 0.12, 0.2);
@@ -560,6 +676,11 @@ export default function QuoteClient({
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     let cursorY = height - margin;
+    const ensureSpace = (needed: number) => {
+      if (cursorY - needed > margin) return;
+      page = pdfDoc.addPage([595.28, 841.89]);
+      cursorY = height - margin;
+    };
 
     // Header (plain text)
     page.drawText("LineScout Receipt", {
@@ -603,6 +724,7 @@ export default function QuoteClient({
     cursorY -= 20;
 
     const drawRow = (label: string, value: string) => {
+      ensureSpace(18);
       cursorY -= 14;
       page.drawText(label, {
         x: margin,
@@ -657,6 +779,77 @@ export default function QuoteClient({
       font: fontBold,
       color: textColor,
     });
+
+    cursorY -= 18;
+    page.drawText("Quote summary", {
+      x: margin,
+      y: cursorY,
+      size: 10,
+      font: fontBold,
+      color: textColor,
+    });
+
+    const summaryRows: Array<[string, string]> = [];
+    if (!shippingOnly) {
+      summaryRows.push(["Product total", fmtCurrency(baseProductDisplay, effectiveDisplayCurrency)]);
+      if (serviceChargeDisplay > 0) {
+        summaryRows.push(["Service charge", fmtCurrency(serviceChargeDisplay, effectiveDisplayCurrency)]);
+      }
+      if (addonTotalDisplay > 0) {
+        summaryRows.push(["Additional costs", fmtCurrency(addonTotalDisplay, effectiveDisplayCurrency)]);
+      }
+      if (totalVatDisplay > 0) {
+        summaryRows.push(["VAT", fmtCurrency(totalVatDisplay, effectiveDisplayCurrency)]);
+      }
+      summaryRows.push(["Shipping", fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)]);
+      summaryRows.push(["Total due", fmtCurrency(productTotalDisplay + shippingTotalDisplay, effectiveDisplayCurrency)]);
+    } else {
+      summaryRows.push(["Shipping", fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)]);
+      summaryRows.push(["Total due", fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)]);
+    }
+
+    for (const [label, value] of summaryRows) {
+      drawRow(label, value);
+    }
+
+    if (!shippingOnly && items.length) {
+      ensureSpace(36);
+      cursorY -= 16;
+      page.drawText("Items (RMB, incl. 10% agent uplift)", {
+        x: margin,
+        y: cursorY,
+        size: 9,
+        font: fontBold,
+        color: textColor,
+      });
+      cursorY -= 12;
+      page.drawText("Item", { x: margin, y: cursorY, size: 8, font: fontBold, color: muted });
+      page.drawText("Qty", { x: margin + 260, y: cursorY, size: 8, font: fontBold, color: muted });
+      page.drawText("Unit RMB", { x: margin + 310, y: cursorY, size: 8, font: fontBold, color: muted });
+      page.drawText("Total RMB", { x: margin + 400, y: cursorY, size: 8, font: fontBold, color: muted });
+      cursorY -= 8;
+      page.drawLine({
+        start: { x: margin, y: cursorY },
+        end: { x: width - margin, y: cursorY },
+        thickness: 0.6,
+        color: rule,
+      });
+
+      const agentPercent = Math.min(10, Math.max(0, Number(markupPercent || 0)));
+      for (const item of items) {
+        ensureSpace(16);
+        const qty = Number(item.quantity || 0);
+        const unitBase = Number(item.unit_price_rmb || 0);
+        const unitWithAgent = unitBase * (1 + agentPercent / 100);
+        const lineTotal = unitWithAgent * qty;
+        const name = String(item.product_name || "Item").slice(0, 34);
+        cursorY -= 14;
+        page.drawText(name, { x: margin, y: cursorY, size: 8, font: fontRegular, color: textColor });
+        page.drawText(String(qty), { x: margin + 260, y: cursorY, size: 8, font: fontRegular, color: textColor });
+        page.drawText(unitWithAgent.toFixed(2), { x: margin + 310, y: cursorY, size: 8, font: fontRegular, color: textColor });
+        page.drawText(lineTotal.toFixed(2), { x: margin + 400, y: cursorY, size: 8, font: fontRegular, color: textColor });
+      }
+    }
 
     cursorY -= 20;
     page.drawText("Need help? hello@sureimports.com", {
@@ -809,21 +1002,78 @@ export default function QuoteClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item: any, idx: number) => (
-                      <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
-                        <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
-                        <td className="px-4 py-3 text-neutral-600">{item.quantity}</td>
-                        <td className="px-4 py-3 text-neutral-600">{item.unit_price_rmb}</td>
-                        <td className="px-4 py-3 text-neutral-800">
-                          {Number(item.quantity || 0) * Number(item.unit_price_rmb || 0)}
-                        </td>
-                      </tr>
-                    ))}
+                    {items.map((item: any, idx: number) => {
+                      const qty = Number(item.quantity || 0);
+                      const unitBase = Number(item.unit_price_rmb || 0);
+                      const agentPercent = Math.min(10, Math.max(0, Number(markupPercent || 0)));
+                      const uplift = 1 + agentPercent / 100;
+                      const unitWithAgent = unitBase * uplift;
+                      const lineTotal = unitWithAgent * qty;
+                      return (
+                        <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
+                          <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
+                          <td className="px-4 py-3 text-neutral-600">{qty}</td>
+                          <td className="px-4 py-3 text-neutral-600">{unitWithAgent.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-neutral-800">{lineTotal.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </>
               )}
             </table>
           </div>
+
+          {!shippingOnly && (serviceChargeDisplay > 0 || safeAddonLines.length > 0 || totalVatNgn > 0) ? (
+            <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+              <div className="text-sm font-semibold text-neutral-900">Additional costs</div>
+              <div className="mt-3 space-y-2 text-sm text-neutral-700">
+                {serviceChargeDisplay > 0 ? (
+                  <div className="flex items-center justify-between text-neutral-800">
+                    <span>Service charge</span>
+                    <span className="text-neutral-900">{fmtCurrency(serviceChargeDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                ) : null}
+                {safeAddonLines.map((line, idx) => {
+                  const key = String(line.id ?? line.addon_id ?? "");
+                  const removed = key && addonSelection[key] === false;
+                  const amount = convertAddonDisplay(Number(line.amount || 0), String(line.currency_code || "NGN"));
+                  return (
+                    <div key={`${line.id || "addon"}-${idx}`} className="flex items-center justify-between">
+                      <span className={removed ? "text-neutral-400 line-through" : ""}>
+                        {String(line.title || "Additional item")}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className={removed ? "text-neutral-400 line-through" : "text-neutral-900"}>
+                          {fmtCurrency(amount, effectiveDisplayCurrency)}
+                        </span>
+                        {key ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAddonSelection((prev) => ({
+                                ...prev,
+                                [key]: prev[key] === false,
+                              }))
+                            }
+                            className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-700 hover:border-neutral-500"
+                          >
+                            {removed ? "Add back" : "Remove"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+                {safeVatRate > 0 && totalVatDisplay > 0 ? (
+                  <div className="flex items-center justify-between text-neutral-800">
+                    <span>VAT ({safeVatRate.toFixed(2)}%)</span>
+                    <span className="text-neutral-900">{fmtCurrency(totalVatDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
             <div className="text-xs text-neutral-500">Shipping type</div>
@@ -974,7 +1224,7 @@ export default function QuoteClient({
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
                 <div className="text-xs text-neutral-500">Product total ({effectiveDisplayCurrency})</div>
-                <div className="text-lg font-semibold">{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</div>
+                <div className="text-lg font-semibold">{fmtCurrency(baseProductDisplay, effectiveDisplayCurrency)}</div>
               </div>
               <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
                 <div className="text-xs text-neutral-500">Shipping (USD)</div>
@@ -984,6 +1234,14 @@ export default function QuoteClient({
                 <div className="text-xs text-neutral-500">Shipping ({effectiveDisplayCurrency})</div>
                 <div className="text-lg font-semibold">{fmtCurrency(shippingTotalDisplay, effectiveDisplayCurrency)}</div>
               </div>
+              {serviceChargeDisplay > 0 || addonTotalDisplay > 0 || totalVatDisplay > 0 ? (
+                <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
+                  <div className="text-xs text-neutral-500">Additional costs ({effectiveDisplayCurrency})</div>
+                  <div className="text-lg font-semibold">
+                    {fmtCurrency(serviceChargeDisplay + addonTotalDisplay + totalVatDisplay, effectiveDisplayCurrency)}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
           {showFxDebug ? (
@@ -1015,8 +1273,26 @@ export default function QuoteClient({
                 <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
                   <div className="flex items-center justify-between">
                     <span>Product total</span>
-                    <span>{fmtCurrency(productTotalDisplay, effectiveDisplayCurrency)}</span>
+                    <span>{fmtCurrency(baseProductDisplay, effectiveDisplayCurrency)}</span>
                   </div>
+                  {serviceChargeDisplay > 0 ? (
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>Service charge</span>
+                      <span>{fmtCurrency(serviceChargeDisplay, effectiveDisplayCurrency)}</span>
+                    </div>
+                  ) : null}
+                  {addonTotalDisplay > 0 ? (
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>Additional costs</span>
+                      <span>{fmtCurrency(addonTotalDisplay, effectiveDisplayCurrency)}</span>
+                    </div>
+                  ) : null}
+                  {totalVatDisplay > 0 ? (
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>VAT</span>
+                      <span>{fmtCurrency(totalVatDisplay, effectiveDisplayCurrency)}</span>
+                    </div>
+                  ) : null}
                   <div className="mt-2 flex items-center justify-between">
                     <span>Commitment fee discount</span>
                     <span>- {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}</span>

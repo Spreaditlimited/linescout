@@ -14,6 +14,7 @@ export default function NewProjectPage() {
   const [briefDestination, setBriefDestination] = useState("");
   const [briefNotes, setBriefNotes] = useState("");
   const [briefErr, setBriefErr] = useState<string | null>(null);
+  const [showWhiteLabelChoice, setShowWhiteLabelChoice] = useState(false);
 
   function trimmed(value: string, max = 500) {
     const s = String(value || "").trim();
@@ -28,7 +29,7 @@ export default function NewProjectPage() {
   }
 
   async function startWhiteLabel() {
-    router.push("/white-label/start");
+    setShowWhiteLabelChoice(true);
   }
 
   async function startSimpleSourcing() {
@@ -259,6 +260,56 @@ export default function NewProjectPage() {
                   Continue
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showWhiteLabelChoice ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
+          <button
+            aria-label="Close white label choice"
+            className="absolute inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            onClick={() => setShowWhiteLabelChoice(false)}
+          />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-2xl">
+            <div className="p-6 sm:p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">White Label</p>
+              <h2 className="mt-2 text-2xl font-semibold text-neutral-900">How would you like to start?</h2>
+              <p className="mt-2 text-sm text-neutral-600">
+                Build a factory-ready brief now or explore white label ideas first.
+              </p>
+              <div className="mt-5 grid gap-3">
+                <button
+                  type="button"
+                  className="btn btn-primary w-full"
+                  onClick={() => {
+                    setShowWhiteLabelChoice(false);
+                    router.push("/white-label/start");
+                  }}
+                >
+                  Know exactly the product you want to white label? Build a brief.
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline w-full"
+                  onClick={() => {
+                    setShowWhiteLabelChoice(false);
+                    router.push("/white-label/ideas");
+                  }}
+                >
+                  Not quite sure? Explore white label ideas.
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-6 py-4">
+              <button
+                type="button"
+                onClick={() => setShowWhiteLabelChoice(false)}
+                className="btn btn-outline px-4 py-2 text-xs"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

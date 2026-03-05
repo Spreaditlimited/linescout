@@ -9,6 +9,7 @@ import {
   backfillQuoteDefaults,
   backfillHandoffDefaults,
 } from "@/lib/country-config";
+import { ensureQuoteAddonTables } from "@/lib/quote-addons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,16 +126,23 @@ function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, s
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
-  const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
+  const agentPercent = Math.min(10, Math.max(0, markupPercent));
+  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
-    totalProductRmb: totalProductRmbWithLocal,
-    totalProductNgn,
+    totalProductRmb: totalProductRmbWithAgent,
+    totalProductNgn: totalProductNgnWithAgent,
+    baseProductNgn,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,
@@ -180,6 +188,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const conn = await db.getConnection();
   try {
     await ensureCountryConfig(conn);
+    await ensureQuoteAddonTables(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
     await backfillHandoffDefaults(conn);
@@ -284,6 +293,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       shipping_rate_unit,
       markup_percent
     );
+    const [extraRows]: any = await conn.query(
+      `SELECT total_addons_ngn, vat_rate_percent
+       FROM linescout_quotes
+       WHERE id = ?
+       LIMIT 1`,
+      [quoteId]
+    );
+    const totalAddonsNgn = num(extraRows?.[0]?.total_addons_ngn, 0);
+    const vatRate = num(extraRows?.[0]?.vat_rate_percent, 0);
+    const vatBase = totals.totalMarkupNgn + totalAddonsNgn;
+    const vatNgn = Math.max(0, Number(((vatBase * vatRate) / 100).toFixed(2)));
+    const totalDueNgn = totals.totalDueNgn + totalAddonsNgn + vatNgn;
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const updateAgentNote = supportsAgentNote && includeAgentNote;
     const setNoteSql = updateAgentNote ? "agent_note = ?," : "";
@@ -310,7 +331,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       totals.totalShippingUsd,
       totals.totalShippingNgn,
       totals.totalMarkupNgn,
-      totals.totalDueNgn,
+      totalAddonsNgn,
+      vatRate,
+      vatNgn,
+      totalDueNgn,
       auth.user.id,
       quoteId,
     ];
@@ -339,6 +363,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
            total_shipping_usd = ?,
            total_shipping_ngn = ?,
            total_markup_ngn = ?,
+           total_addons_ngn = ?,
+           vat_rate_percent = ?,
+           total_vat_ngn = ?,
            total_due_ngn = ?,
            updated_by = ?,
            updated_at = NOW()
@@ -361,7 +388,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         `INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
          VALUES (?, 'NGN', ?)
          ON DUPLICATE KEY UPDATE total_due = VALUES(total_due), currency = VALUES(currency)`,
-        [handoffId, totals.totalDueNgn]
+        [handoffId, totalDueNgn]
       );
     }
 

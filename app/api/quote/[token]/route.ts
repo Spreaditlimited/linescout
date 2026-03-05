@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureQuoteAddonTables, getQuoteAddonLines } from "@/lib/quote-addons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
 
   const conn = await db.getConnection();
   try {
+    await ensureQuoteAddonTables(conn);
     const [rows]: any = await conn.query(
       `SELECT
          q.*,
@@ -50,7 +52,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
 
     if (!rows?.length) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
-    return NextResponse.json({ ok: true, item: rows[0] });
+    const quote = rows[0];
+    const addons = await getQuoteAddonLines(conn, Number(quote.id || 0));
+    return NextResponse.json({ ok: true, item: quote, addon_lines: addons || [] });
   } finally {
     conn.release();
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import SearchableSelect from "../_components/SearchableSelect";
 import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
 
@@ -2674,6 +2675,38 @@ export default function InternalSettingsPage() {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-neutral-100">Quote pricing tools</h3>
+            <p className="mt-1 text-xs text-neutral-500">
+              Configure VAT rates and quote add-ons that appear under Additional costs.
+            </p>
+          </div>
+          <div />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Link
+            href="/internal/admin/quote-addons"
+            className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-left text-sm text-neutral-100 hover:border-neutral-700"
+          >
+            <div className="text-sm font-semibold text-neutral-100">Quote add-ons</div>
+            <div className="mt-1 text-xs text-neutral-500">
+              Add optional line items per route type and currency.
+            </div>
+          </Link>
+          <Link
+            href="/internal/admin/vat-rates"
+            className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-left text-sm text-neutral-100 hover:border-neutral-700"
+          >
+            <div className="text-sm font-semibold text-neutral-100">VAT rates</div>
+            <div className="mt-1 text-xs text-neutral-500">
+              Set country VAT percentages applied to service charge + add-ons.
+            </div>
+          </Link>
         </div>
       </div>
 

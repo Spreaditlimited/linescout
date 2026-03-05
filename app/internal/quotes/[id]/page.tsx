@@ -59,6 +59,9 @@ type QuoteRow = {
   agent_percent: number;
   agent_commitment_percent: number;
   commitment_due_ngn: number;
+  total_addons_ngn?: number | null;
+  total_vat_ngn?: number | null;
+  vat_rate_percent?: number | null;
 };
 
 type ShippingRate = {
@@ -110,6 +113,9 @@ export default function QuoteEditPage() {
   const [agentPercent, setAgentPercent] = useState("5");
   const [agentCommitPercent, setAgentCommitPercent] = useState("40");
   const [commitmentDue, setCommitmentDue] = useState("0");
+  const [totalAddonsNgn, setTotalAddonsNgn] = useState(0);
+  const [totalVatNgn, setTotalVatNgn] = useState(0);
+  const [vatRatePercent, setVatRatePercent] = useState(0);
   const [paymentPurpose, setPaymentPurpose] = useState("full_product_payment");
   const [depositEnabled, setDepositEnabled] = useState(false);
   const [depositPercent, setDepositPercent] = useState("0");
@@ -154,6 +160,9 @@ export default function QuoteEditPage() {
         setAgentPercent(String(q.agent_percent ?? settings.agent_percent ?? 0));
         setAgentCommitPercent(String(q.agent_commitment_percent ?? settings.agent_commitment_percent ?? 0));
         setCommitmentDue(String(q.commitment_due_ngn ?? settings.commitment_due_ngn ?? 0));
+        setTotalAddonsNgn(Number(q.total_addons_ngn || 0));
+        setTotalVatNgn(Number(q.total_vat_ngn || 0));
+        setVatRatePercent(Number(q.vat_rate_percent || 0));
         setPaymentPurpose(String(q.payment_purpose || "full_product_payment"));
         setDepositEnabled(Boolean(q.deposit_enabled));
         setDepositPercent(String(q.deposit_percent ?? 0));
@@ -187,10 +196,17 @@ export default function QuoteEditPage() {
     const exUsd = Number(exchangeUsd || 0);
     const shipRate = Number(shippingRateUsd || 0);
     const shipUnits = shippingRateUnit === "per_cbm" ? totalCbm : totalWeight;
-    const productNgn = totalProductRmb * exRmb;
+    const baseProductNgn = totalProductRmb * exRmb;
     const shippingUsd = shipUnits * shipRate;
     const shippingNgn = shippingUsd * exUsd;
-    const markup = (productNgn * Number(markupPercent || 0)) / 100;
+    const markupPercentNum = Number(markupPercent || 0);
+    const agentPercent = Math.min(10, Math.max(0, markupPercentNum));
+    const serviceChargePercent = Math.max(0, markupPercentNum - agentPercent);
+    const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+    const productNgn = baseProductNgn + agentUpliftNgn;
+    const markup = (baseProductNgn * serviceChargePercent) / 100;
+    const addons = Math.max(0, Number(totalAddonsNgn || 0));
+    const vat = Math.max(0, Number(totalVatNgn || 0));
 
     return {
       totalProductRmb,
@@ -200,9 +216,11 @@ export default function QuoteEditPage() {
       shippingUsd,
       shippingNgn,
       markup,
-      totalDue: productNgn + shippingNgn + markup,
+      addons,
+      vat,
+      totalDue: productNgn + shippingNgn + markup + addons + vat,
     };
-  }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent]);
+  }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent, totalAddonsNgn, totalVatNgn]);
 
   const availableShippingRates = useMemo(() => {
     if (!countryId) return shippingRates;
@@ -455,6 +473,13 @@ export default function QuoteEditPage() {
         </div>
         <div className="text-xs text-neutral-400">Weight (KG): {totals.totalWeight.toFixed(2)}</div>
         <div className="text-xs text-neutral-400">CBM: {totals.totalCbm.toFixed(2)}</div>
+        <div className="text-xs text-neutral-400">Service charge (NGN): {fmtNaira(totals.markup)}</div>
+        {totals.addons > 0 ? (
+          <div className="text-xs text-neutral-400">Additional costs (NGN): {fmtNaira(totals.addons)}</div>
+        ) : null}
+        {totals.vat > 0 ? (
+          <div className="text-xs text-neutral-400">VAT ({vatRatePercent.toFixed(2)}%): {fmtNaira(totals.vat)}</div>
+        ) : null}
         <div className="mt-2 text-sm font-semibold text-emerald-200">Total due: {fmtNaira(totals.totalDue)}</div>
       </div>
     </div>

@@ -12,6 +12,7 @@ import {
   getNigeriaDefaults,
   resolveCountryCurrency,
 } from "@/lib/country-config";
+import { buildQuoteAddonLines, ensureQuoteAddonTables, getVatRateForCountry, normalizeRouteType } from "@/lib/quote-addons";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -178,16 +179,23 @@ function computeTotals(items: any[], exchangeRmb: number, exchangeUsd: number, s
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const totalProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
-  const totalMarkupNgn = (totalProductNgn * markupPercent) / 100;
-  const totalDueNgn = totalProductNgn + totalShippingNgn + totalMarkupNgn;
+  const agentPercent = Math.min(10, Math.max(0, markupPercent));
+  const serviceChargePercent = Math.max(0, markupPercent - agentPercent);
+  const agentUpliftRmb = (totalProductRmbWithLocal * agentPercent) / 100;
+  const agentUpliftNgn = (baseProductNgn * agentPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb;
+  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn;
+  const totalMarkupNgn = (baseProductNgn * serviceChargePercent) / 100;
+  const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
-    totalProductRmb: totalProductRmbWithLocal,
-    totalProductNgn,
+    totalProductRmb: totalProductRmbWithAgent,
+    totalProductNgn: totalProductNgnWithAgent,
+    baseProductNgn,
     totalWeightKg,
     totalCbm,
     totalShippingUsd,
@@ -238,6 +246,7 @@ export async function GET(req: Request) {
   const conn = await db.getConnection();
   try {
     await ensureCountryConfig(conn);
+    await ensureQuoteAddonTables(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
     await backfillHandoffDefaults(conn);
@@ -365,6 +374,16 @@ export async function POST(req: Request) {
       }
     }
 
+    const [routeRows]: any = await conn.query(
+      `SELECT route_type
+       FROM linescout_conversations
+       WHERE handoff_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [handoff_id]
+    );
+    const routeType = normalizeRouteType(routeRows?.[0]?.route_type || "");
+
     const exchange_rate_rmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchange_rate_usd = (await getFxRate(conn, "USD", "NGN")) || 0;
     if (!exchange_rate_rmb || !exchange_rate_usd) {
@@ -379,6 +398,15 @@ export async function POST(req: Request) {
       shipping_rate_unit,
       markup_percent
     );
+    const addons = await buildQuoteAddonLines(conn, {
+      route_type: routeType,
+      currency_code: display_currency_code,
+      country_id,
+    });
+    const vatRate = await getVatRateForCountry(conn, country_id);
+    const vatBaseNgn = totals.totalMarkupNgn + addons.total_ngn;
+    const vatNgn = Math.max(0, Number(((vatBaseNgn * vatRate) / 100).toFixed(2)));
+    const totalDueNgn = totals.totalDueNgn + addons.total_ngn + vatNgn;
 
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const insertColumns = supportsAgentNote
@@ -390,7 +418,7 @@ export async function POST(req: Request) {
         deposit_enabled, deposit_percent, agent_note,
         items_json,
         total_product_rmb, total_product_ngn, total_weight_kg, total_cbm,
-        total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
+        total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_addons_ngn, vat_rate_percent, total_vat_ngn, total_due_ngn,
         created_by, updated_by`
       : `handoff_id, token, status, currency, payment_purpose,
         country_id, display_currency_code, settlement_currency_code,
@@ -400,12 +428,12 @@ export async function POST(req: Request) {
         deposit_enabled, deposit_percent,
         items_json,
         total_product_rmb, total_product_ngn, total_weight_kg, total_cbm,
-        total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_due_ngn,
+        total_shipping_usd, total_shipping_ngn, total_markup_ngn, total_addons_ngn, vat_rate_percent, total_vat_ngn, total_due_ngn,
         created_by, updated_by`;
 
     const insertValues = supportsAgentNote
-      ? `?, ?, 'draft', ${Array(28).fill("?").join(", ")}`
-      : `?, ?, 'draft', ${Array(27).fill("?").join(", ")}`;
+      ? `?, ?, 'draft', ${Array(31).fill("?").join(", ")}`
+      : `?, ?, 'draft', ${Array(30).fill("?").join(", ")}`;
     const insertParams = supportsAgentNote
       ? [
           handoff_id,
@@ -435,7 +463,10 @@ export async function POST(req: Request) {
           totals.totalShippingUsd,
           totals.totalShippingNgn,
           totals.totalMarkupNgn,
-          totals.totalDueNgn,
+          addons.total_ngn,
+          vatRate,
+          vatNgn,
+          totalDueNgn,
           auth.user.id,
           auth.user.id,
         ]
@@ -466,7 +497,10 @@ export async function POST(req: Request) {
           totals.totalShippingUsd,
           totals.totalShippingNgn,
           totals.totalMarkupNgn,
-          totals.totalDueNgn,
+          addons.total_ngn,
+          vatRate,
+          vatNgn,
+          totalDueNgn,
           auth.user.id,
           auth.user.id,
         ];
@@ -475,16 +509,30 @@ export async function POST(req: Request) {
       `INSERT INTO linescout_quotes (${insertColumns}) VALUES (${insertValues})`,
       insertParams
     );
+    const quoteId = Number(result.insertId || 0);
+
+    if (quoteId && addons.lines.length) {
+      const values = addons.lines.map(() => "(?, ?, ?, ?, ?, NOW())").join(", ");
+      const params: any[] = [];
+      for (const line of addons.lines) {
+        params.push(quoteId, line.addon_id, line.title, line.currency_code, line.amount);
+      }
+      await conn.query(
+        `INSERT INTO linescout_quote_addon_lines (quote_id, addon_id, title, currency_code, amount, created_at)
+         VALUES ${values}`,
+        params
+      );
+    }
 
     // Keep handoff financials in sync with latest estimated landing cost
     await conn.query(
       `INSERT INTO linescout_handoff_financials (handoff_id, currency, total_due)
        VALUES (?, 'NGN', ?)
        ON DUPLICATE KEY UPDATE total_due = VALUES(total_due), currency = VALUES(currency)`,
-      [handoff_id, totals.totalDueNgn]
+      [handoff_id, totalDueNgn]
     );
 
-    return NextResponse.json({ ok: true, id: result.insertId, token });
+    return NextResponse.json({ ok: true, id: quoteId, token });
   } finally {
     conn.release();
   }

@@ -4,6 +4,25 @@ import Footer from "@/components/Footer";
 
 const brandBlue = "#2D3461";
 
+export const metadata = {
+  title: "LineScout Affiliate Program | Earn On Every Referral Payment",
+  description:
+    "Share your LineScout referral link and earn commissions when your referrals pay for sourcing, shipping, and future services. Track activity and request payouts when you hit your country minimum.",
+  openGraph: {
+    title: "LineScout Affiliate Program",
+    description:
+      "Share your LineScout referral link and earn commissions when your referrals pay for sourcing, shipping, and future services.",
+    images: [{ url: "/affiliate-feature.png", width: 1200, height: 630, alt: "LineScout Affiliate Program" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LineScout Affiliate Program",
+    description:
+      "Share your LineScout referral link and earn commissions when your referrals pay for sourcing, shipping, and future services.",
+    images: ["/affiliate-feature.png"],
+  },
+};
+
 export default function AffiliatesLandingPage() {
   return (
     <div className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900" style={{ ["--agent-blue" as any]: brandBlue }}>
