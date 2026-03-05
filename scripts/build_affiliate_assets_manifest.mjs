@@ -5,133 +5,109 @@ const root = process.cwd();
 const outDir = path.join(root, "public", "affiliate-assets");
 const manifestPath = path.join(outDir, "manifest.json");
 
-const concepts = [
-  {
-    headline: "Source smarter from China",
-    subhead: "Get market clarity, verified suppliers, and structured quotes.",
-    cta: "Start sourcing",
-  },
-  {
-    headline: "From AI clarity to real sourcing",
-    subhead: "LineScout helps you think first, then execute with specialists.",
-    cta: "Get clarity",
-  },
-  {
-    headline: "Reliable quotes. Real suppliers.",
-    subhead: "Transparent costs, clear timelines, and trusted manufacturers.",
-    cta: "Request a quote",
-  },
-  {
-    headline: "White label made simple",
-    subhead: "Build your brief, explore ideas, and launch faster.",
-    cta: "Explore white label",
-  },
-  {
-    headline: "Machine sourcing, done right",
-    subhead: "Get verified machinery with specs that match your market.",
-    cta: "Source machines",
-  },
-  {
-    headline: "Import without the guesswork",
-    subhead: "LineScout aligns specs, pricing, and logistics from day one.",
-    cta: "Get started",
-  },
-  {
-    headline: "Trusted since 2018",
-    subhead: "Built by a team that has sourced for 40,000+ users worldwide.",
-    cta: "Work with LineScout",
-  },
-  {
-    headline: "See costs before you commit",
-    subhead: "Clear totals, service charges, and shipment options.",
-    cta: "See how it works",
-  },
-  {
-    headline: "Sourcing that scales with you",
-    subhead: "From first order to repeat supply, LineScout stays consistent.",
-    cta: "Start now",
-  },
-  {
-    headline: "Global sourcing, local confidence",
-    subhead: "LineScout helps brands buy right, across borders.",
-    cta: "Source with confidence",
-  },
-  {
-    headline: "Clarity for serious buyers",
-    subhead: "Get accurate quotes, vetted suppliers, and real timelines.",
-    cta: "Request clarity",
-  },
-  {
-    headline: "Made for founders and operators",
-    subhead: "Smart sourcing guidance, then execution by specialists.",
-    cta: "Talk to LineScout",
-  },
-  {
-    headline: "Better suppliers. Better margins.",
-    subhead: "Find the right factory and price for your market.",
-    cta: "Start sourcing",
-  },
-  {
-    headline: "Your sourcing partner",
-    subhead: "From product specs to shipping, LineScout handles the details.",
-    cta: "Work with us",
-  },
-  {
-    headline: "Premium sourcing insights",
-    subhead: "Get clarity on risks, pricing, and timelines before you buy.",
-    cta: "Get insights",
-  },
-  {
-    headline: "Sourcing built for growth",
-    subhead: "Scale your supply with confidence and transparency.",
-    cta: "Scale with LineScout",
-  },
-  {
-    headline: "Verified specialists, on demand",
-    subhead: "Move from research to execution without switching platforms.",
-    cta: "Talk to a specialist",
-  },
-  {
-    headline: "Source. Quote. Ship.",
-    subhead: "LineScout delivers a clean, step-by-step sourcing workflow.",
-    cta: "See the workflow",
-  },
-  {
-    headline: "China sourcing without stress",
-    subhead: "Trusted suppliers and clear pricing in one place.",
-    cta: "Start sourcing",
-  },
-  {
-    headline: "Professional sourcing for real brands",
-    subhead: "From brief to delivery, LineScout handles your supply chain.",
-    cta: "Get started",
-  },
-  {
-    headline: "Make smarter buying decisions",
-    subhead: "Get data-backed clarity before you commit.",
-    cta: "Get clarity",
-  },
-  {
-    headline: "Faster path to production",
-    subhead: "Streamline your sourcing and get to market quicker.",
-    cta: "Start now",
-  },
-  {
-    headline: "LineScout by Sure Imports",
-    subhead: "A trusted sourcing team with 8+ years of experience.",
-    cta: "Work with LineScout",
-  },
-  {
-    headline: "Your sourcing workspace",
-    subhead: "All your quotes, shipments, and payments in one place.",
-    cta: "View the platform",
-  },
-  {
-    headline: "Ship with confidence",
-    subhead: "Clear shipping options and dependable delivery timelines.",
-    cta: "See shipping",
-  },
+const headlineVariants = [
+  "Source smarter from China",
+  "From AI clarity to real sourcing",
+  "Reliable quotes. Real suppliers.",
+  "White label made simple",
+  "Machine sourcing, done right",
+  "Import without the guesswork",
+  "Trusted since 2018",
+  "See costs before you commit",
+  "Sourcing that scales with you",
+  "Global sourcing, local confidence",
+  "Clarity for serious buyers",
+  "Made for founders and operators",
+  "Better suppliers. Better margins.",
+  "Your sourcing partner",
+  "Premium sourcing insights",
+  "Sourcing built for growth",
+  "Verified specialists, on demand",
+  "Source. Quote. Ship.",
+  "China sourcing without stress",
+  "Professional sourcing for real brands",
+  "Make smarter buying decisions",
+  "Faster path to production",
+  "LineScout by Sure Imports",
+  "Your sourcing workspace",
+  "Ship with confidence",
+  "Start with clarity, finish with supply",
+  "Factory-ready briefs made simple",
+  "Sourcing built on transparency",
+  "Sourcing for serious operators",
+  "Make sourcing feel effortless",
 ];
+
+const subheadVariants = [
+  "Get market clarity, verified suppliers, and structured quotes.",
+  "LineScout helps you think first, then execute with specialists.",
+  "Transparent costs, clear timelines, and trusted manufacturers.",
+  "Build your brief, explore ideas, and launch faster.",
+  "Get verified machinery with specs that match your market.",
+  "LineScout aligns specs, pricing, and logistics from day one.",
+  "Built by a team that has sourced for 40,000+ users worldwide.",
+  "Clear totals, service charges, and shipment options.",
+  "From first order to repeat supply, LineScout stays consistent.",
+  "LineScout helps brands buy right, across borders.",
+  "Get accurate quotes, vetted suppliers, and real timelines.",
+  "Smart sourcing guidance, then execution by specialists.",
+  "Find the right factory and price for your market.",
+  "From product specs to shipping, LineScout handles the details.",
+  "Get clarity on risks, pricing, and timelines before you buy.",
+  "Scale your supply with confidence and transparency.",
+  "Move from research to execution without switching platforms.",
+  "LineScout delivers a clean, step-by-step sourcing workflow.",
+  "Trusted suppliers and clear pricing in one place.",
+  "From brief to delivery, LineScout handles your supply chain.",
+  "Get data-backed clarity before you commit.",
+  "Streamline your sourcing and get to market quicker.",
+  "A trusted sourcing team with 8+ years of experience.",
+  "All your quotes, shipments, and payments in one place.",
+  "Clear shipping options and dependable delivery timelines.",
+  "Verified factories, quality checks, and dependable logistics.",
+  "Clear briefs, clear costs, and clean execution.",
+  "Confidence in every quote and every shipment.",
+  "Expert guidance for complex sourcing decisions.",
+  "A sourcing workflow that keeps teams aligned.",
+];
+
+const ctaVariants = [
+  "Start sourcing",
+  "Get clarity",
+  "Request a quote",
+  "Explore white label",
+  "Source machines",
+  "Get started",
+  "Work with LineScout",
+  "See how it works",
+  "Start now",
+  "Source with confidence",
+  "Request clarity",
+  "Talk to LineScout",
+  "Get insights",
+  "Scale with LineScout",
+  "Talk to a specialist",
+  "See the workflow",
+  "View the platform",
+  "See shipping",
+  "Build a brief",
+  "Explore ideas",
+];
+
+function buildConcepts(count) {
+  const concepts = [];
+  for (const headline of headlineVariants) {
+    for (const subhead of subheadVariants) {
+      for (const cta of ctaVariants) {
+        concepts.push({ headline, subhead, cta });
+        if (concepts.length >= count) {
+          return concepts;
+        }
+      }
+    }
+  }
+  return concepts;
+}
 
 const styleVariants = [
   "premium minimal layout, soft white background, navy accents, subtle abstract curves",
@@ -146,7 +122,7 @@ const packs = [
     key: "square",
     width: 1080,
     height: 1080,
-    count: 70,
+    count: 30,
     platforms: ["Facebook", "Instagram"],
     sourceSize: "1024x1024",
   },
@@ -176,6 +152,8 @@ const packs = [
   },
 ];
 
+const totalCount = packs.reduce((sum, pack) => sum + pack.count, 0);
+const concepts = buildConcepts(totalCount);
 const items = [];
 let globalIndex = 1;
 
@@ -189,7 +167,8 @@ for (const pack of packs) {
     const prompt = [
       "Premium minimal social promo image promoting LineScout sourcing services.",
       style + ".",
-      "Include the LineScout logo and footer text 'www.linescout.sureimports.com'.",
+      "Do not include any brand logos or website URLs in the artwork.",
+      "Leave clean space at the top-left for a logo and at the bottom for a URL badge.",
       `Headline: "${concept.headline}".`,
       `Subhead: "${concept.subhead}".`,
       `CTA button text: "${concept.cta}".`,

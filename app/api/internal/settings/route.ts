@@ -655,6 +655,19 @@ export async function POST(req: Request) {
     });
     affiliate_min_payouts_json = Object.keys(next).length ? next : null;
   }
+  const affiliate_promo_videos_json_raw = body?.affiliate_promo_videos_json;
+  let affiliate_promo_videos_json: { title: string; url: string | null }[] | null = null;
+  if (Array.isArray(affiliate_promo_videos_json_raw)) {
+    const cleaned = affiliate_promo_videos_json_raw
+      .map((item: any) => {
+        const title = String(item?.title || "").trim();
+        const url = typeof item?.url === "string" ? item.url.trim() : "";
+        if (!title) return null;
+        return { title, url: url || null };
+      })
+      .filter(Boolean) as { title: string; url: string | null }[];
+    affiliate_promo_videos_json = cleaned.length ? cleaned : null;
+  }
   const max_active_claims = num(body.max_active_claims);
   const white_label_trial_days = num(body.white_label_trial_days);
   const white_label_daily_reveals = num(body.white_label_daily_reveals);
@@ -800,6 +813,7 @@ export async function POST(req: Request) {
            affiliate_min_payout_amount = ?,
            affiliate_min_payout_currency = ?,
            affiliate_min_payouts_json = ?,
+           affiliate_promo_videos_json = ?,
            sticky_notice_enabled = ?,
            sticky_notice_title = ?,
            sticky_notice_body = ?,
@@ -838,6 +852,7 @@ export async function POST(req: Request) {
         affiliate_min_payout_amount,
         affiliate_min_payout_currency || null,
         affiliate_min_payouts_json ? JSON.stringify(affiliate_min_payouts_json) : null,
+        affiliate_promo_videos_json ? JSON.stringify(affiliate_promo_videos_json) : null,
         effectiveEnabled,
         effectiveTitle || null,
         effectiveBody || null,

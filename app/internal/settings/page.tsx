@@ -67,6 +67,7 @@ type SettingsItem = {
   affiliate_min_payout_amount?: number | null;
   affiliate_min_payout_currency?: string | null;
   affiliate_min_payouts_json?: any;
+  affiliate_promo_videos_json?: any;
 };
 
 type ShippingTypeItem = { id: number; name: string; is_active?: number };
@@ -203,6 +204,14 @@ export default function InternalSettingsPage() {
   const [affiliateEnabled, setAffiliateEnabled] = useState(false);
   const [affiliateTermsUrl, setAffiliateTermsUrl] = useState("");
   const [affiliateMinPayouts, setAffiliateMinPayouts] = useState<Record<string, string>>({});
+  const [affiliatePromoVideos, setAffiliatePromoVideos] = useState<
+    { title: string; url: string }[]
+  >([
+    { title: "Starting a white label project from white label ideas", url: "" },
+    { title: "Creating a white label brief and project on LineScout", url: "" },
+    { title: "Creating a Simple Sourcing project", url: "" },
+    { title: "Creating a Machine Sourcing project", url: "" },
+  ]);
   const [testEmailsText, setTestEmailsText] = useState("");
   const [maxActiveClaims, setMaxActiveClaims] = useState("3");
   const [whiteLabelTrialDays, setWhiteLabelTrialDays] = useState("3");
@@ -386,6 +395,30 @@ export default function InternalSettingsPage() {
       setAgentOtpMode(item.agent_otp_mode === "email" ? "email" : "phone");
       setAffiliateEnabled(Boolean(item.affiliate_enabled));
       setAffiliateTermsUrl(String(item.affiliate_terms_url || ""));
+      const promoRaw = item.affiliate_promo_videos_json;
+      const promoParsed =
+        typeof promoRaw === "string"
+          ? (() => {
+              try {
+                return JSON.parse(promoRaw);
+              } catch {
+                return null;
+              }
+            })()
+          : promoRaw;
+      if (Array.isArray(promoParsed) && promoParsed.length) {
+        setAffiliatePromoVideos((prev) => {
+          const next = [...prev];
+          promoParsed.forEach((entry: any, idx: number) => {
+            if (!next[idx]) return;
+            next[idx] = {
+              title: String(entry?.title || next[idx].title),
+              url: String(entry?.url || ""),
+            };
+          });
+          return next;
+        });
+      }
       const minPayoutRaw = item.affiliate_min_payouts_json;
       const parsedMinPayouts =
         typeof minPayoutRaw === "string"
@@ -815,6 +848,10 @@ export default function InternalSettingsPage() {
         affiliate_min_payout_amount: affiliateMinPayoutMap.NGN || 0,
         affiliate_min_payout_currency: "NGN",
         affiliate_min_payouts_json: affiliateMinPayoutMap,
+        affiliate_promo_videos_json: affiliatePromoVideos.map((entry) => ({
+          title: entry.title,
+          url: entry.url.trim() || null,
+        })),
         test_emails_json: testEmailsText
           .split(/[\n,]/)
           .map((v) => v.trim().toLowerCase())
@@ -2785,6 +2822,34 @@ export default function InternalSettingsPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            Affiliate promo videos
+          </div>
+          <p className="mt-2 text-xs text-neutral-400">
+            These videos appear in the affiliate dashboard under “Understanding LineScout by Sure Imports.”
+          </p>
+          <div className="mt-3 space-y-3">
+            {affiliatePromoVideos.map((video, idx) => (
+              <div key={video.title} className="rounded-2xl border border-neutral-800 bg-neutral-950 px-4 py-3">
+                <div className="text-xs font-semibold text-neutral-300">{video.title}</div>
+                <input
+                  value={video.url}
+                  onChange={(e) =>
+                    setAffiliatePromoVideos((prev) => {
+                      const next = [...prev];
+                      next[idx] = { ...next[idx], url: e.target.value };
+                      return next;
+                    })
+                  }
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                />
+              </div>
+            ))}
           </div>
         </div>
       </div>

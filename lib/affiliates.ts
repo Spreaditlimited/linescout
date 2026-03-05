@@ -198,6 +198,7 @@ export async function ensureAffiliateSettingsColumns(conn: PoolConnection) {
   await ensureColumn("affiliate_min_payout_amount", "DECIMAL(14,2) NOT NULL DEFAULT 0");
   await ensureColumn("affiliate_min_payout_currency", "VARCHAR(8) NULL");
   await ensureColumn("affiliate_min_payouts_json", "TEXT NULL");
+  await ensureColumn("affiliate_promo_videos_json", "JSON NULL");
 }
 
 export async function resolveCountryCurrency(conn: PoolConnection, countryId: number | null) {
