@@ -29,6 +29,26 @@ async function getDb() {
   return db.getConnection();
 }
 
+async function ensureEmailOtpUserAgentColumn(conn: PoolConnection) {
+  const [rows] = await conn.execute<RowDataPacket[]>(
+    `
+    SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'email_otps'
+      AND column_name = 'user_agent'
+    LIMIT 1
+    `
+  );
+  if (!rows.length) return;
+  const dataType = String(rows[0].DATA_TYPE || "").toLowerCase();
+  const maxLen = Number(rows[0].CHARACTER_MAXIMUM_LENGTH || 0);
+  if (dataType === "text") return;
+  if (dataType === "varchar" && maxLen >= 512) return;
+  if (dataType === "char" && maxLen >= 512) return;
+  await conn.execute(`ALTER TABLE email_otps MODIFY COLUMN user_agent VARCHAR(512) NULL`);
+}
+
 async function getOrCreatePendingUser(conn: PoolConnection, emailRaw: string, emailNormalized: string) {
   const [rows] = await conn.execute<RowDataPacket[]>(
     "SELECT id FROM pending_users WHERE email_normalized = ? LIMIT 1",
@@ -89,6 +109,7 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
 
     conn = await getDb();
+    await ensureEmailOtpUserAgentColumn(conn);
 
     // 1) Create or fetch pending user (avoid creating real users before OTP verification)
     const pendingUserId = await getOrCreatePendingUser(conn, emailRaw, email);
