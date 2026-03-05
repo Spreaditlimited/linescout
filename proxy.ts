@@ -21,6 +21,7 @@ export default async function proxy(req: NextRequest) {
     const reserved = new Set([
       "sign-in",
       "dashboard",
+      "promotions",
       "referrals",
       "activity",
       "payouts",
