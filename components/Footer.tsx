@@ -83,6 +83,11 @@ export default function Footer({ variant = "user" }: { variant?: FooterVariant }
                   Agent web app
                 </Link>
               </li>
+              <li>
+                <Link href="/affiliates" className="hover:text-white hover:underline">
+                  Affiliates
+                </Link>
+              </li>
             </ul>
             <div className={`mt-4 text-sm font-semibold ${headingClass}`}>Mobile apps</div>
             <ul className={`mt-2 space-y-1.5 text-sm ${bodyClass}`}>
