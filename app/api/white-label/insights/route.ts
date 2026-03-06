@@ -156,7 +156,7 @@ export async function GET(req: Request) {
                amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90, amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count,
                amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at,
                amazon_us_price_current, amazon_us_price_avg30, amazon_us_price_avg90, amazon_us_price_min, amazon_us_price_max, amazon_us_offer_count,
-               amazon_us_price_low, amazon_us_price_high, amazon_us_last_checked_at,
+               amazon_us_price_low, amazon_us_price_high, amazon_us_last_checked_at
         FROM linescout_white_label_products
         WHERE id = ?
         LIMIT 1
