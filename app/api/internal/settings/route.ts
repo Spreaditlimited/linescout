@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { ensureCountryConfig } from "@/lib/country-config";
 import { ensureAffiliateSettingsColumns } from "@/lib/affiliates";
 import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
+import { recomputeWhiteLabelLandedCostsForCountry } from "@/lib/white-label-landed";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -329,9 +331,9 @@ export async function GET() {
        FROM linescout_currencies
        ORDER BY code ASC`
     );
-    const [countries]: any = await conn.query(
+      const [countries]: any = await conn.query(
       `SELECT c.id, c.name, c.iso2, c.iso3, c.default_currency_id, c.settlement_currency_code, c.payment_provider,
-              c.amazon_marketplace, c.is_active, cur.code AS default_currency_code
+              c.amazon_marketplace, c.amazon_enabled, c.is_active, cur.code AS default_currency_code
        FROM linescout_countries c
        LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
        ORDER BY c.name ASC`
@@ -458,6 +460,17 @@ export async function POST(req: Request) {
           countryIso2: iso2,
           currencyCode: settlement_currency_code || null,
         });
+        const amazon_enabled_raw = body?.amazon_enabled;
+        const amazon_enabled_input =
+          amazon_enabled_raw === 0 ? 0 : amazon_enabled_raw === 1 ? 1 : null;
+        const amazon_enabled =
+          amazon_enabled_input !== null
+            ? amazon_enabled_input && isKeepaMarketplaceSupported(amazon_marketplace)
+              ? 1
+              : 0
+            : isKeepaMarketplaceSupported(amazon_marketplace)
+            ? 1
+            : 0;
         if (!name || name.length < 2) {
           return NextResponse.json({ ok: false, error: "Country name is too short" }, { status: 400 });
         }
@@ -471,32 +484,43 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: false, error: "Payment provider is required" }, { status: 400 });
         }
         await conn.query(
-          `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+          `INSERT INTO linescout_countries (name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace, amazon_enabled)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE
              name = VALUES(name),
              iso3 = VALUES(iso3),
              default_currency_id = VALUES(default_currency_id),
              settlement_currency_code = VALUES(settlement_currency_code),
              payment_provider = VALUES(payment_provider),
-             amazon_marketplace = VALUES(amazon_marketplace)`,
-          [name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider, amazon_marketplace]
+             amazon_marketplace = VALUES(amazon_marketplace),
+             amazon_enabled = VALUES(amazon_enabled)`,
+          [
+            name,
+            iso2,
+            iso3,
+            default_currency_id,
+            settlement_currency_code,
+            payment_provider,
+            amazon_marketplace,
+            amazon_enabled,
+          ]
         );
 
-        if (autoMapDefault && default_currency_id) {
-          const [rows]: any = await conn.query(
-            `SELECT id FROM linescout_countries WHERE iso2 = ? LIMIT 1`,
-            [iso2]
+        const [rows]: any = await conn.query(
+          `SELECT id FROM linescout_countries WHERE iso2 = ? LIMIT 1`,
+          [iso2]
+        );
+        const countryId = rows?.[0]?.id;
+        if (autoMapDefault && default_currency_id && countryId) {
+          await conn.query(
+            `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
+             VALUES (?, ?, 1)
+             ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
+            [countryId, default_currency_id]
           );
-          const countryId = rows?.[0]?.id;
-          if (countryId) {
-            await conn.query(
-              `INSERT INTO linescout_country_currencies (country_id, currency_id, is_active)
-               VALUES (?, ?, 1)
-               ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)`,
-              [countryId, default_currency_id]
-            );
-          }
+        }
+        if (countryId) {
+          await recomputeWhiteLabelLandedCostsForCountry(conn, Number(countryId));
         }
 
         if (autoAddWhiteLabel && iso2) {
@@ -560,9 +584,14 @@ export async function POST(req: Request) {
         }
         const hasMarketplaceInput = body?.amazon_marketplace !== undefined;
         const marketplaceInput = hasMarketplaceInput ? String(body?.amazon_marketplace || "").trim().toUpperCase() : "";
+        let resolvedMarketplace: string | null = null;
+        const hasAmazonEnabledInput = body?.amazon_enabled !== undefined;
+        const amazonEnabledInput =
+          body?.amazon_enabled === 0 ? 0 : body?.amazon_enabled === 1 ? 1 : null;
         if (hasMarketplaceInput) {
           sets.push("amazon_marketplace = ?");
-          params.push(marketplaceInput || null);
+          resolvedMarketplace = marketplaceInput || null;
+          params.push(resolvedMarketplace);
         } else if (iso2 || body?.settlement_currency_code !== undefined) {
           const [[current]]: any = await conn.query(
             `SELECT iso2, settlement_currency_code FROM linescout_countries WHERE id = ? LIMIT 1`,
@@ -573,7 +602,20 @@ export async function POST(req: Request) {
             currencyCode: settlement_currency_code || current?.settlement_currency_code,
           });
           sets.push("amazon_marketplace = ?");
-          params.push(resolved || null);
+          resolvedMarketplace = resolved || null;
+          params.push(resolvedMarketplace);
+        }
+        if (hasAmazonEnabledInput) {
+          if (amazonEnabledInput === null) {
+            return NextResponse.json({ ok: false, error: "Invalid amazon_enabled" }, { status: 400 });
+          }
+          const allow = isKeepaMarketplaceSupported(resolvedMarketplace);
+          sets.push("amazon_enabled = ?");
+          params.push(amazonEnabledInput && allow ? 1 : 0);
+        } else if (hasMarketplaceInput || iso2 || body?.settlement_currency_code !== undefined) {
+          const allow = isKeepaMarketplaceSupported(resolvedMarketplace);
+          sets.push("amazon_enabled = ?");
+          params.push(allow ? 1 : 0);
         }
         if (is_active !== null) {
           sets.push("is_active = ?");
@@ -582,6 +624,7 @@ export async function POST(req: Request) {
         if (!sets.length) return NextResponse.json({ ok: false, error: "No updates provided" }, { status: 400 });
         params.push(id);
         await conn.query(`UPDATE linescout_countries SET ${sets.join(", ")} WHERE id = ?`, params);
+        await recomputeWhiteLabelLandedCostsForCountry(conn, id);
         return NextResponse.json({ ok: true });
       }
 

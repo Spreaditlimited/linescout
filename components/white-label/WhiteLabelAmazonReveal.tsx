@@ -25,17 +25,15 @@ type RevealResult = {
 export default function WhiteLabelAmazonReveal({
   productId,
   currencyCode,
-  landedGbpLow,
-  landedGbpHigh,
-  landedCadLow,
-  landedCadHigh,
+  amazonLandedLow,
+  amazonLandedHigh,
+  amazonCurrency,
 }: {
   productId: number;
   currencyCode: string;
-  landedGbpLow: number | null;
-  landedGbpHigh: number | null;
-  landedCadLow: number | null;
-  landedCadHigh: number | null;
+  amazonLandedLow: number | null;
+  amazonLandedHigh: number | null;
+  amazonCurrency: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,45 +65,13 @@ export default function WhiteLabelAmazonReveal({
   }, [storageKey]);
 
   const revealed = Boolean(data?.ok);
-  const isCaUser = currencyCode === "CAD";
-  const isUsUser = currencyCode === "USD";
-
-  const ukLow = toNum(data?.product?.amazon_uk_price_low);
-  const ukHigh = toNum(data?.product?.amazon_uk_price_high);
-  const caLow = toNum(data?.product?.amazon_ca_price_low);
-  const caHigh = toNum(data?.product?.amazon_ca_price_high);
-  const usLow = toNum(data?.product?.amazon_us_price_low);
-  const usHigh = toNum(data?.product?.amazon_us_price_high);
-  const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
-  const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
-  const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
-  const useUs = isUsUser && hasUs;
-  const useCa = isCaUser && hasCa;
-  const useUk = !useUs && !useCa && hasUk;
-  const amazonCode = revealed
-    ? useUs
-      ? "USD"
-      : useCa
-      ? "CAD"
-      : "GBP"
-    : isUsUser
-    ? "USD"
-    : isCaUser
-    ? "CAD"
-    : "GBP";
-  const labelSuffix = revealed
-    ? useUs
-      ? " (US)"
-      : useCa
-      ? " (CA)"
-      : " (UK)"
-    : isUsUser
-    ? " (US)"
-    : isCaUser
-    ? " (CA)"
-    : " (UK)";
-  const amazonLow = useUs ? usLow : useCa ? caLow : ukLow;
-  const amazonHigh = useUs ? usHigh : useCa ? caHigh : ukHigh;
+  const display = data?.display || null;
+  const amazonCode = String(
+    (display?.currency || amazonCurrency || "GBP") as string
+  ).toUpperCase();
+  const labelSuffix = display?.marketplace ? ` (${display.marketplace})` : "";
+  const amazonLow = toNum(display?.price_low);
+  const amazonHigh = toNum(display?.price_high);
 
   const fmt = (value: number | null, code: string) => {
     if (value == null || !Number.isFinite(value)) return "—";
@@ -132,8 +98,8 @@ export default function WhiteLabelAmazonReveal({
   };
 
   const marginRange = () => {
-    const landedLow = amazonCode === "GBP" ? landedGbpLow : amazonCode === "CAD" ? landedCadLow : null;
-    const landedHigh = amazonCode === "GBP" ? landedGbpHigh : amazonCode === "CAD" ? landedCadHigh : null;
+    const landedLow = amazonLandedLow;
+    const landedHigh = amazonLandedHigh;
     const low = Number.isFinite(amazonLow) ? amazonLow : null;
     const high = Number.isFinite(amazonHigh) ? amazonHigh : null;
     if (low == null || high == null || landedLow == null || landedHigh == null) return null;
@@ -146,8 +112,8 @@ export default function WhiteLabelAmazonReveal({
   };
 
   const insightLine = () => {
-    const landedLow = amazonCode === "GBP" ? landedGbpLow : amazonCode === "CAD" ? landedCadLow : null;
-    const landedHigh = amazonCode === "GBP" ? landedGbpHigh : amazonCode === "CAD" ? landedCadHigh : null;
+    const landedLow = amazonLandedLow;
+    const landedHigh = amazonLandedHigh;
     if (landedLow == null || landedHigh == null || !Number.isFinite(landedLow) || !Number.isFinite(landedHigh)) {
       return null;
     }
@@ -224,16 +190,6 @@ export default function WhiteLabelAmazonReveal({
           ) : null}
           {insightLine() ? (
             <p className="mt-1 text-[11px] text-neutral-500">{insightLine()}</p>
-          ) : null}
-          {isUsUser && !hasUs && hasUk ? (
-            <p className="mt-1 text-[11px] text-amber-700">
-              Amazon US price not available at this time for this product.
-            </p>
-          ) : null}
-          {isCaUser && !hasCa && hasUk ? (
-            <p className="mt-1 text-[11px] text-amber-700">
-              Amazon CA price not available at this time for this product.
-            </p>
           ) : null}
         </>
       ) : (

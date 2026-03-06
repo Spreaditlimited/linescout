@@ -30,6 +30,11 @@ export function formatCurrency(
 }
 
 export type LandedFields = {
+  landed_per_unit_low?: number | null;
+  landed_per_unit_high?: number | null;
+  landed_total_1000_low?: number | null;
+  landed_total_1000_high?: number | null;
+  landed_currency_code?: string | null;
   landed_ngn_per_unit_low?: number | null;
   landed_ngn_per_unit_high?: number | null;
   landed_ngn_total_1000_low?: number | null;
@@ -57,6 +62,19 @@ export function pickLandedFieldsByCurrency(
   totalLow: number | null | undefined;
   totalHigh: number | null | undefined;
 } {
+  if (
+    item.landed_per_unit_low != null ||
+    item.landed_per_unit_high != null ||
+    item.landed_total_1000_low != null ||
+    item.landed_total_1000_high != null
+  ) {
+    return {
+      perUnitLow: item.landed_per_unit_low,
+      perUnitHigh: item.landed_per_unit_high,
+      totalLow: item.landed_total_1000_low,
+      totalHigh: item.landed_total_1000_high,
+    };
+  }
   const code = String(currencyCode || "").toUpperCase();
   if (code === "GBP") {
     return {

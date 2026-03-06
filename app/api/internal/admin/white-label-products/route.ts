@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
-import {
-  computeLandedRange,
-  ensureWhiteLabelProductsTable,
-} from "@/lib/white-label-products";
+import { computeLandedRange, ensureWhiteLabelProductsTable } from "@/lib/white-label-products";
+import { recomputeWhiteLabelLandedCostsForProduct } from "@/lib/white-label-landed";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -200,6 +198,9 @@ export async function POST(req: Request) {
     );
 
     const newId = Number(ins?.insertId || 0);
+    if (newId) {
+      await recomputeWhiteLabelLandedCostsForProduct(conn, newId);
+    }
     const [rows]: any = await conn.query(
       `SELECT * FROM linescout_white_label_products WHERE id = ? LIMIT 1`,
       [newId]

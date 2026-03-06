@@ -260,10 +260,9 @@ export default function WhiteLabelIdeaDetailClient({ slug }: { slug: string }) {
                 <WhiteLabelAmazonReveal
                   productId={product.id}
                   currencyCode={currencyCode}
-                  landedGbpLow={product.landed_gbp_sea_per_unit_low ?? null}
-                  landedGbpHigh={product.landed_gbp_sea_per_unit_high ?? null}
-                  landedCadLow={product.landed_cad_sea_per_unit_low ?? null}
-                  landedCadHigh={product.landed_cad_sea_per_unit_high ?? null}
+                  amazonLandedLow={product.amazon_landed_per_unit_low ?? null}
+                  amazonLandedHigh={product.amazon_landed_per_unit_high ?? null}
+                  amazonCurrency={product.amazon_display_currency ?? null}
                 />
               ) : null}
               <WhiteLabelInsights productId={product.id} />

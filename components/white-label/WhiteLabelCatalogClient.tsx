@@ -21,18 +21,18 @@ type ProductItem = {
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
-  landed_ngn_per_unit_low?: number | null;
-  landed_ngn_per_unit_high?: number | null;
-  landed_ngn_total_1000_low?: number | null;
-  landed_ngn_total_1000_high?: number | null;
-  landed_gbp_sea_per_unit_low?: number | null;
-  landed_gbp_sea_per_unit_high?: number | null;
-  landed_gbp_sea_total_1000_low?: number | null;
-  landed_gbp_sea_total_1000_high?: number | null;
-  landed_cad_sea_per_unit_low?: number | null;
-  landed_cad_sea_per_unit_high?: number | null;
-  landed_cad_sea_total_1000_low?: number | null;
-  landed_cad_sea_total_1000_high?: number | null;
+  landed_per_unit_low?: number | null;
+  landed_per_unit_high?: number | null;
+  landed_total_1000_low?: number | null;
+  landed_total_1000_high?: number | null;
+  landed_currency_code?: string | null;
+  amazon_landed_per_unit_low?: number | null;
+  amazon_landed_per_unit_high?: number | null;
+  amazon_display_marketplace?: string | null;
+  amazon_display_currency?: string | null;
+  amazon_display_price_low?: number | null;
+  amazon_display_price_high?: number | null;
+  amazon_display_note?: string | null;
   amazon_uk_asin?: string | null;
   amazon_uk_url?: string | null;
   amazon_uk_currency?: string | null;
@@ -312,45 +312,24 @@ export default function WhiteLabelCatalogClient({
                     ? (() => {
                   const reveal = reveals[item.id];
                   const revealed = Boolean(reveal?.data?.ok);
-                  const isCaUser = currencyCode === "CAD";
-                  const isUsUser = currencyCode === "USD";
-                  const dataRow = revealed ? reveal?.data?.product || {} : item;
-                  const ukLow = dataRow.amazon_uk_price_low != null ? Number(dataRow.amazon_uk_price_low) : null;
-                  const ukHigh = dataRow.amazon_uk_price_high != null ? Number(dataRow.amazon_uk_price_high) : null;
-                  const caLow = dataRow.amazon_ca_price_low != null ? Number(dataRow.amazon_ca_price_low) : null;
-                  const caHigh = dataRow.amazon_ca_price_high != null ? Number(dataRow.amazon_ca_price_high) : null;
-                  const usLow = dataRow.amazon_us_price_low != null ? Number(dataRow.amazon_us_price_low) : null;
-                  const usHigh = dataRow.amazon_us_price_high != null ? Number(dataRow.amazon_us_price_high) : null;
-                  const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
-                  const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
-                  const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
-
-                  const useUs = isUsUser && hasUs;
-                  const useCa = isCaUser && hasCa;
-                  const useUk = !useUs && !useCa && hasUk;
-                  const showFallbackMessage = isCaUser && !hasCa && hasUk;
-                  const showUsFallbackMessage = isUsUser && !hasUs && hasUk;
-                  const preferredMarket = isUsUser ? "US" : isCaUser ? "CA" : "UK";
-                  const amazonCode = revealed
-                    ? useUs
-                      ? "USD"
-                      : useCa
-                      ? "CAD"
-                      : "GBP"
-                    : isUsUser
-                    ? "USD"
-                    : isCaUser
-                    ? "CAD"
-                    : "GBP";
-                  const labelSuffix = revealed
-                    ? useUs
-                      ? " (US)"
-                      : useCa
-                      ? " (CA)"
-                      : " (UK)"
-                    : ` (${preferredMarket})`;
-                  const amazonLow = useUs ? usLow : useCa ? caLow : ukLow;
-                  const amazonHigh = useUs ? usHigh : useCa ? caHigh : ukHigh;
+                  const display = reveal?.data?.display || null;
+                  const amazonCode = String(
+                    (display?.currency || item.amazon_display_currency || "GBP") as string
+                  ).toUpperCase();
+                  const amazonMarket = String(
+                    (display?.marketplace || item.amazon_display_marketplace || "") as string
+                  ).toUpperCase();
+                  const labelSuffix = amazonMarket ? ` (${amazonMarket})` : "";
+                  const toNum = (value: any) => {
+                    const n = Number(value);
+                    return Number.isFinite(n) ? n : null;
+                  };
+                  const amazonLow = revealed
+                    ? toNum(display?.price_low)
+                    : toNum(item.amazon_display_price_low);
+                  const amazonHigh = revealed
+                    ? toNum(display?.price_high)
+                    : toNum(item.amazon_display_price_high);
 
                   const displayAmazonRange = () => {
                     const code = amazonCode;
@@ -378,24 +357,11 @@ export default function WhiteLabelCatalogClient({
                     return "—";
                   };
 
-                  const landedForAmazon = () => {
-                    if (amazonCode === "GBP") {
-                      return {
-                        low: item.landed_gbp_sea_per_unit_low ?? null,
-                        high: item.landed_gbp_sea_per_unit_high ?? null,
-                      };
-                    }
-                    if (amazonCode === "CAD") {
-                      return {
-                        low: item.landed_cad_sea_per_unit_low ?? null,
-                        high: item.landed_cad_sea_per_unit_high ?? null,
-                      };
-                    }
-                    return { low: null, high: null };
-                  };
-
                   const marginRange = () => {
-                    const landed = landedForAmazon();
+                    const landed = {
+                      low: item.amazon_landed_per_unit_low ?? null,
+                      high: item.amazon_landed_per_unit_high ?? null,
+                    };
                     const low = Number.isFinite(amazonLow) ? amazonLow : null;
                     const high = Number.isFinite(amazonHigh) ? amazonHigh : null;
                     if (low == null || high == null || landed.low == null || landed.high == null) return null;
@@ -439,14 +405,9 @@ export default function WhiteLabelCatalogClient({
                               Indicative margin: {marginText}
                             </p>
                           ) : null}
-                          {showUsFallbackMessage ? (
+                          {display?.note || item.amazon_display_note ? (
                             <p className="mt-1 text-[11px] text-amber-700">
-                              Amazon US price not available at this time for this product.
-                            </p>
-                          ) : null}
-                          {showFallbackMessage ? (
-                            <p className="mt-1 text-[11px] text-amber-700">
-                              Amazon CA price not available at this time for this product.
+                              {display?.note || item.amazon_display_note}
                             </p>
                           ) : null}
                         </>

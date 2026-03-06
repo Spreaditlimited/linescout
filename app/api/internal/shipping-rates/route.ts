@@ -5,6 +5,7 @@ import {
   ensureShippingRateCountryColumn,
   getNigeriaDefaults,
 } from "@/lib/country-config";
+import { recomputeWhiteLabelLandedCostsForCountry } from "@/lib/white-label-landed";
 import { db } from "@/lib/db";
 
 async function requireAdmin() {
@@ -111,6 +112,8 @@ export async function POST(req: Request) {
       [shipping_type_id, rate_value, rate_unit, currency, country_id]
     );
 
+    await recomputeWhiteLabelLandedCostsForCountry(conn, country_id);
+
     return NextResponse.json({ ok: true, id: result.insertId });
   } finally {
     conn.release();
@@ -174,6 +177,19 @@ export async function PATCH(req: Request) {
 
     params.push(id);
     await conn.query(`UPDATE linescout_shipping_rates SET ${setParts.join(", ")} WHERE id = ?`, params);
+    let targetCountryId = 0;
+    if (country_id !== undefined) {
+      targetCountryId = Number(country_id || 0);
+    } else {
+      const [rows]: any = await conn.query(
+        `SELECT country_id FROM linescout_shipping_rates WHERE id = ? LIMIT 1`,
+        [id]
+      );
+      targetCountryId = Number(rows?.[0]?.country_id || 0);
+    }
+    if (targetCountryId) {
+      await recomputeWhiteLabelLandedCostsForCountry(conn, targetCountryId);
+    }
     return NextResponse.json({ ok: true });
   } finally {
     conn.release();

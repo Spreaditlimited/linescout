@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { currencyForCode } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
+import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { getFxRate } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 20;
-const FX_RATE_NGN = 1500;
-const CBM_RATE_NGN = 450000;
-const MARKUP = 0.2;
-const LANDED_LOW_MULTIPLIER = 0.5;
-
 function toInt(value: any, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
@@ -31,7 +30,15 @@ function parseEligibleCountries(raw?: string | null) {
 
 function pickCountryFromCookie(
   cookieValue: string | undefined,
-  countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
+  countries: {
+    id: number;
+    name: string;
+    iso2: string;
+    default_currency_id?: number | null;
+    settlement_currency_code?: string | null;
+    amazon_marketplace?: string | null;
+    amazon_enabled?: number | null;
+  }[]
 ) {
   const normalized = String(cookieValue || "").trim().toUpperCase();
   const picked =
@@ -87,7 +94,7 @@ export async function GET(req: Request) {
       const currencyById = new Map<number, string>(
         (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
       );
-      const picked = pickCountryFromCookie(countryCookie, countries);
+      let picked = pickCountryFromCookie(countryCookie, countries);
       let countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
       let currencyCode = getCountryCurrencyCode(picked, currencyById);
 
@@ -111,6 +118,7 @@ export async function GET(req: Request) {
         profileCurrencyCode = userRow?.currency_code ? String(userRow.currency_code).toUpperCase() : "";
         if (profileCountryCode) {
           countryCode = profileCountryCode;
+          picked = countries.find((c) => c.iso2 === profileCountryCode) || picked;
         }
         if (profileCurrencyCode) {
           currencyCode = profileCurrencyCode;
@@ -121,12 +129,20 @@ export async function GET(req: Request) {
         `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
       );
       const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
-      const amazonComparisonEnabled = Boolean(countryCode) && eligible.has(countryCode) && currencyCode !== "NGN";
+      const countryMarketplace = picked?.amazon_marketplace || null;
+      const amazonEnabledFlag = picked?.amazon_enabled === 1;
+      const amazonComparisonEnabled =
+        Boolean(countryCode) &&
+        eligible.has(countryCode) &&
+        amazonEnabledFlag &&
+        isKeepaMarketplaceSupported(countryMarketplace);
 
       await ensureWhiteLabelProductsReady(conn);
+      await ensureWhiteLabelLandedCostTable(conn);
 
       const clauses = ["p.is_active = 1"];
       const params: any[] = [];
+      const countryId = picked?.id ? Number(picked.id) : 0;
 
       if (category) {
         clauses.push("p.category = ?");
@@ -153,29 +169,28 @@ export async function GET(req: Request) {
         clauses.push(`COALESCE(p.regulatory_note,'') = ''`);
       }
 
-      const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(p.fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(p.cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
       const effectivePrice = currencyCode === "NGN" ? price : "";
 
       if (effectivePrice) {
         if (price === "lt1k") {
-          clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
+          clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low < 1000`);
         } else if (price === "1k-3k") {
-          clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} >= 1000 AND ${landedLowExpr} <= 3000`);
+          clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low >= 1000 AND lc.landed_per_unit_low <= 3000`);
         } else if (price === "3k-7k") {
-          clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 3000 AND ${landedLowExpr} <= 7000`);
+          clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 3000 AND lc.landed_per_unit_low <= 7000`);
         } else if (price === "7k-15k") {
-          clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 7000 AND ${landedLowExpr} <= 15000`);
+          clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 7000 AND lc.landed_per_unit_low <= 15000`);
         } else if (price === "15kplus") {
-          clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 15000`);
+          clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 15000`);
         }
       }
 
       const hasAmazonExpr = `(CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END)`;
       const sortClause =
         sort === "price_low"
-          ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, p.id DESC`
+          ? `ORDER BY (lc.landed_per_unit_low IS NULL) ASC, lc.landed_per_unit_low ASC, p.id DESC`
           : sort === "price_high"
-          ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} DESC, p.id DESC`
+          ? `ORDER BY (lc.landed_per_unit_low IS NULL) ASC, lc.landed_per_unit_low DESC, p.id DESC`
           : sort === "name"
           ? "ORDER BY p.product_name ASC, p.id DESC"
           : sort === "newest"
@@ -186,8 +201,11 @@ export async function GET(req: Request) {
 
       const [rows]: any = await conn.query(
         `
-        SELECT SQL_CALC_FOUND_ROWS p.*, COALESCE(v.views, 0) AS view_count
+        SELECT SQL_CALC_FOUND_ROWS p.*, COALESCE(v.views, 0) AS view_count,
+               lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
         FROM linescout_white_label_products p
+        LEFT JOIN linescout_white_label_landed_costs lc
+          ON lc.product_id = p.id AND lc.country_id = ?
         LEFT JOIN (
           SELECT product_id, COUNT(*) AS views
           FROM linescout_white_label_views
@@ -197,18 +215,64 @@ export async function GET(req: Request) {
         ${sortClause}
         LIMIT ? OFFSET ?
         `,
-        [...params, PAGE_SIZE, (requestedPage - 1) * PAGE_SIZE]
+        [countryId, ...params, PAGE_SIZE, (requestedPage - 1) * PAGE_SIZE]
       );
       const [totalRows]: any = await conn.query(`SELECT FOUND_ROWS() as total`);
 
-      const items = (rows || []).map((r: any) => ({
-        ...r,
-        ...computeLandedRange({
-          fob_low_usd: r.fob_low_usd,
-          fob_high_usd: r.fob_high_usd,
-          cbm_per_1000: r.cbm_per_1000,
-        }),
-      }));
+      const preferredMarketplace = resolveAmazonMarketplace({
+        marketplace: picked?.amazon_marketplace,
+        countryIso2: countryCode,
+        currencyCode,
+      });
+      const amazonCurrency = marketplaceCurrency(preferredMarketplace);
+      const amazonFx =
+        currencyCode === amazonCurrency ? 1 : await getFxRate(conn, currencyCode, amazonCurrency);
+
+      const items = (rows || []).map((r: any) => {
+        const landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
+        const landedHigh = r.landed_per_unit_high != null ? Number(r.landed_per_unit_high) : null;
+        const amazonLandedLow =
+          landedLow != null && amazonFx ? Number(landedLow) * amazonFx : null;
+        const amazonLandedHigh =
+          landedHigh != null && amazonFx ? Number(landedHigh) * amazonFx : null;
+        const ukLow = r.amazon_uk_price_low != null ? Number(r.amazon_uk_price_low) : null;
+        const ukHigh = r.amazon_uk_price_high != null ? Number(r.amazon_uk_price_high) : null;
+        const caLow = r.amazon_ca_price_low != null ? Number(r.amazon_ca_price_low) : null;
+        const caHigh = r.amazon_ca_price_high != null ? Number(r.amazon_ca_price_high) : null;
+        const usLow = r.amazon_us_price_low != null ? Number(r.amazon_us_price_low) : null;
+        const usHigh = r.amazon_us_price_high != null ? Number(r.amazon_us_price_high) : null;
+        const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
+        const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
+        const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
+        const useUs = preferredMarketplace === "US" && hasUs;
+        const useCa = preferredMarketplace === "CA" && hasCa;
+        const useUk = preferredMarketplace === "UK" && hasUk;
+        const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
+        const market = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
+        return {
+          ...r,
+          landed_per_unit_low: landedLow,
+          landed_per_unit_high: landedHigh,
+          landed_total_1000_low: r.landed_total_1000_low ?? null,
+          landed_total_1000_high: r.landed_total_1000_high ?? null,
+          landed_currency_code: currencyCode,
+          amazon_landed_per_unit_low: amazonLandedLow,
+          amazon_landed_per_unit_high: amazonLandedHigh,
+          amazon_display_marketplace: market,
+          amazon_display_currency: market ? marketplaceCurrency(market) : null,
+          amazon_display_price_low: market === "US" ? usLow : market === "CA" ? caLow : market === "UK" ? ukLow : null,
+          amazon_display_price_high:
+            market === "US" ? usHigh : market === "CA" ? caHigh : market === "UK" ? ukHigh : null,
+          amazon_display_note:
+            preferredMarketplace === "US" && !hasUs && hasUk
+              ? "Amazon US price not available at this time for this product."
+              : preferredMarketplace === "CA" && !hasCa && hasUk
+              ? "Amazon CA price not available at this time for this product."
+              : preferredMarketplace === "UK" && !hasUk && hasCa
+              ? "Amazon UK price not available at this time for this product."
+              : null,
+        };
+      });
       const total = Number(totalRows?.[0]?.total || 0);
 
       const [catRows]: any = await conn.query(
@@ -225,8 +289,11 @@ export async function GET(req: Request) {
 
       const [viewRows]: any = await conn.query(
         `
-        SELECT p.*, COALESCE(v.views, 0) AS view_count
+        SELECT p.*, COALESCE(v.views, 0) AS view_count,
+               lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
         FROM linescout_white_label_products p
+        LEFT JOIN linescout_white_label_landed_costs lc
+          ON lc.product_id = p.id AND lc.country_id = ?
         LEFT JOIN (
           SELECT product_id, COUNT(*) AS views
           FROM linescout_white_label_views
@@ -236,15 +303,17 @@ export async function GET(req: Request) {
         ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
         LIMIT 4
         `
+        ,
+        [countryId]
       );
 
       const mostViewed = (viewRows || []).map((r: any) => ({
         ...r,
-        ...computeLandedRange({
-          fob_low_usd: r.fob_low_usd,
-          fob_high_usd: r.fob_high_usd,
-          cbm_per_1000: r.cbm_per_1000,
-        }),
+        landed_per_unit_low: r.landed_per_unit_low ?? null,
+        landed_per_unit_high: r.landed_per_unit_high ?? null,
+        landed_total_1000_low: r.landed_total_1000_low ?? null,
+        landed_total_1000_high: r.landed_total_1000_high ?? null,
+        landed_currency_code: currencyCode,
       }));
 
       const currency = currencyForCode(currencyCode);

@@ -6,6 +6,7 @@ import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
                u.white_label_next_billing_at,
                c.iso2 AS country_iso2,
                c.amazon_marketplace AS country_marketplace,
+               c.amazon_enabled AS amazon_enabled,
                cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -81,6 +83,13 @@ export async function POST(req: Request) {
       if (!allowLocal && !eligible.has(countryIso2)) {
         return NextResponse.json(
           { ok: false, code: "subscription_unavailable", error: "Insights are not available in your country." },
+          { status: 403 }
+        );
+      }
+
+      if (!userRow?.amazon_enabled || !isKeepaMarketplaceSupported(userRow?.country_marketplace)) {
+        return NextResponse.json(
+          { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." },
           { status: 403 }
         );
       }

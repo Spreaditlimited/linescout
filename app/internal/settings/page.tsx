@@ -105,6 +105,7 @@ type CountryItem = {
   settlement_currency_code?: string | null;
   payment_provider?: string | null;
   amazon_marketplace?: string | null;
+  amazon_enabled?: number;
   is_active?: number;
 };
 
@@ -311,6 +312,8 @@ export default function InternalSettingsPage() {
   const [newCountryDefaultCurrencyId, setNewCountryDefaultCurrencyId] = useState<number | null>(null);
   const [newCountrySettlement, setNewCountrySettlement] = useState("");
   const [newCountryProvider, setNewCountryProvider] = useState("");
+  const [newCountryAmazonMarketplace, setNewCountryAmazonMarketplace] = useState("");
+  const [newCountryAmazonEnabled, setNewCountryAmazonEnabled] = useState(true);
   const [newCountryAutoMap, setNewCountryAutoMap] = useState(true);
   const [newCountryAddToWhiteLabel, setNewCountryAddToWhiteLabel] = useState(false);
 
@@ -321,6 +324,8 @@ export default function InternalSettingsPage() {
   const [editCountryDefaultCurrencyId, setEditCountryDefaultCurrencyId] = useState<number | null>(null);
   const [editCountrySettlement, setEditCountrySettlement] = useState("");
   const [editCountryProvider, setEditCountryProvider] = useState("");
+  const [editCountryAmazonMarketplace, setEditCountryAmazonMarketplace] = useState("");
+  const [editCountryAmazonEnabled, setEditCountryAmazonEnabled] = useState(true);
 
   const [editingCurrencyId, setEditingCurrencyId] = useState<number | null>(null);
   const [editCurrencySymbol, setEditCurrencySymbol] = useState("");
@@ -770,6 +775,8 @@ export default function InternalSettingsPage() {
         default_currency_id: newCountryDefaultCurrencyId,
         settlement_currency_code: newCountrySettlement,
         payment_provider: newCountryProvider,
+        amazon_marketplace: newCountryAmazonMarketplace || null,
+        amazon_enabled: newCountryAmazonEnabled ? 1 : 0,
         auto_map_default_currency: newCountryAutoMap,
         auto_add_white_label: newCountryAddToWhiteLabel,
       });
@@ -778,6 +785,8 @@ export default function InternalSettingsPage() {
       setNewCountryIso3("");
       setNewCountrySettlement("");
       setNewCountryProvider("");
+      setNewCountryAmazonMarketplace("");
+      setNewCountryAmazonEnabled(true);
       setNewCountryAutoMap(true);
       setNewCountryAddToWhiteLabel(false);
       await loadSettings();
@@ -794,6 +803,8 @@ export default function InternalSettingsPage() {
     setEditCountryDefaultCurrencyId(item.default_currency_id ?? null);
     setEditCountrySettlement(item.settlement_currency_code || "");
     setEditCountryProvider(item.payment_provider || "");
+    setEditCountryAmazonMarketplace(item.amazon_marketplace || "");
+    setEditCountryAmazonEnabled(item.amazon_enabled === 1);
   }
 
   function cancelEditCountry() {
@@ -804,6 +815,8 @@ export default function InternalSettingsPage() {
     setEditCountryDefaultCurrencyId(null);
     setEditCountrySettlement("");
     setEditCountryProvider("");
+    setEditCountryAmazonMarketplace("");
+    setEditCountryAmazonEnabled(true);
   }
 
   async function saveCountryEdit() {
@@ -818,6 +831,8 @@ export default function InternalSettingsPage() {
         default_currency_id: editCountryDefaultCurrencyId,
         settlement_currency_code: editCountrySettlement,
         payment_provider: editCountryProvider,
+        amazon_marketplace: editCountryAmazonMarketplace || null,
+        amazon_enabled: editCountryAmazonEnabled ? 1 : 0,
       });
       cancelEditCountry();
       await loadSettings();
@@ -1825,6 +1840,484 @@ export default function InternalSettingsPage() {
 
         </div>
 
+        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-neutral-100">Countries & currencies</h3>
+              <p className="mt-1 text-xs text-neutral-500">
+                Configure supported markets, display currencies, and FX rates. Settlement currency can be any code.
+              </p>
+            </div>
+          </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Currencies</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                value={newCurrencyCode}
+                onChange={(e) => setNewCurrencyCode(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Code (e.g. NGN)"
+              />
+              <input
+                value={newCurrencySymbol}
+                onChange={(e) => setNewCurrencySymbol(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Symbol (e.g. ₦)"
+              />
+              <input
+                value={newCurrencyDecimals}
+                onChange={(e) => setNewCurrencyDecimals(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Decimals (e.g. 2)"
+                inputMode="numeric"
+              />
+              <input
+                value={newCurrencyFormat}
+                onChange={(e) => setNewCurrencyFormat(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Format (optional)"
+              />
+              <button
+                onClick={createCurrency}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add currency
+              </button>
+            </div>
+
+            {currencyErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {currencyErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 space-y-2">
+              {currencies.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  {editingCurrencyId === c.id ? (
+                    <div className="flex-1">
+                      <div className="text-xs font-semibold text-neutral-100">{c.code}</div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <input
+                          value={editCurrencySymbol}
+                          onChange={(e) => setEditCurrencySymbol(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Symbol"
+                        />
+                        <input
+                          value={editCurrencyDecimals}
+                          onChange={(e) => setEditCurrencyDecimals(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Decimals"
+                        />
+                        <input
+                          value={editCurrencyFormat}
+                          onChange={(e) => setEditCurrencyFormat(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Format"
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={saveCurrencyEdit}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditCurrency}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="font-semibold text-neutral-100">{c.code}</div>
+                        <div className="text-neutral-400">
+                          {c.symbol || "—"} · {c.decimal_places ?? 2} decimals
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditCurrency(c)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleCurrency(c.id, c.is_active === 0 ? 1 : 0)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          {c.is_active === 0 ? "Activate" : "Deactivate"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Countries</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                value={newCountryName}
+                onChange={(e) => setNewCountryName(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Country name"
+              />
+              <input
+                value={newCountryIso2}
+                onChange={(e) => setNewCountryIso2(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="ISO2 (e.g. NG)"
+              />
+              <input
+                value={newCountryIso3}
+                onChange={(e) => setNewCountryIso3(e.target.value.toUpperCase())}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="ISO3 (optional)"
+              />
+              <SearchableSelect
+                value={newCountryDefaultCurrencyId ? String(newCountryDefaultCurrencyId) : ""}
+                options={[
+                  { value: "", label: "Default currency (optional)" },
+                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
+                ]}
+                onChange={(next) => setNewCountryDefaultCurrencyId(next ? Number(next) : null)}
+              />
+              <SearchableSelect
+                value={newCountrySettlement}
+                onChange={(value) => setNewCountrySettlement(value)}
+                options={[
+                  { value: "", label: "Settlement currency" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Settlement currency"
+              />
+              <SearchableSelect
+                value={newCountryProvider}
+                onChange={(value) => setNewCountryProvider(value)}
+                options={[
+                  { value: "", label: "Payment provider" },
+                  { value: "paystack", label: "Paystack" },
+                  { value: "paypal", label: "PayPal" },
+                  { value: "providus", label: "Providus" },
+                  { value: "global", label: "Global" },
+                ]}
+                placeholder="Payment provider"
+              />
+              <SearchableSelect
+                value={newCountryAmazonMarketplace}
+                onChange={(value) => setNewCountryAmazonMarketplace(value)}
+                options={[
+                  { value: "", label: "Amazon marketplace" },
+                  { value: "UK", label: "UK" },
+                  { value: "US", label: "US" },
+                  { value: "CA", label: "CA" },
+                ]}
+                placeholder="Amazon marketplace"
+              />
+              <div className="flex flex-col gap-2 text-xs text-neutral-400 sm:col-span-2">
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newCountryAutoMap}
+                    onChange={(e) => setNewCountryAutoMap(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Auto-map default currency to this country
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newCountryAddToWhiteLabel}
+                    onChange={(e) => setNewCountryAddToWhiteLabel(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Add ISO2 to white label eligible countries
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newCountryAmazonEnabled}
+                    onChange={(e) => setNewCountryAmazonEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Enable Amazon reveal & insights (Keepa-supported marketplaces only)
+                </label>
+              </div>
+              <button
+                onClick={createCountry}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add country
+              </button>
+            </div>
+
+            {countryErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {countryErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 space-y-2">
+              {countries.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  {editingCountryId === c.id ? (
+                    <div className="flex-1">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input
+                          value={editCountryName}
+                          onChange={(e) => setEditCountryName(e.target.value)}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="Name"
+                        />
+                        <input
+                          value={editCountryIso2}
+                          onChange={(e) => setEditCountryIso2(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="ISO2"
+                        />
+                        <input
+                          value={editCountryIso3}
+                          onChange={(e) => setEditCountryIso3(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
+                          placeholder="ISO3"
+                        />
+                        <SearchableSelect
+                          value={editCountryDefaultCurrencyId ? String(editCountryDefaultCurrencyId) : ""}
+                          options={[
+                            { value: "", label: "Default currency (optional)" },
+                            ...currencies.map((cur) => ({ value: String(cur.id), label: cur.code })),
+                          ]}
+                          onChange={(next) => setEditCountryDefaultCurrencyId(next ? Number(next) : null)}
+                        />
+                        <SearchableSelect
+                          value={editCountrySettlement}
+                          onChange={(value) => setEditCountrySettlement(value)}
+                          options={[
+                            { value: "", label: "Settlement currency" },
+                            ...currencies.map((cur) => ({ value: String(cur.code), label: String(cur.code) })),
+                          ]}
+                          placeholder="Settlement currency"
+                        />
+                        <SearchableSelect
+                          value={editCountryProvider}
+                          onChange={(value) => setEditCountryProvider(value)}
+                          options={[
+                            { value: "", label: "Payment provider" },
+                            { value: "paystack", label: "Paystack" },
+                            { value: "paypal", label: "PayPal" },
+                            { value: "providus", label: "Providus" },
+                            { value: "global", label: "Global" },
+                          ]}
+                          placeholder="Payment provider"
+                        />
+                        <SearchableSelect
+                          value={editCountryAmazonMarketplace}
+                          onChange={(value) => setEditCountryAmazonMarketplace(value)}
+                          options={[
+                            { value: "", label: "Amazon marketplace" },
+                            { value: "UK", label: "UK" },
+                            { value: "US", label: "US" },
+                            { value: "CA", label: "CA" },
+                          ]}
+                          placeholder="Amazon marketplace"
+                        />
+                      </div>
+                      <div className="mt-2">
+                        <label className="inline-flex items-center gap-2 text-xs text-neutral-400">
+                          <input
+                            type="checkbox"
+                            checked={editCountryAmazonEnabled}
+                            onChange={(e) => setEditCountryAmazonEnabled(e.target.checked)}
+                            className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                          />
+                          Enable Amazon reveal & insights (Keepa-supported marketplaces only)
+                        </label>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={saveCountryEdit}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={cancelEditCountry}
+                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="font-semibold text-neutral-100">
+                          {c.name} ({c.iso2})
+                        </div>
+                        <div className="text-neutral-400">
+                          Default: {c.default_currency_code || "—"} · Settlement:{" "}
+                          {c.settlement_currency_code || "—"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => startEditCountry(c)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => toggleCountry(c.id, c.is_active === 0 ? 1 : 0)}
+                          className="text-xs text-neutral-400 hover:text-neutral-100"
+                        >
+                          {c.is_active === 0 ? "Activate" : "Deactivate"}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Country currencies</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <SearchableSelect
+                value={newCountryCurrencyCountryId ? String(newCountryCurrencyCountryId) : ""}
+                options={[
+                  { value: "", label: "Select country" },
+                  ...countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.iso2})` })),
+                ]}
+                onChange={(next) => setNewCountryCurrencyCountryId(next ? Number(next) : null)}
+              />
+              <SearchableSelect
+                value={newCountryCurrencyCurrencyId ? String(newCountryCurrencyCurrencyId) : ""}
+                options={[
+                  { value: "", label: "Select currency" },
+                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
+                ]}
+                onChange={(next) => setNewCountryCurrencyCurrencyId(next ? Number(next) : null)}
+              />
+              <button
+                onClick={createCountryCurrency}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add mapping
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {countryCurrencies.map((cc) => (
+                <div
+                  key={`${cc.country_id}-${cc.currency_id}`}
+                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  <span>
+                    {cc.country_name || "Country"} → {cc.currency_code || "Currency"}
+                  </span>
+                  <button
+                    onClick={() =>
+                      toggleCountryCurrency(cc.country_id, cc.currency_id, cc.is_active === 0 ? 1 : 0)
+                    }
+                    className="text-xs text-neutral-400 hover:text-neutral-100"
+                  >
+                    {cc.is_active === 0 ? "Activate" : "Deactivate"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">FX rates</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <SearchableSelect
+                value={newFxBase}
+                onChange={(value) => setNewFxBase(value)}
+                options={[
+                  { value: "", label: "Select base" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Base currency"
+              />
+              <SearchableSelect
+                value={newFxQuote}
+                onChange={(value) => setNewFxQuote(value)}
+                options={[
+                  { value: "", label: "Select quote" },
+                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
+                ]}
+                placeholder="Quote currency"
+              />
+              <input
+                value={newFxRate}
+                onChange={(e) => setNewFxRate(e.target.value)}
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                placeholder="Rate"
+                type="number"
+                step="0.00001"
+                inputMode="decimal"
+              />
+              <button
+                onClick={createFxRate}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
+              >
+                Add FX rate
+              </button>
+            </div>
+
+            {fxErr ? (
+              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                {fxErr}
+              </div>
+            ) : null}
+
+            <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
+              {fxRates.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                >
+                  <div>
+                    <div className="font-semibold text-neutral-100">
+                      {r.base_currency_code} → {r.quote_currency_code}
+                    </div>
+                    <div className="text-neutral-400">
+                      Rate:{" "}
+                      {Number(r.rate || 0).toLocaleString(undefined, {
+                        maximumFractionDigits: 5,
+                      })}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-neutral-500">
+                    {r.effective_at ? `Effective ${r.effective_at}` : "No effective date"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
         <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr]">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
             <div className="text-sm font-semibold text-neutral-100">Shipping types</div>
@@ -1932,7 +2425,7 @@ export default function InternalSettingsPage() {
             {shippingLoading ? (
               <div className="mt-3 text-xs text-neutral-500">Loading...</div>
             ) : shippingRates.length ? (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 max-h-[360px] space-y-2 overflow-auto pr-1">
                 {shippingRates.map((r) => (
                   <div key={r.id} className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200">
                     {editingRateId === r.id ? (
@@ -2343,442 +2836,6 @@ export default function InternalSettingsPage() {
             {paypalPlanMsg}
           </div>
         ) : null}
-      </div>
-
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-neutral-100">Countries & currencies</h3>
-            <p className="mt-1 text-xs text-neutral-500">
-              Configure supported markets, display currencies, and FX rates. Settlement currency can be any code.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="text-sm font-semibold text-neutral-100">Currencies</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
-                value={newCurrencyCode}
-                onChange={(e) => setNewCurrencyCode(e.target.value.toUpperCase())}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Code (e.g. NGN)"
-              />
-              <input
-                value={newCurrencySymbol}
-                onChange={(e) => setNewCurrencySymbol(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Symbol (e.g. ₦)"
-              />
-              <input
-                value={newCurrencyDecimals}
-                onChange={(e) => setNewCurrencyDecimals(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Decimals (e.g. 2)"
-                inputMode="numeric"
-              />
-              <input
-                value={newCurrencyFormat}
-                onChange={(e) => setNewCurrencyFormat(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Format (optional)"
-              />
-              <button
-                onClick={createCurrency}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
-              >
-                Add currency
-              </button>
-            </div>
-
-            {currencyErr ? (
-              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
-                {currencyErr}
-              </div>
-            ) : null}
-
-            <div className="mt-3 space-y-2">
-              {currencies.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-                >
-                  {editingCurrencyId === c.id ? (
-                    <div className="flex-1">
-                      <div className="text-xs font-semibold text-neutral-100">{c.code}</div>
-                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                        <input
-                          value={editCurrencySymbol}
-                          onChange={(e) => setEditCurrencySymbol(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="Symbol"
-                        />
-                        <input
-                          value={editCurrencyDecimals}
-                          onChange={(e) => setEditCurrencyDecimals(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="Decimals"
-                        />
-                        <input
-                          value={editCurrencyFormat}
-                          onChange={(e) => setEditCurrencyFormat(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="Format"
-                        />
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={saveCurrencyEdit}
-                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelEditCurrency}
-                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="font-semibold text-neutral-100">{c.code}</div>
-                        <div className="text-neutral-400">
-                          {c.symbol || "—"} · {c.decimal_places ?? 2} decimals
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => startEditCurrency(c)}
-                          className="text-xs text-neutral-400 hover:text-neutral-100"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => toggleCurrency(c.id, c.is_active === 0 ? 1 : 0)}
-                          className="text-xs text-neutral-400 hover:text-neutral-100"
-                        >
-                          {c.is_active === 0 ? "Activate" : "Deactivate"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="text-sm font-semibold text-neutral-100">Countries</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
-                value={newCountryName}
-                onChange={(e) => setNewCountryName(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Country name"
-              />
-              <input
-                value={newCountryIso2}
-                onChange={(e) => setNewCountryIso2(e.target.value.toUpperCase())}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="ISO2 (e.g. NG)"
-              />
-              <input
-                value={newCountryIso3}
-                onChange={(e) => setNewCountryIso3(e.target.value.toUpperCase())}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="ISO3 (optional)"
-              />
-              <SearchableSelect
-                value={newCountryDefaultCurrencyId ? String(newCountryDefaultCurrencyId) : ""}
-                options={[
-                  { value: "", label: "Default currency (optional)" },
-                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
-                ]}
-                onChange={(next) => setNewCountryDefaultCurrencyId(next ? Number(next) : null)}
-              />
-              <SearchableSelect
-                value={newCountrySettlement}
-                onChange={(value) => setNewCountrySettlement(value)}
-                options={[
-                  { value: "", label: "Settlement currency" },
-                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
-                ]}
-                placeholder="Settlement currency"
-              />
-              <SearchableSelect
-                value={newCountryProvider}
-                onChange={(value) => setNewCountryProvider(value)}
-                options={[
-                  { value: "", label: "Payment provider" },
-                  { value: "paystack", label: "Paystack" },
-                  { value: "paypal", label: "PayPal" },
-                  { value: "providus", label: "Providus" },
-                  { value: "global", label: "Global" },
-                ]}
-                placeholder="Payment provider"
-              />
-              <div className="flex flex-col gap-2 text-xs text-neutral-400 sm:col-span-2">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={newCountryAutoMap}
-                    onChange={(e) => setNewCountryAutoMap(e.target.checked)}
-                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
-                  />
-                  Auto-map default currency to this country
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={newCountryAddToWhiteLabel}
-                    onChange={(e) => setNewCountryAddToWhiteLabel(e.target.checked)}
-                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
-                  />
-                  Add ISO2 to white label eligible countries
-                </label>
-              </div>
-              <button
-                onClick={createCountry}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
-              >
-                Add country
-              </button>
-            </div>
-
-            {countryErr ? (
-              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
-                {countryErr}
-              </div>
-            ) : null}
-
-            <div className="mt-3 space-y-2">
-              {countries.map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-start justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-                >
-                  {editingCountryId === c.id ? (
-                    <div className="flex-1">
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        <input
-                          value={editCountryName}
-                          onChange={(e) => setEditCountryName(e.target.value)}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="Name"
-                        />
-                        <input
-                          value={editCountryIso2}
-                          onChange={(e) => setEditCountryIso2(e.target.value.toUpperCase())}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="ISO2"
-                        />
-                        <input
-                          value={editCountryIso3}
-                          onChange={(e) => setEditCountryIso3(e.target.value.toUpperCase())}
-                          className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-100"
-                          placeholder="ISO3"
-                        />
-                        <SearchableSelect
-                          value={editCountryDefaultCurrencyId ? String(editCountryDefaultCurrencyId) : ""}
-                          options={[
-                            { value: "", label: "Default currency (optional)" },
-                            ...currencies.map((cur) => ({ value: String(cur.id), label: cur.code })),
-                          ]}
-                          onChange={(next) => setEditCountryDefaultCurrencyId(next ? Number(next) : null)}
-                        />
-                        <SearchableSelect
-                          value={editCountrySettlement}
-                          onChange={(value) => setEditCountrySettlement(value)}
-                          options={[
-                            { value: "", label: "Settlement currency" },
-                            ...currencies.map((cur) => ({ value: String(cur.code), label: String(cur.code) })),
-                          ]}
-                          placeholder="Settlement currency"
-                        />
-                        <SearchableSelect
-                          value={editCountryProvider}
-                          onChange={(value) => setEditCountryProvider(value)}
-                          options={[
-                            { value: "", label: "Payment provider" },
-                            { value: "paystack", label: "Paystack" },
-                            { value: "paypal", label: "PayPal" },
-                            { value: "providus", label: "Providus" },
-                            { value: "global", label: "Global" },
-                          ]}
-                          placeholder="Payment provider"
-                        />
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={saveCountryEdit}
-                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelEditCountry}
-                          className="inline-flex items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] font-semibold text-neutral-400 hover:text-neutral-100"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="font-semibold text-neutral-100">
-                          {c.name} ({c.iso2})
-                        </div>
-                        <div className="text-neutral-400">
-                          Default: {c.default_currency_code || "—"} · Settlement:{" "}
-                          {c.settlement_currency_code || "—"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => startEditCountry(c)}
-                          className="text-xs text-neutral-400 hover:text-neutral-100"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => toggleCountry(c.id, c.is_active === 0 ? 1 : 0)}
-                          className="text-xs text-neutral-400 hover:text-neutral-100"
-                        >
-                          {c.is_active === 0 ? "Activate" : "Deactivate"}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="text-sm font-semibold text-neutral-100">Country currencies</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <SearchableSelect
-                value={newCountryCurrencyCountryId ? String(newCountryCurrencyCountryId) : ""}
-                options={[
-                  { value: "", label: "Select country" },
-                  ...countries.map((c) => ({ value: String(c.id), label: `${c.name} (${c.iso2})` })),
-                ]}
-                onChange={(next) => setNewCountryCurrencyCountryId(next ? Number(next) : null)}
-              />
-              <SearchableSelect
-                value={newCountryCurrencyCurrencyId ? String(newCountryCurrencyCurrencyId) : ""}
-                options={[
-                  { value: "", label: "Select currency" },
-                  ...currencies.map((c) => ({ value: String(c.id), label: c.code })),
-                ]}
-                onChange={(next) => setNewCountryCurrencyCurrencyId(next ? Number(next) : null)}
-              />
-              <button
-                onClick={createCountryCurrency}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
-              >
-                Add mapping
-              </button>
-            </div>
-
-            <div className="mt-3 space-y-2">
-              {countryCurrencies.map((cc) => (
-                <div
-                  key={`${cc.country_id}-${cc.currency_id}`}
-                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-                >
-                  <span>
-                    {cc.country_name || "Country"} → {cc.currency_code || "Currency"}
-                  </span>
-                  <button
-                    onClick={() =>
-                      toggleCountryCurrency(cc.country_id, cc.currency_id, cc.is_active === 0 ? 1 : 0)
-                    }
-                    className="text-xs text-neutral-400 hover:text-neutral-100"
-                  >
-                    {cc.is_active === 0 ? "Activate" : "Deactivate"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <div className="text-sm font-semibold text-neutral-100">FX rates</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <SearchableSelect
-                value={newFxBase}
-                onChange={(value) => setNewFxBase(value)}
-                options={[
-                  { value: "", label: "Select base" },
-                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
-                ]}
-                placeholder="Base currency"
-              />
-              <SearchableSelect
-                value={newFxQuote}
-                onChange={(value) => setNewFxQuote(value)}
-                options={[
-                  { value: "", label: "Select quote" },
-                  ...currencies.map((c) => ({ value: String(c.code), label: String(c.code) })),
-                ]}
-                placeholder="Quote currency"
-              />
-              <input
-                value={newFxRate}
-                onChange={(e) => setNewFxRate(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                placeholder="Rate"
-                type="number"
-                step="0.00001"
-                inputMode="decimal"
-              />
-              <button
-                onClick={createFxRate}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700"
-              >
-                Add FX rate
-              </button>
-            </div>
-
-            {fxErr ? (
-              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
-                {fxErr}
-              </div>
-            ) : null}
-
-            <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
-              {fxRates.map((r) => (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
-                >
-                  <div>
-                    <div className="font-semibold text-neutral-100">
-                      {r.base_currency_code} → {r.quote_currency_code}
-                    </div>
-                    <div className="text-neutral-400">
-                      Rate:{" "}
-                      {Number(r.rate || 0).toLocaleString(undefined, {
-                        maximumFractionDigits: 5,
-                      })}
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-neutral-500">
-                    {r.effective_at ? `Effective ${r.effective_at}` : "No effective date"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       </div>
 
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">

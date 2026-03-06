@@ -5,6 +5,9 @@ import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/whi
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
+import { getFxRate } from "@/lib/fx";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,8 +61,10 @@ export async function GET(req: Request) {
                u.white_label_insights_date, u.white_label_insights_used,
                u.email,
                u.white_label_next_billing_at,
+               c.id AS country_id,
                c.iso2 AS country_iso2,
                c.amazon_marketplace AS country_marketplace,
+               c.amazon_enabled AS amazon_enabled,
                cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -140,6 +145,8 @@ export async function GET(req: Request) {
         }
       }
 
+      await ensureWhiteLabelLandedCostTable(conn);
+
       const [[product]]: any = await conn.query(
         `
         SELECT id,
@@ -150,9 +157,6 @@ export async function GET(req: Request) {
                amazon_ca_price_low, amazon_ca_price_high, amazon_ca_last_checked_at,
                amazon_us_price_current, amazon_us_price_avg30, amazon_us_price_avg90, amazon_us_price_min, amazon_us_price_max, amazon_us_offer_count,
                amazon_us_price_low, amazon_us_price_high, amazon_us_last_checked_at,
-               landed_gbp_sea_per_unit_low, landed_gbp_sea_per_unit_high,
-               landed_cad_sea_per_unit_low, landed_cad_sea_per_unit_high,
-               landed_usd_sea_per_unit_low, landed_usd_sea_per_unit_high
         FROM linescout_white_label_products
         WHERE id = ?
         LIMIT 1
@@ -169,8 +173,17 @@ export async function GET(req: Request) {
         );
       }
 
+      const countryMarketplace = userRow?.country_marketplace || null;
+      const amazonEnabled = userRow?.amazon_enabled === 1;
+      if (!amazonEnabled || !isKeepaMarketplaceSupported(countryMarketplace)) {
+        return NextResponse.json(
+          { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." },
+          { status: 403 }
+        );
+      }
+
       const preferredMarket = resolveAmazonMarketplace({
-        marketplace: userRow?.country_marketplace,
+        marketplace: countryMarketplace,
         countryIso2,
         currencyCode,
       });
@@ -235,22 +248,30 @@ export async function GET(req: Request) {
       const offersRaw = toNum(product[`amazon_${market.toLowerCase()}_offer_count`]);
       const offers = offersRaw != null && offersRaw > 0 ? offersRaw : null;
       const lastChecked = product[`amazon_${market.toLowerCase()}_last_checked_at`] || null;
-      const landedLow =
-        market === "CA"
-          ? toNum(product.landed_cad_sea_per_unit_low)
-          : market === "US"
-          ? toNum(product.landed_usd_sea_per_unit_low)
-          : market === "UK"
-          ? toNum(product.landed_gbp_sea_per_unit_low)
-          : null;
-      const landedHigh =
-        market === "CA"
-          ? toNum(product.landed_cad_sea_per_unit_high)
-          : market === "US"
-          ? toNum(product.landed_usd_sea_per_unit_high)
-          : market === "UK"
-          ? toNum(product.landed_gbp_sea_per_unit_high)
-          : null;
+      const [landedRows]: any = await conn.query(
+        `
+        SELECT landed_per_unit_low, landed_per_unit_high, currency_code
+        FROM linescout_white_label_landed_costs
+        WHERE product_id = ? AND country_id = ?
+        LIMIT 1
+        `,
+        [productId, Number(userRow?.country_id || 0)]
+      );
+      const landedRow = landedRows?.[0] || {};
+      const landedCurrency = String(landedRow.currency_code || currencyCode || "").toUpperCase();
+      let landedLow = toNum(landedRow.landed_per_unit_low);
+      let landedHigh = toNum(landedRow.landed_per_unit_high);
+      const marketCurrency = marketplaceCurrency(market);
+      if (landedLow != null && landedHigh != null && landedCurrency && marketCurrency && landedCurrency !== marketCurrency) {
+        const fx = await getFxRate(conn, landedCurrency, marketCurrency);
+        if (fx && Number.isFinite(fx)) {
+          landedLow = landedLow * fx;
+          landedHigh = landedHigh * fx;
+        } else {
+          landedLow = null;
+          landedHigh = null;
+        }
+      }
 
       const trend30 = current && avg30 ? (current - avg30) / avg30 : null;
       const trend90 = current && avg90 ? (current - avg90) / avg90 : null;

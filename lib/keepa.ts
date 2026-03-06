@@ -239,3 +239,9 @@ export function getKeepaCurrency(marketplace: KeepaMarketplace) {
 export function keepaMarketplaces(): KeepaMarketplace[] {
   return ["UK", "CA", "US"];
 }
+
+export function isKeepaMarketplaceSupported(value?: string | null) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) return false;
+  return keepaMarketplaces().includes(raw as KeepaMarketplace);
+}

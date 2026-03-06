@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
+import { getFxRate } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +21,7 @@ export async function GET(req: Request) {
     const conn = await db.getConnection();
     try {
       await ensureWhiteLabelProductsReady(conn);
+      await ensureWhiteLabelLandedCostTable(conn);
 
       const clauses = ["p.is_active = 1", "COALESCE(p.image_url, '') <> ''"];
       const params: any[] = [];
@@ -50,7 +53,7 @@ export async function GET(req: Request) {
 
       const [[userRow]]: any = await conn.query(
         `
-        SELECT c.iso2 AS country_iso2, c.amazon_marketplace AS country_marketplace, cur.code AS currency_code
+        SELECT c.id AS country_id, c.iso2 AS country_iso2, c.amazon_marketplace AS country_marketplace, cur.code AS currency_code
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
         LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
@@ -69,8 +72,11 @@ export async function GET(req: Request) {
 
       const [rows]: any = await conn.query(
         `
-        SELECT p.*, COALESCE(v.views, 0) AS view_count
+        SELECT p.*, COALESCE(v.views, 0) AS view_count,
+               lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
         FROM linescout_white_label_products p
+        LEFT JOIN linescout_white_label_landed_costs lc
+          ON lc.product_id = p.id AND lc.country_id = ?
         LEFT JOIN (
           SELECT product_id, COUNT(*) AS views
           FROM linescout_white_label_views
@@ -80,17 +86,25 @@ export async function GET(req: Request) {
         ${orderBy}
         LIMIT ${slug ? 1 : 300}
         `,
-        params
+        [Number(userRow?.country_id || 0), ...params]
       );
 
+      const amazonCurrency = marketplaceCurrency(displayMarketplace);
+      const amazonFx =
+        userCurrency === amazonCurrency ? 1 : await getFxRate(conn, userCurrency, amazonCurrency);
+
       const items = (rows || []).map((r: any) => {
+        const landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
+        const landedHigh = r.landed_per_unit_high != null ? Number(r.landed_per_unit_high) : null;
         const base = {
           ...r,
-          ...computeLandedRange({
-            fob_low_usd: r.fob_low_usd,
-            fob_high_usd: r.fob_high_usd,
-            cbm_per_1000: r.cbm_per_1000,
-          }),
+          landed_per_unit_low: landedLow,
+          landed_per_unit_high: landedHigh,
+          landed_total_1000_low: r.landed_total_1000_low ?? null,
+          landed_total_1000_high: r.landed_total_1000_high ?? null,
+          landed_currency_code: userCurrency,
+          amazon_landed_per_unit_low: landedLow != null && amazonFx ? landedLow * amazonFx : null,
+          amazon_landed_per_unit_high: landedHigh != null && amazonFx ? landedHigh * amazonFx : null,
         };
 
         const ukLow = r.amazon_uk_price_low != null ? Number(r.amazon_uk_price_low) : null;

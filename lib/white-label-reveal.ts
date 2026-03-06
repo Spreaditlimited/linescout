@@ -4,6 +4,7 @@ import { refreshKeepaProducts } from "@/lib/keepa-refresh";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
 type RevealResult =
   | {
@@ -50,8 +51,10 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
     `SELECT u.id, u.white_label_trial_ends_at, u.white_label_plan, u.white_label_subscription_status,
             u.white_label_reveals_used, u.white_label_reveals_date,
             u.email, u.white_label_next_billing_at,
+            c.id AS country_id,
             c.iso2 AS country_iso2,
             c.amazon_marketplace AS country_marketplace,
+            c.amazon_enabled AS amazon_enabled,
             cur.code AS currency_code
      FROM users u
      LEFT JOIN linescout_countries c ON c.id = u.country_id
@@ -64,6 +67,9 @@ export async function revealWhiteLabelAmazonPrice(conn: PoolConnection, userId: 
   if (!userRow?.id) return { ok: false, error: "User not found" };
   const userCountry = String(userRow?.country_iso2 || "").trim().toUpperCase();
   if (userCountry && !allowedSet.has(userCountry)) {
+    return { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." };
+  }
+  if (!userRow?.amazon_enabled || !isKeepaMarketplaceSupported(userRow?.country_marketplace)) {
     return { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." };
   }
 
