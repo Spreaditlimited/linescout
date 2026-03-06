@@ -1,6 +1,7 @@
 // app/api/agent/quick-human/send/route.ts
 import { NextResponse } from "next/server";
 import { db, queryOne } from "@/lib/db";
+import { sendNoticeEmail } from "@/lib/notice-email";
 import type { RowDataPacket } from "mysql2/promise";
 import { requireAgent } from "@/lib/auth";
 
@@ -11,6 +12,29 @@ const APPROVAL_MESSAGE =
   "Thank you for creating an account. Please go to your settings to complete all required sections. Our account approval team will review and approve your account so you can start claiming projects.";
 
 type PermissionRow = RowDataPacket & { can_view_handoffs: number };
+
+async function sendExpoPush(tokens: string[], payload: { title: string; body: string; data?: any }) {
+  const clean = (tokens || []).map((t) => String(t || "").trim()).filter(Boolean);
+  if (!clean.length) return;
+
+  const messages = clean.map((to) => ({
+    to,
+    sound: "default",
+    title: payload.title,
+    body: payload.body,
+    data: payload.data || {},
+  }));
+
+  await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Accept-Encoding": "gzip, deflate",
+    },
+    body: JSON.stringify(messages),
+  }).catch(() => {});
+}
 
 async function ensureApprovedAgent(userId: number, role: string) {
   if (role === "admin") return true;
@@ -106,6 +130,8 @@ export async function POST(req: Request) {
           id,
           chat_mode,
           project_status,
+          user_id,
+          route_type,
           human_message_limit,
           human_message_used,
           human_access_expires_at
@@ -127,6 +153,8 @@ export async function POST(req: Request) {
       const chatMode = String(c.chat_mode || "");
       const limit = Number(c.human_message_limit || 0);
       const used = Number(c.human_message_used || 0);
+      const userId = Number(c.user_id || 0);
+      const routeType = String(c.route_type || "machine_sourcing");
 
       const exp = c.human_access_expires_at ? Date.parse(String(c.human_access_expires_at)) : NaN;
       const expired = Number.isFinite(exp) ? Date.now() > exp : false;
@@ -258,6 +286,72 @@ export async function POST(req: Request) {
       );
 
       await conn.commit();
+
+      // Notify customer if they are not active in the conversation
+      try {
+        let shouldNotify = true;
+        if (userId) {
+          const [rrows]: any = await conn.query(
+            `
+            SELECT last_seen_message_id, updated_at
+            FROM linescout_user_conversation_reads
+            WHERE conversation_id = ? AND user_id = ?
+            LIMIT 1
+            `,
+            [conversationId, userId]
+          );
+          const lastSeen = Number(rrows?.[0]?.last_seen_message_id || 0);
+          const updatedAt = rrows?.[0]?.updated_at ? new Date(rrows[0].updated_at).getTime() : 0;
+          const activeRecently = updatedAt && Date.now() - updatedAt < 2 * 60 * 1000;
+          if (lastSeen >= messageId || activeRecently) shouldNotify = false;
+        }
+
+        if (shouldNotify && userId) {
+          const [trows]: any = await conn.query(
+            `
+            SELECT token
+            FROM linescout_device_tokens
+            WHERE is_active = 1 AND user_id = ?
+            `,
+            [userId]
+          );
+          const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          const preview = (messageText || "Attachment").trim().slice(0, 120);
+          await sendExpoPush(tokens, {
+            title: "New quick chat message",
+            body: preview || "Attachment",
+            data: { kind: "quick_human", conversation_id: conversationId, route_type: routeType },
+          });
+
+          const [emailRows]: any = await conn.query(
+            `
+            SELECT email
+            FROM users
+            WHERE id = ?
+            LIMIT 1
+            `,
+            [userId]
+          );
+          const email = String(emailRows?.[0]?.email || "").trim();
+          if (email) {
+            const chatUrl = `https://linescout.sureimports.com/chat/${conversationId}`;
+            await sendNoticeEmail({
+              to: email,
+              subject: "New quick chat message",
+              title: "New quick chat message",
+              lines: [
+                "A specialist sent a new message in your quick chat.",
+                `Conversation ID: ${conversationId}`,
+                `Preview: ${preview || "Attachment"}`,
+              ],
+              ctaLabel: "Open chat",
+              ctaUrl: chatUrl,
+              footerNote:
+                "This email was sent because a quick chat received a new message on LineScout.",
+            });
+          }
+        }
+      } catch {}
 
       return NextResponse.json({ ok: true, item: mrows?.[0] || null, attachments: attRows || [] });
     } catch (e: any) {

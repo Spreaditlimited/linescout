@@ -273,6 +273,21 @@ export async function GET(req: Request) {
         attachmentsByMessageId[mid].push(a);
       }
 
+      if (String(conv?.conversation_kind || "") === "quick_human" && ids.length) {
+        const lastSeenId = Math.max(...ids);
+        await conn.query(
+          `
+          INSERT INTO linescout_user_conversation_reads
+            (conversation_id, user_id, last_seen_message_id)
+          VALUES (?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            last_seen_message_id = GREATEST(last_seen_message_id, VALUES(last_seen_message_id)),
+            updated_at = CURRENT_TIMESTAMP
+          `,
+          [conversationId, userId, lastSeenId]
+        );
+      }
+
       const agentIds = Array.from(
         new Set(
           (msgs || [])
@@ -487,6 +502,7 @@ export async function POST(req: Request) {
             .filter(Boolean);
 
           for (const email of emails) {
+            const chatUrl = `https://linescout.sureimports.com/chat/${conversationId}`;
             await sendNoticeEmail({
               to: email,
               subject: "New quick chat message",
@@ -497,6 +513,8 @@ export async function POST(req: Request) {
                 `Conversation ID: ${conversationId}`,
                 `Preview: ${messageText.trim().slice(0, 120)}`,
               ],
+              ctaLabel: "Open chat",
+              ctaUrl: chatUrl,
               footerNote:
                 "This email was sent because a quick chat received a new message on LineScout.",
             });

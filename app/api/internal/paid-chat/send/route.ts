@@ -411,6 +411,7 @@ export async function POST(req: Request) {
           const email = String(emailRows?.[0]?.email || "").trim();
           if (email) {
             const preview = (hasText ? messageText : "Attachment").trim().slice(0, 120);
+            const chatUrl = `https://linescout.sureimports.com/chat/${conversationId}`;
             await sendNoticeEmail({
               to: email,
               subject: "New paid chat message",
@@ -420,6 +421,8 @@ export async function POST(req: Request) {
                 `Conversation ID: ${conversationId}`,
                 `Preview: ${preview || "Attachment"}`,
               ],
+              ctaLabel: "Open chat",
+              ctaUrl: chatUrl,
               footerNote:
                 "This email was sent because a paid chat received a new message on LineScout.",
             });

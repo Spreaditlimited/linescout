@@ -65,6 +65,8 @@ export function buildNoticeEmail(params: {
   lines: string[];
   footerNote?: string;
   footerLines?: string[];
+  ctaLabel?: string;
+  ctaUrl?: string;
 }) {
   const subject = params.subject;
   const text = [
@@ -84,6 +86,18 @@ export function buildNoticeEmail(params: {
   const footerNote =
     params.footerNote ||
     "This email was sent because a payout event occurred on your LineScout account.";
+  const ctaLabel = params.ctaLabel && params.ctaLabel.trim() ? params.ctaLabel.trim() : "";
+  const ctaUrl = params.ctaUrl && params.ctaUrl.trim() ? params.ctaUrl.trim() : "";
+  const ctaHtml =
+    ctaLabel && ctaUrl
+      ? `
+        <div style="margin:18px 0 8px 0;">
+          <a href="${ctaUrl}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:999px;font-size:13px;font-weight:700;">
+            ${ctaLabel}
+          </a>
+        </div>
+      `
+      : "";
   const footerLines = Array.isArray(params.footerLines) && params.footerLines.length
     ? params.footerLines
     : [
@@ -116,6 +130,7 @@ export function buildNoticeEmail(params: {
             <tr>
               <td style="padding:20px 22px;color:#0b0f17;font-family:Arial,Helvetica,sans-serif;">
                 ${bodyHtml}
+                ${ctaHtml}
 
                 <div style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#6b7280;font-size:12px;line-height:1.6;">
                   <div style="font-weight:700;color:#111827;">Need help?</div>

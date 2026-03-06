@@ -11,6 +11,8 @@ type NoticeEmailParams = {
   lines: string[];
   footerNote?: string;
   replyTo?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
 };
 
 function getSmtpConfig() {
@@ -38,6 +40,8 @@ export async function sendNoticeEmail(params: NoticeEmailParams) {
     title: params.title,
     lines: params.lines,
     footerNote: params.footerNote,
+    ctaLabel: params.ctaLabel,
+    ctaUrl: params.ctaUrl,
   });
 
   const transporter: Transporter = nodemailer.createTransport({
