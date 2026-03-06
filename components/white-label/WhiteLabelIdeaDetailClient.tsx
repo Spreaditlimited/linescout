@@ -265,7 +265,14 @@ export default function WhiteLabelIdeaDetailClient({ slug }: { slug: string }) {
                   amazonCurrency={product.amazon_display_currency ?? null}
                 />
               ) : null}
-              <WhiteLabelInsights productId={product.id} />
+              <WhiteLabelInsights
+                productId={product.id}
+                landedEstimate={formatPerUnitRange(
+                  landedPicked.perUnitLow,
+                  landedPicked.perUnitHigh,
+                  currency
+                )}
+              />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Link href="/white-label/ideas" className="text-sm font-semibold text-neutral-500 hover:text-neutral-700">

@@ -5,7 +5,7 @@ import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/whi
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
-import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
+import { ensureWhiteLabelLandedCostTable, recomputeWhiteLabelLandedCostsForProduct } from "@/lib/white-label-landed";
 import { getFxRate } from "@/lib/fx";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
@@ -79,6 +79,13 @@ export async function GET(req: Request) {
       const status = String(userRow?.white_label_subscription_status || "").toLowerCase();
       const countryIso2 = String(userRow?.country_iso2 || "").toUpperCase();
       const currencyCode = String(userRow?.currency_code || "").toUpperCase();
+      const countryRow: any = {
+        id: userRow?.country_id,
+        iso2: countryIso2,
+        amazon_marketplace: userRow?.country_marketplace,
+        amazon_enabled: userRow?.amazon_enabled,
+        currency_code: currencyCode,
+      };
       const host = String(req.headers.get("x-forwarded-host") || req.headers.get("host") || "");
       const isLocalHost = /(^|:)(localhost|127\.0\.0\.1)$/i.test(host) || host.startsWith("localhost:") || host.startsWith("127.0.0.1:");
       const allowLocal = process.env.NODE_ENV !== "production" || isLocalHost;
@@ -151,6 +158,9 @@ export async function GET(req: Request) {
         `
         SELECT id,
                product_name, category, short_desc, image_url,
+               landed_gbp_sea_per_unit_low, landed_gbp_sea_per_unit_high,
+               landed_cad_sea_per_unit_low, landed_cad_sea_per_unit_high,
+               landed_usd_sea_per_unit_low, landed_usd_sea_per_unit_high,
                amazon_uk_price_current, amazon_uk_price_avg30, amazon_uk_price_avg90, amazon_uk_price_min, amazon_uk_price_max, amazon_uk_offer_count,
                amazon_uk_price_low, amazon_uk_price_high, amazon_uk_last_checked_at,
                amazon_ca_price_current, amazon_ca_price_avg30, amazon_ca_price_avg90, amazon_ca_price_min, amazon_ca_price_max, amazon_ca_offer_count,
@@ -173,8 +183,8 @@ export async function GET(req: Request) {
         );
       }
 
-      const countryMarketplace = userRow?.country_marketplace || null;
-      const amazonEnabled = userRow?.amazon_enabled === 1;
+      const countryMarketplace = countryRow?.amazon_marketplace || null;
+      const amazonEnabled = countryRow?.amazon_enabled === 1;
       if (!amazonEnabled || !isKeepaMarketplaceSupported(countryMarketplace)) {
         return NextResponse.json(
           { ok: false, code: "subscription_unavailable", error: "Amazon comparison is not available in your country." },
@@ -187,54 +197,9 @@ export async function GET(req: Request) {
         countryIso2,
         currencyCode,
       });
-      const caHas =
-        product.amazon_ca_price_current != null ||
-        product.amazon_ca_price_avg30 != null ||
-        product.amazon_ca_price_avg90 != null ||
-        product.amazon_ca_price_low != null ||
-        product.amazon_ca_price_high != null ||
-        product.amazon_ca_price_min != null ||
-        product.amazon_ca_price_max != null;
-      const usHas =
-        product.amazon_us_price_current != null ||
-        product.amazon_us_price_avg30 != null ||
-        product.amazon_us_price_avg90 != null ||
-        product.amazon_us_price_low != null ||
-        product.amazon_us_price_high != null ||
-        product.amazon_us_price_min != null ||
-        product.amazon_us_price_max != null;
-      const ukHas =
-        product.amazon_uk_price_current != null ||
-        product.amazon_uk_price_avg30 != null ||
-        product.amazon_uk_price_avg90 != null ||
-        product.amazon_uk_price_low != null ||
-        product.amazon_uk_price_high != null ||
-        product.amazon_uk_price_min != null ||
-        product.amazon_uk_price_max != null;
-
-      const market =
-        preferredMarket === "US" && usHas
-          ? "US"
-          : preferredMarket === "CA" && caHas
-          ? "CA"
-          : preferredMarket === "UK" && ukHas
-          ? "UK"
-          : ukHas
-          ? "UK"
-          : caHas
-          ? "CA"
-          : usHas
-          ? "US"
-          : preferredMarket;
+      const market = preferredMarket;
       const currency = marketplaceCurrency(market);
-      const note =
-        preferredMarket === "US" && !usHas && ukHas
-          ? "Showing UK insights because US data is still syncing."
-          : preferredMarket === "CA" && !caHas && ukHas
-          ? "Showing UK insights because CA data is still syncing."
-          : preferredMarket === "UK" && !ukHas && caHas
-          ? "Showing CA insights because UK data is still syncing."
-          : null;
+      const note = null;
 
       const current = toNum(product[`amazon_${market.toLowerCase()}_price_current`]);
       const avg30 = toNum(product[`amazon_${market.toLowerCase()}_price_avg30`]);
@@ -255,21 +220,47 @@ export async function GET(req: Request) {
         WHERE product_id = ? AND country_id = ?
         LIMIT 1
         `,
-        [productId, Number(userRow?.country_id || 0)]
+        [productId, Number(countryRow?.id || 0)]
       );
-      const landedRow = landedRows?.[0] || {};
-      const landedCurrency = String(landedRow.currency_code || currencyCode || "").toUpperCase();
+      let landedRow = landedRows?.[0] || {};
+      let landedCurrency = String(landedRow.currency_code || currencyCode || "").toUpperCase();
       let landedLow = toNum(landedRow.landed_per_unit_low);
       let landedHigh = toNum(landedRow.landed_per_unit_high);
+
+      if (landedLow == null && landedHigh == null) {
+        await recomputeWhiteLabelLandedCostsForProduct(conn, productId);
+        const [retryRows]: any = await conn.query(
+          `
+          SELECT landed_per_unit_low, landed_per_unit_high, currency_code
+          FROM linescout_white_label_landed_costs
+          WHERE product_id = ? AND country_id = ?
+          LIMIT 1
+          `,
+          [productId, Number(countryRow?.id || 0)]
+        );
+        landedRow = retryRows?.[0] || {};
+        landedCurrency = String(landedRow.currency_code || currencyCode || "").toUpperCase();
+        landedLow = toNum(landedRow.landed_per_unit_low);
+        landedHigh = toNum(landedRow.landed_per_unit_high);
+      }
       const marketCurrency = marketplaceCurrency(market);
+      let landedCurrencyOut = landedCurrency || marketCurrency;
+      if (landedLow == null && landedHigh == null) {
+        const legacyKey = marketCurrency.toLowerCase();
+        const legacyLow = toNum(product[`landed_${legacyKey}_sea_per_unit_low`]);
+        const legacyHigh = toNum(product[`landed_${legacyKey}_sea_per_unit_high`]);
+        if (legacyLow != null || legacyHigh != null) {
+          landedLow = legacyLow;
+          landedHigh = legacyHigh;
+          landedCurrencyOut = marketCurrency;
+        }
+      }
       if (landedLow != null && landedHigh != null && landedCurrency && marketCurrency && landedCurrency !== marketCurrency) {
         const fx = await getFxRate(conn, landedCurrency, marketCurrency);
         if (fx && Number.isFinite(fx)) {
           landedLow = landedLow * fx;
           landedHigh = landedHigh * fx;
-        } else {
-          landedLow = null;
-          landedHigh = null;
+          landedCurrencyOut = marketCurrency;
         }
       }
 
@@ -317,6 +308,7 @@ export async function GET(req: Request) {
           last_checked_at: lastChecked,
           landed_per_unit_low: landedLow,
           landed_per_unit_high: landedHigh,
+          landed_currency_code: landedCurrencyOut || null,
         },
       });
     } finally {

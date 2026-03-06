@@ -244,11 +244,7 @@ export async function GET(req: Request) {
         const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
         const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
         const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
-        const useUs = preferredMarketplace === "US" && hasUs;
-        const useCa = preferredMarketplace === "CA" && hasCa;
-        const useUk = preferredMarketplace === "UK" && hasUk;
-        const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
-        const market = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
+        const market = preferredMarketplace;
         return {
           ...r,
           landed_per_unit_low: landedLow,
@@ -264,11 +260,11 @@ export async function GET(req: Request) {
           amazon_display_price_high:
             market === "US" ? usHigh : market === "CA" ? caHigh : market === "UK" ? ukHigh : null,
           amazon_display_note:
-            preferredMarketplace === "US" && !hasUs && hasUk
+            preferredMarketplace === "US" && !hasUs
               ? "Amazon US price not available at this time for this product."
-              : preferredMarketplace === "CA" && !hasCa && hasUk
+              : preferredMarketplace === "CA" && !hasCa
               ? "Amazon CA price not available at this time for this product."
-              : preferredMarketplace === "UK" && !hasUk && hasCa
+              : preferredMarketplace === "UK" && !hasUk
               ? "Amazon UK price not available at this time for this product."
               : null,
         };

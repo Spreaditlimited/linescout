@@ -34,7 +34,13 @@ function volatilityLabel(value: number | null) {
   return `Low swings (${value}%)`;
 }
 
-export default function WhiteLabelInsights({ productId }: { productId: number }) {
+export default function WhiteLabelInsights({
+  productId,
+  landedEstimate,
+}: {
+  productId: number;
+  landedEstimate?: string | null;
+}) {
   const [state, setState] = useState<InsightsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [learnOpen, setLearnOpen] = useState(false);
@@ -101,7 +107,9 @@ export default function WhiteLabelInsights({ productId }: { productId: number })
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {isLocal ? (
               <Link
-                href={`/white-label/insights?product_id=${encodeURIComponent(String(productId))}`}
+                href={`/white-label/insights?product_id=${encodeURIComponent(
+                  String(productId)
+                )}${landedEstimate ? `&landed_estimate=${encodeURIComponent(landedEstimate)}` : ""}`}
                 className="inline-flex whitespace-nowrap rounded-2xl border border-[rgba(45,52,97,0.24)] bg-white px-6 py-3 text-sm font-semibold text-[var(--agent-blue)]"
               >
                 Learn more
@@ -235,7 +243,9 @@ export default function WhiteLabelInsights({ productId }: { productId: number })
           View the full insights breakdown (with examples) on the Insights page.
         </p>
         <Link
-          href={`/white-label/insights?product_id=${encodeURIComponent(String(productId))}`}
+          href={`/white-label/insights?product_id=${encodeURIComponent(
+            String(productId)
+          )}${landedEstimate ? `&landed_estimate=${encodeURIComponent(landedEstimate)}` : ""}`}
           className="btn btn-primary mt-4 px-5 py-2 text-xs"
         >
           View insights

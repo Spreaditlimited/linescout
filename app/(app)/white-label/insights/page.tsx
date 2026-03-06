@@ -36,6 +36,7 @@ type InsightsResponse =
         last_checked_at: string | null;
         landed_per_unit_low: number | null;
         landed_per_unit_high: number | null;
+        landed_currency_code?: string | null;
       };
     }
   | { ok: false; code?: string; error?: string };
@@ -52,6 +53,7 @@ export default function WhiteLabelInsightsInfoPage() {
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersData, setOffersData] = useState<any | null>(null);
   const [graphs, setGraphs] = useState<Record<string, string>>({});
+  const [landedEstimate, setLandedEstimate] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -62,6 +64,8 @@ export default function WhiteLabelInsightsInfoPage() {
       const params = new URLSearchParams(window.location.search);
       const pid = Number(params.get("product_id") || 0);
       if (pid) setProductId(pid);
+      const landedParam = params.get("landed_estimate");
+      if (landedParam) setLandedEstimate(landedParam);
     }
   }, []);
 
@@ -74,6 +78,8 @@ export default function WhiteLabelInsightsInfoPage() {
     })
       .then((r) => r.json())
       .then((json: InsightsResponse) => {
+        if (!live) return;
+        setData(json);
         if (!live) return;
         setData(json);
       })
@@ -117,9 +123,11 @@ export default function WhiteLabelInsightsInfoPage() {
   const updatingLabel = "Not enough data yet";
   const raw = data && data.ok ? data.raw : null;
 
-  const fmtMoney = (value: number | null) => {
-    if (value == null || !Number.isFinite(value)) return "—";
-    const currency = data && data.ok ? data.currency : "GBP";
+  const fmtMoney = (value: number | string | null, currencyOverride?: string | null) => {
+    if (value == null || value === "") return "—";
+    const numeric = typeof value === "number" ? value : Number(value);
+    if (!Number.isFinite(numeric)) return "—";
+    const currency = currencyOverride || (data && data.ok ? data.currency : "GBP");
     try {
       return new Intl.NumberFormat(
         currency === "CAD" ? "en-CA" : currency === "USD" ? "en-US" : "en-GB",
@@ -128,10 +136,10 @@ export default function WhiteLabelInsightsInfoPage() {
           currency,
           maximumFractionDigits: 2,
         }
-      ).format(value);
+      ).format(numeric);
     } catch {
       const symbol = currency === "CAD" ? "CA$" : currency === "USD" ? "$" : "£";
-      return `${symbol}${value.toFixed(2)}`;
+      return `${symbol}${numeric.toFixed(2)}`;
     }
   };
 
@@ -140,9 +148,9 @@ export default function WhiteLabelInsightsInfoPage() {
     return String(value);
   };
 
-  const fmtRange = (low: number | null, high: number | null) => {
-    const lowText = fmtMoney(low);
-    const highText = fmtMoney(high);
+  const fmtRange = (low: number | null, high: number | null, currencyOverride?: string | null) => {
+    const lowText = fmtMoney(low, currencyOverride);
+    const highText = fmtMoney(high, currencyOverride);
     if (lowText !== "—" && highText !== "—" && low === high) return lowText;
     if (lowText !== "—" && highText !== "—") return `${lowText}–${highText}`;
     if (lowText !== "—") return lowText;
@@ -157,7 +165,11 @@ export default function WhiteLabelInsightsInfoPage() {
         )}&product_name=${encodeURIComponent(data.product.name)}&product_category=${encodeURIComponent(
           data.product.category
         )}&product_landed_ngn_per_unit=${encodeURIComponent(
-          fmtRange(raw?.landed_per_unit_low ?? null, raw?.landed_per_unit_high ?? null)
+          fmtRange(
+            raw?.landed_per_unit_low ?? null,
+            raw?.landed_per_unit_high ?? null,
+            raw?.landed_currency_code || (data && data.ok ? data.currency : "GBP")
+          )
         )} per unit`
       : null;
 
@@ -321,22 +333,11 @@ export default function WhiteLabelInsightsInfoPage() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {sourcingHref ? (
-              <div className="flex flex-col gap-1">
-                <Link
-                  href={sourcingHref}
-                  className="rounded-full bg-[var(--agent-blue)] px-5 py-2 text-xs font-semibold text-white"
-                >
-                  Start sourcing
-                </Link>
-                <p className="text-[11px] text-neutral-500">
-                  Your product context will be shared with your assigned specialist.
-                </p>
-              </div>
+              <Link href={sourcingHref} className="btn btn-primary">
+                Start sourcing
+              </Link>
             ) : null}
-            <Link
-              href="/white-label/ideas"
-              className="rounded-full border border-neutral-200 bg-white px-5 py-2 text-xs font-semibold text-neutral-700"
-            >
+            <Link href="/white-label/ideas" className="btn btn-outline">
               Back to ideas
             </Link>
           </div>
@@ -497,7 +498,15 @@ export default function WhiteLabelInsightsInfoPage() {
                       <div>
                         <p className="text-[11px] text-neutral-500">Estimated landed cost</p>
                         <p className="font-semibold text-neutral-900">
-                          {fmtRange(raw?.landed_per_unit_low ?? null, raw?.landed_per_unit_high ?? null)}
+                          {(() => {
+                            const range = fmtRange(
+                              raw?.landed_per_unit_low ?? null,
+                              raw?.landed_per_unit_high ?? null,
+                              raw?.landed_currency_code || (data && data.ok ? data.currency : "GBP")
+                            );
+                            if (range !== "—") return range;
+                            return landedEstimate || "—";
+                          })()}
                         </p>
                       </div>
                     </div>
