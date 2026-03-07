@@ -8,7 +8,7 @@ import { ImagePlus, Send, X } from "lucide-react";
 type Msg = {
   id: number;
   conversation_id: number;
-  sender_type: "user" | "ai" | "agent";
+  sender_type: "user" | "ai" | "agent" | "system";
   sender_id: number | null;
   message_text: string | null;
   reply_to_message_id?: number | null;
@@ -30,6 +30,7 @@ type MsgRes = {
     send_blocked_reason?: string | null;
     customer_name?: string | null;
     agent_name?: string | null;
+    handoff_context?: string | null;
   };
   attachments_by_message_id?: Record<string, Attachment[]>;
   items: Msg[];
@@ -121,6 +122,7 @@ function AgentChatThreadInner() {
   const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
   const [customerName, setCustomerName] = useState<string>("Customer");
   const [agentName, setAgentName] = useState<string>("You");
+  const [handoffContext, setHandoffContext] = useState<string>("");
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -198,6 +200,7 @@ function AgentChatThreadInner() {
     send_blocked_reason: string;
     customer_name: string;
     agent_name: string;
+    handoff_context: string;
     agent_name_map: Record<string, string>;
     attachments_by_message_id: Record<string, Attachment[]>;
   }> {
@@ -227,6 +230,7 @@ function AgentChatThreadInner() {
     const send_blocked_reason = isQuick ? "" : String(data?.meta?.send_blocked_reason || "").trim();
     const customer_name = String(data?.meta?.customer_name || "Customer").trim() || "Customer";
     const agent_name = String(data?.meta?.agent_name || "You").trim() || "You";
+    const handoff_context = String(data?.meta?.handoff_context || "").trim();
     const attachments_by_message_id =
       typeof data?.attachments_by_message_id === "object" && data.attachments_by_message_id
         ? data.attachments_by_message_id
@@ -243,6 +247,7 @@ function AgentChatThreadInner() {
       send_blocked_reason,
       customer_name,
       agent_name,
+      handoff_context,
       agent_name_map,
       attachments_by_message_id,
     };
@@ -297,6 +302,7 @@ function AgentChatThreadInner() {
         setSendBlockedReason(initial.send_blocked_reason);
         setCustomerName(initial.customer_name);
         setAgentName(initial.agent_name);
+        setHandoffContext(initial.handoff_context || "");
         setAgentNameMap(initial.agent_name_map || {});
         setAttachmentsByMessageId(initial.attachments_by_message_id);
 
@@ -321,6 +327,7 @@ function AgentChatThreadInner() {
           send_blocked_reason,
           customer_name,
           agent_name,
+          handoff_context,
           agent_name_map,
           attachments_by_message_id,
         } =
@@ -332,6 +339,7 @@ function AgentChatThreadInner() {
         setSendBlockedReason(send_blocked_reason);
         setCustomerName(customer_name);
         setAgentName(agent_name);
+        if (handoff_context) setHandoffContext(handoff_context);
         if (agent_name_map && Object.keys(agent_name_map).length) {
           setAgentNameMap((prev) => ({ ...prev, ...agent_name_map }));
         }
@@ -629,9 +637,36 @@ function AgentChatThreadInner() {
           <>
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
               <div className="mx-auto w-full max-w-3xl space-y-3">
-                {items.slice(0, visibleCount).map((m, idx) => {
+                {[
+                  ...(handoffContext && !isQuick
+                    ? ([
+                        {
+                          id: -1,
+                          conversation_id: conversationId,
+                          sender_type: "system" as const,
+                          sender_id: null,
+                          message_text: handoffContext,
+                          created_at: items[0]?.created_at || new Date().toISOString(),
+                        },
+                      ] as Msg[])
+                    : []),
+                  ...items.slice(0, visibleCount),
+                ].map((m, idx) => {
+                  const isSystem = m.sender_type === "system";
                   const isAgent = m.sender_type === "agent";
                   const isDeleted = !!m.deleted_at;
+                  if (isSystem) {
+                    return (
+                      <div key={`system-${idx}`} className="w-full">
+                        <div className="mx-auto w-full max-w-3xl rounded-2xl border border-[rgba(45,52,97,0.16)] bg-[rgba(45,52,97,0.06)] px-4 py-3 text-sm text-neutral-700">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2D3461]">
+                            Project context
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap leading-relaxed">{m.message_text}</p>
+                        </div>
+                      </div>
+                    );
+                  }
                   const bubble = isAgent
                     ? "ml-auto bg-[#2D3461] text-white"
                     : "mr-auto bg-[#F4F7FB] text-neutral-800 border border-[rgba(45,52,97,0.12)]";
