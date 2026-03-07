@@ -335,6 +335,10 @@ export default function InternalSettingsPage() {
 
   const [newCountryCurrencyCountryId, setNewCountryCurrencyCountryId] = useState<number | null>(null);
   const [newCountryCurrencyCurrencyId, setNewCountryCurrencyCurrencyId] = useState<number | null>(null);
+  const [syncCountryId, setSyncCountryId] = useState<number | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncErr, setSyncErr] = useState<string | null>(null);
 
   const [newFxBase, setNewFxBase] = useState("");
   const [newFxQuote, setNewFxQuote] = useState("");
@@ -415,6 +419,12 @@ export default function InternalSettingsPage() {
       setRecomputeCountryId(countries[0].id);
     }
   }, [countries, recomputeCountryId]);
+
+  useEffect(() => {
+    if (!syncCountryId && countries.length) {
+      setSyncCountryId(countries[0].id);
+    }
+  }, [countries, syncCountryId]);
 
   async function loadSettings() {
     setSettingsLoading(true);
@@ -703,7 +713,7 @@ export default function InternalSettingsPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function adminAction(action: string, payload: Record<string, any>) {
+  async function adminAction<T = any>(action: string, payload: Record<string, any>): Promise<T> {
     const res = await fetch("/api/internal/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -713,6 +723,7 @@ export default function InternalSettingsPage() {
     if (!res.ok || !data?.ok) {
       throw new Error(data?.error || "Action failed");
     }
+    return data as T;
   }
 
   async function createCurrency() {
@@ -905,6 +916,26 @@ export default function InternalSettingsPage() {
       : "Delete this country-currency mapping?";
     setDeleteMappingTarget({ country_id, currency_id, label });
     setDeleteMappingOpen(true);
+  }
+
+  async function syncCountryDisplayCurrency() {
+    setSyncErr(null);
+    setSyncMsg(null);
+    if (!syncCountryId) {
+      setSyncErr("Select a country.");
+      return;
+    }
+    setSyncLoading(true);
+    try {
+      const res = await adminAction("country_currency.sync_users", { country_id: syncCountryId });
+      const code = String(res?.currency_code || "").toUpperCase();
+      setSyncMsg(code ? `Users updated to ${code}.` : "Users updated.");
+      await loadSettings();
+    } catch (e: any) {
+      setSyncErr(e?.message || "Failed to sync users");
+    } finally {
+      setSyncLoading(false);
+    }
   }
 
   async function confirmDeleteCountryCurrency() {
@@ -2095,9 +2126,10 @@ export default function InternalSettingsPage() {
               />
               <SearchableSelect
                 value={newCountryAmazonMarketplace}
-                onChange={(value) => setNewCountryAmazonMarketplace(value)}
+                onChange={(value) => setNewCountryAmazonMarketplace(value === "NONE" ? "" : value)}
                 options={[
                   { value: "", label: "Amazon marketplace" },
+                  { value: "NONE", label: "No marketplace" },
                   { value: "UK", label: "UK" },
                   { value: "US", label: "US" },
                   { value: "CA", label: "CA" },
@@ -2205,9 +2237,10 @@ export default function InternalSettingsPage() {
                         />
                         <SearchableSelect
                           value={editCountryAmazonMarketplace}
-                          onChange={(value) => setEditCountryAmazonMarketplace(value)}
+                          onChange={(value) => setEditCountryAmazonMarketplace(value === "NONE" ? "" : value)}
                           options={[
                             { value: "", label: "Amazon marketplace" },
+                            { value: "NONE", label: "No marketplace" },
                             { value: "UK", label: "UK" },
                             { value: "US", label: "US" },
                             { value: "CA", label: "CA" },
@@ -2301,6 +2334,26 @@ export default function InternalSettingsPage() {
                 Add mapping
               </button>
             </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+              <SearchableSelect
+                value={syncCountryId ? String(syncCountryId) : ""}
+                options={[
+                  { value: "", label: "Select country to sync" },
+                  ...countries.map((c) => ({ value: String(c.id), label: c.name })),
+                ]}
+                onChange={(next) => setSyncCountryId(Number(next) || null)}
+              />
+              <button
+                onClick={syncCountryDisplayCurrency}
+                disabled={syncLoading}
+                className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+              >
+                {syncLoading ? "Syncing..." : "Sync users"}
+              </button>
+            </div>
+            {syncErr ? <div className="mt-2 text-xs text-amber-400">{syncErr}</div> : null}
+            {syncMsg ? <div className="mt-2 text-xs text-emerald-300">{syncMsg}</div> : null}
 
             <div className="mt-3 space-y-2">
               {countryCurrencies.map((cc) => (

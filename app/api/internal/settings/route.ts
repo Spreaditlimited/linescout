@@ -742,6 +742,33 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true });
       }
 
+      if (action === "country_currency.sync_users") {
+        const country_id = num(body?.country_id);
+        if (!country_id) {
+          return NextResponse.json({ ok: false, error: "Invalid country" }, { status: 400 });
+        }
+        const fallback = await resolveCountryCurrencyFallback(conn, country_id, null);
+        await conn.query(
+          `UPDATE users
+           SET display_currency_code = ?
+           WHERE country_id = ?`,
+          [fallback, country_id]
+        );
+        await conn.query(
+          `UPDATE linescout_handoffs
+           SET display_currency_code = ?, settlement_currency_code = ?
+           WHERE country_id = ?`,
+          [fallback, fallback, country_id]
+        );
+        await conn.query(
+          `UPDATE linescout_quotes
+           SET display_currency_code = ?, settlement_currency_code = ?, updated_at = NOW()
+           WHERE country_id = ?`,
+          [fallback, fallback, country_id]
+        );
+        return NextResponse.json({ ok: true, currency_code: fallback });
+      }
+
       if (action === "fx_rate.upsert") {
         const base_currency_code = String(body?.base_currency_code || "").trim().toUpperCase();
         const quote_currency_code = String(body?.quote_currency_code || "").trim().toUpperCase();
