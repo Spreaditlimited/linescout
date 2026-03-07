@@ -17,10 +17,8 @@ async function requireAdminSession() {
   }
 
   const h = await headers();
-
   const bearer = h.get("authorization") || "";
   const headerToken = bearer.startsWith("Bearer ") ? bearer.slice(7).trim() : "";
-
   const cookieHeader = h.get("cookie") || "";
   const cookieToken =
     cookieHeader
@@ -50,38 +48,35 @@ async function requireAdminSession() {
     if (!rows[0].is_active) return { ok: false as const, status: 403 as const, error: "Account disabled" };
     if (String(rows[0].role || "") !== "admin") return { ok: false as const, status: 403 as const, error: "Forbidden" };
 
-    return { ok: true as const, adminId: Number(rows[0].id) };
+    return { ok: true as const };
   } finally {
     conn.release();
   }
 }
 
-async function ensurePendingUserFollowupColumns(conn: any) {
-  const [cols]: any = await conn.query("SHOW COLUMNS FROM pending_users");
-  const existing = new Set((cols || []).map((r: any) => String(r.Field || "")));
-  if (!existing.has("followup_email_count")) {
-    try {
-      await conn.query(
-        "ALTER TABLE pending_users ADD COLUMN followup_email_count INT NOT NULL DEFAULT 0"
-      );
-    } catch (e: any) {
-      if (String(e?.code || "").toUpperCase() !== "ER_DUP_FIELDNAME") throw e;
-    }
-  }
-  if (!existing.has("last_followup_email_at")) {
-    try {
-      await conn.query("ALTER TABLE pending_users ADD COLUMN last_followup_email_at DATETIME NULL");
-    } catch (e: any) {
-      if (String(e?.code || "").toUpperCase() !== "ER_DUP_FIELDNAME") throw e;
-    }
-  }
+async function ensureEmailSendFailureTable(conn: any) {
+  await conn.query(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_email_send_failures (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NULL,
+      email_normalized VARCHAR(255) NULL,
+      pending_user_id BIGINT UNSIGNED NULL,
+      kind VARCHAR(50) NOT NULL,
+      error_message TEXT NULL,
+      error_code VARCHAR(120) NULL,
+      request_ip VARCHAR(80) NULL,
+      user_agent VARCHAR(512) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_email_send_failures_email (email_normalized),
+      INDEX idx_email_send_failures_pending (pending_user_id),
+      INDEX idx_email_send_failures_kind (kind),
+      INDEX idx_email_send_failures_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
 }
 
-/**
- * GET /api/internal/admin/pending-users?page=1&page_size=25
- * Admin only.
- * Lists pending users who have requested OTPs but have not verified.
- */
 export async function GET(req: Request) {
   const auth = await requireAdminSession();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -93,31 +88,17 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
-    await ensurePendingUserFollowupColumns(conn);
-    const [totalRows]: any = await conn.query(`SELECT COUNT(*) AS total FROM pending_users`);
+    await ensureEmailSendFailureTable(conn);
+    const [totalRows]: any = await conn.query(
+      `SELECT COUNT(*) AS total FROM linescout_email_send_failures`
+    );
     const total = Number(totalRows?.[0]?.total || 0);
 
     const [rows]: any = await conn.query(
       `
-      SELECT
-        p.id,
-        p.email,
-        p.created_at,
-        p.followup_email_count,
-        p.last_followup_email_at,
-        COALESCE(oAgg.otp_requests, 0) AS otp_requests,
-        oAgg.last_otp_at
-      FROM pending_users p
-      LEFT JOIN (
-        SELECT
-          pending_user_id,
-          COUNT(*) AS otp_requests,
-          MAX(created_at) AS last_otp_at
-        FROM email_otps
-        WHERE pending_user_id IS NOT NULL
-        GROUP BY pending_user_id
-      ) oAgg ON oAgg.pending_user_id = p.id
-      ORDER BY p.id DESC
+      SELECT id, email, kind, error_code, error_message, created_at
+      FROM linescout_email_send_failures
+      ORDER BY id DESC
       LIMIT ? OFFSET ?
       `,
       [pageSize, offset]
@@ -131,11 +112,8 @@ export async function GET(req: Request) {
       items: rows || [],
     });
   } catch (e: any) {
-    console.error("GET /api/internal/admin/pending-users error:", e?.message || e);
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Failed to load pending users" },
-      { status: 500 }
-    );
+    console.error("GET /email-send-failures error:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "Failed to load email failures" }, { status: 500 });
   } finally {
     conn.release();
   }

@@ -35,6 +35,27 @@ type PendingUser = {
   created_at: string;
   otp_requests: number;
   last_otp_at: string | null;
+  followup_email_count?: number | null;
+  last_followup_email_at?: string | null;
+};
+
+type EmailFailure = {
+  id: number;
+  email: string | null;
+  kind: string;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+};
+
+type FollowupRun = {
+  id: number;
+  created_at: string;
+  start_date: string | null;
+  end_date: string | null;
+  pending_total: number;
+  sent_count: number;
+  error_count: number;
 };
 
 export default function AdminAppUsersPage() {
@@ -55,6 +76,15 @@ export default function AdminAppUsersPage() {
   const [pendingPage, setPendingPage] = useState(1);
   const pendingPageSize = 25;
   const [pendingTotal, setPendingTotal] = useState(0);
+  const [followupFrom, setFollowupFrom] = useState("");
+  const [followupTo, setFollowupTo] = useState("");
+  const [followupSending, setFollowupSending] = useState(false);
+  const [followupMsg, setFollowupMsg] = useState<string | null>(null);
+  const [followupErr, setFollowupErr] = useState<string | null>(null);
+  const [followupRuns, setFollowupRuns] = useState<FollowupRun[]>([]);
+  const [emailFailures, setEmailFailures] = useState<EmailFailure[]>([]);
+  const [emailFailuresErr, setEmailFailuresErr] = useState<string | null>(null);
+  const [emailFailuresLoading, setEmailFailuresLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -114,6 +144,63 @@ export default function AdminAppUsersPage() {
     }
   }
 
+  async function loadFollowupRuns() {
+    try {
+      const res = await fetch("/api/internal/admin/pending-users/followup?limit=5", {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load follow-up log");
+      setFollowupRuns(data.items || []);
+    } catch (e: any) {
+      // keep quiet; this is supplemental
+    }
+  }
+
+  async function loadEmailFailures() {
+    setEmailFailuresLoading(true);
+    setEmailFailuresErr(null);
+    try {
+      const res = await fetch("/api/internal/admin/email-send-failures?page=1&page_size=20", {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load email failures");
+      setEmailFailures(data.items || []);
+    } catch (e: any) {
+      setEmailFailuresErr(e?.message || "Failed to load email failures");
+    } finally {
+      setEmailFailuresLoading(false);
+    }
+  }
+
+  async function sendPendingFollowups() {
+    setFollowupMsg(null);
+    setFollowupErr(null);
+    if (!followupFrom || !followupTo) {
+      setFollowupErr("Select a start and end date.");
+      return;
+    }
+    setFollowupSending(true);
+    try {
+      const res = await fetch("/api/internal/admin/pending-users/followup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ start_date: followupFrom, end_date: followupTo }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to send follow-up emails");
+      setFollowupMsg(`Sent ${data.sent || 0} email(s). Errors: ${data.errors || 0}.`);
+      await loadPending(pendingPage);
+      await loadFollowupRuns();
+      await loadEmailFailures();
+    } catch (e: any) {
+      setFollowupErr(e?.message || "Failed to send follow-up emails");
+    } finally {
+      setFollowupSending(false);
+    }
+  }
+
   useEffect(() => {
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,6 +210,8 @@ export default function AdminAppUsersPage() {
     if (tab !== "pending") return;
     if (pendingItems.length) return;
     loadPending(1);
+    loadFollowupRuns();
+    loadEmailFailures();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -418,50 +507,196 @@ export default function AdminAppUsersPage() {
         ) : null}
 
         {tab === "pending" && !pendingLoading && !pendingErr ? (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
-            <table className="min-w-full text-sm">
-              <thead className="bg-neutral-900/70 text-neutral-300">
-                <tr>
-                  <th className="px-3 py-2 text-left border-b border-neutral-800">Email</th>
-                  <th className="px-3 py-2 text-left border-b border-neutral-800">Created</th>
-                  <th className="px-3 py-2 text-left border-b border-neutral-800">OTP requests</th>
-                  <th className="px-3 py-2 text-left border-b border-neutral-800">Last OTP</th>
-                </tr>
-              </thead>
+          <>
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-100">Pending user follow-up</h3>
+                  <p className="text-xs text-neutral-400">
+                    Send a reminder email to pending users within a date range.
+                  </p>
+                  {followupRuns[0] ? (
+                    <p className="mt-2 text-[11px] text-neutral-500">
+                      Last run: {fmt(followupRuns[0].created_at)} · Sent {followupRuns[0].sent_count} · Errors{" "}
+                      {followupRuns[0].error_count}
+                    </p>
+                  ) : null}
+                </div>
 
-              <tbody className="bg-neutral-950">
-                {pendingItems.map((u) => (
-                  <tr key={u.id} className="border-t border-neutral-800 hover:bg-neutral-900/40">
-                    <td className="px-3 py-3">
-                      <div className="font-semibold text-neutral-100">{u.email}</div>
-                      <div className="text-xs text-neutral-500">ID: {u.id}</div>
-                    </td>
-                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
-                      {fmt(u.created_at)}
-                    </td>
-                    <td className="px-3 py-3 text-neutral-200 whitespace-nowrap">
-                      {u.otp_requests ?? 0}
-                    </td>
-                    <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
-                      {fmt(u.last_otp_at)}
-                    </td>
-                  </tr>
-                ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    value={followupFrom}
+                    onChange={(e) => setFollowupFrom(e.target.value)}
+                    className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                  />
+                  <input
+                    type="date"
+                    value={followupTo}
+                    onChange={(e) => setFollowupTo(e.target.value)}
+                    className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={sendPendingFollowups}
+                    disabled={followupSending}
+                    className={`${btn} ${followupSending ? btnDisabled : ""}`}
+                  >
+                    {followupSending ? "Sending..." : "Send follow-up email"}
+                  </button>
+                </div>
+              </div>
 
-                {pendingItems.length === 0 ? (
-                  <tr className="border-t border-neutral-800">
-                    <td colSpan={4} className="px-3 py-4 text-sm text-neutral-400">
-                      No pending users.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+              {followupErr ? (
+                <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+                  {followupErr}
+                </div>
+              ) : null}
+              {followupMsg ? (
+                <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-200">
+                  {followupMsg}
+                </div>
+              ) : null}
 
-            <div className="px-3 py-3 text-xs text-neutral-500">
-              Showing {pendingItems.length} on this page. Total pending users: {pendingTotal}.
+              {followupRuns.length ? (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-neutral-800">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-neutral-900/70 text-neutral-300">
+                      <tr>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">When</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Range</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Pending</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Sent</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Errors</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-neutral-950">
+                      {followupRuns.map((run) => (
+                        <tr key={run.id} className="border-t border-neutral-800 hover:bg-neutral-900/40">
+                          <td className="px-3 py-2 text-neutral-300 whitespace-nowrap">{fmt(run.created_at)}</td>
+                          <td className="px-3 py-2 text-neutral-300 whitespace-nowrap">
+                            {run.start_date || "—"} → {run.end_date || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-neutral-200">{run.pending_total}</td>
+                          <td className="px-3 py-2 text-neutral-200">{run.sent_count}</td>
+                          <td className="px-3 py-2 text-neutral-200">{run.error_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </div>
-          </div>
+
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
+              <table className="min-w-full text-sm">
+                <thead className="bg-neutral-900/70 text-neutral-300">
+                  <tr>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">Email</th>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">Created</th>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">OTP requests</th>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">Last OTP</th>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">Follow-ups</th>
+                    <th className="px-3 py-2 text-left border-b border-neutral-800">Last follow-up</th>
+                  </tr>
+                </thead>
+
+                <tbody className="bg-neutral-950">
+                  {pendingItems.map((u) => (
+                    <tr key={u.id} className="border-t border-neutral-800 hover:bg-neutral-900/40">
+                      <td className="px-3 py-3">
+                        <div className="font-semibold text-neutral-100">{u.email}</div>
+                        <div className="text-xs text-neutral-500">ID: {u.id}</div>
+                      </td>
+                      <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                        {fmt(u.created_at)}
+                      </td>
+                      <td className="px-3 py-3 text-neutral-200 whitespace-nowrap">
+                        {u.otp_requests ?? 0}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                        {fmt(u.last_otp_at)}
+                      </td>
+                      <td className="px-3 py-3 text-neutral-200 whitespace-nowrap">
+                        {u.followup_email_count ?? 0}
+                      </td>
+                      <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                        {fmt(u.last_followup_email_at)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {pendingItems.length === 0 ? (
+                    <tr className="border-t border-neutral-800">
+                      <td colSpan={6} className="px-3 py-4 text-sm text-neutral-400">
+                        No pending users.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+
+              <div className="px-3 py-3 text-xs text-neutral-500">
+                Showing {pendingItems.length} on this page. Total pending users: {pendingTotal}.
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-neutral-100">Email send failures</h3>
+                  <p className="text-xs text-neutral-400">Recent SMTP/OTP email failures.</p>
+                </div>
+                <button onClick={loadEmailFailures} className={btn}>
+                  Refresh
+                </button>
+              </div>
+
+              {emailFailuresLoading ? (
+                <p className="mt-3 text-xs text-neutral-400">Loading failures...</p>
+              ) : null}
+              {emailFailuresErr ? (
+                <p className="mt-3 text-xs text-red-300">{emailFailuresErr}</p>
+              ) : null}
+
+              {!emailFailuresLoading && !emailFailuresErr ? (
+                <div className="mt-3 overflow-x-auto rounded-xl border border-neutral-800">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-neutral-900/70 text-neutral-300">
+                      <tr>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Email</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Kind</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">Error</th>
+                        <th className="px-3 py-2 text-left border-b border-neutral-800">When</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-neutral-950">
+                      {emailFailures.map((f) => (
+                        <tr key={f.id} className="border-t border-neutral-800 hover:bg-neutral-900/40">
+                          <td className="px-3 py-2 text-neutral-200">{f.email || "—"}</td>
+                          <td className="px-3 py-2 text-neutral-200">{f.kind}</td>
+                          <td className="px-3 py-2 text-neutral-300">
+                            <div className="font-semibold text-neutral-200">{f.error_code || "Error"}</div>
+                            <div className="text-[11px] text-neutral-500">
+                              {String(f.error_message || "").slice(0, 140)}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-neutral-300 whitespace-nowrap">{fmt(f.created_at)}</td>
+                        </tr>
+                      ))}
+                      {emailFailures.length === 0 ? (
+                        <tr className="border-t border-neutral-800">
+                          <td colSpan={4} className="px-3 py-3 text-xs text-neutral-400">
+                            No email failures logged.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </>
         ) : null}
       </div>
     </div>

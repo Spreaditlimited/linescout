@@ -49,6 +49,59 @@ async function ensureEmailOtpUserAgentColumn(conn: PoolConnection) {
   await conn.execute(`ALTER TABLE email_otps MODIFY COLUMN user_agent VARCHAR(512) NULL`);
 }
 
+async function ensureEmailSendFailureTable(conn: PoolConnection) {
+  await conn.execute(
+    `
+    CREATE TABLE IF NOT EXISTS linescout_email_send_failures (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NULL,
+      email_normalized VARCHAR(255) NULL,
+      pending_user_id BIGINT UNSIGNED NULL,
+      kind VARCHAR(50) NOT NULL,
+      error_message TEXT NULL,
+      error_code VARCHAR(120) NULL,
+      request_ip VARCHAR(80) NULL,
+      user_agent VARCHAR(512) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_email_send_failures_email (email_normalized),
+      INDEX idx_email_send_failures_pending (pending_user_id),
+      INDEX idx_email_send_failures_kind (kind),
+      INDEX idx_email_send_failures_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `
+  );
+}
+
+async function logEmailFailure(conn: PoolConnection, params: {
+  emailRaw: string;
+  emailNormalized: string;
+  pendingUserId: number | null;
+  kind: string;
+  error: any;
+  ip: string | null;
+  userAgent: string | null;
+}) {
+  const message = String(params.error?.message || params.error || "").slice(0, 5000);
+  const code = String(params.error?.code || params.error?.name || "").slice(0, 120) || null;
+  await conn.execute(
+    `
+    INSERT INTO linescout_email_send_failures
+      (email, email_normalized, pending_user_id, kind, error_message, error_code, request_ip, user_agent)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      params.emailRaw.trim(),
+      params.emailNormalized,
+      params.pendingUserId,
+      params.kind,
+      message || null,
+      code,
+      params.ip,
+      params.userAgent,
+    ]
+  );
+}
+
 async function getOrCreatePendingUser(conn: PoolConnection, emailRaw: string, emailNormalized: string) {
   const [rows] = await conn.execute<RowDataPacket[]>(
     "SELECT id FROM pending_users WHERE email_normalized = ? LIMIT 1",
@@ -110,6 +163,7 @@ export async function POST(req: Request) {
 
     conn = await getDb();
     await ensureEmailOtpUserAgentColumn(conn);
+    await ensureEmailSendFailureTable(conn);
 
     // 1) Create or fetch pending user (avoid creating real users before OTP verification)
     const pendingUserId = await getOrCreatePendingUser(conn, emailRaw, email);
@@ -167,6 +221,15 @@ export async function POST(req: Request) {
     const smtp = getSmtp();
     if (!smtp.ok) {
       console.error(smtp.error);
+      await logEmailFailure(conn, {
+        emailRaw,
+        emailNormalized: email,
+        pendingUserId,
+        kind: "otp",
+        error: smtp.error,
+        ip,
+        userAgent,
+      });
       return NextResponse.json({ ok: false, error: "OTP email is not configured." }, { status: 500 });
     }
 
@@ -179,14 +242,28 @@ export async function POST(req: Request) {
 
     const mail = buildOtpEmail({ otp });
 
-    await transporter.sendMail({
-      from: smtp.from,
-      to: email,
-      replyTo: "hello@sureimports.com",
-      subject: mail.subject,
-      text: mail.text,
-      html: mail.html,
-    });
+    try {
+      await transporter.sendMail({
+        from: smtp.from,
+        to: email,
+        replyTo: "hello@sureimports.com",
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+    } catch (e: any) {
+      console.error(e);
+      await logEmailFailure(conn, {
+        emailRaw,
+        emailNormalized: email,
+        pendingUserId,
+        kind: "otp",
+        error: e,
+        ip,
+        userAgent,
+      });
+      return NextResponse.json({ ok: false, error: "Failed to send OTP email." }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
