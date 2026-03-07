@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import SearchableSelect from "../_components/SearchableSelect";
 import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
+import ConfirmModal from "../_components/ConfirmModal";
 
 type MeResponse =
   | { ok: true; user: { username: string; role: string } }
@@ -357,6 +358,17 @@ export default function InternalSettingsPage() {
   const [editRateValue, setEditRateValue] = useState("");
   const [editRateUnit, setEditRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [savingRate, setSavingRate] = useState(false);
+  const [recomputeCountryId, setRecomputeCountryId] = useState<number | null>(null);
+  const [recomputeAllCountries, setRecomputeAllCountries] = useState(false);
+  const [recomputeLoading, setRecomputeLoading] = useState(false);
+  const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null);
+  const [recomputeErr, setRecomputeErr] = useState<string | null>(null);
+  const [deleteMappingOpen, setDeleteMappingOpen] = useState(false);
+  const [deleteMappingTarget, setDeleteMappingTarget] = useState<{
+    country_id: number;
+    currency_id: number;
+    label: string;
+  } | null>(null);
 
   // Form fields
   const [customerName, setCustomerName] = useState("");
@@ -397,6 +409,12 @@ export default function InternalSettingsPage() {
     const t = setTimeout(() => setWlExemptionsDebounced(wlExemptionsSearch), 200);
     return () => clearTimeout(t);
   }, [wlExemptionsSearch]);
+
+  useEffect(() => {
+    if (!recomputeCountryId && countries.length) {
+      setRecomputeCountryId(countries[0].id);
+    }
+  }, [countries, recomputeCountryId]);
 
   async function loadSettings() {
     setSettingsLoading(true);
@@ -878,6 +896,34 @@ export default function InternalSettingsPage() {
     }
   }
 
+  async function deleteCountryCurrency(country_id: number, currency_id: number) {
+    const mapping = countryCurrencies.find(
+      (cc) => cc.country_id === country_id && cc.currency_id === currency_id
+    );
+    const label = mapping
+      ? `Delete ${mapping.country_name || "country"} → ${mapping.currency_code || "currency"}?`
+      : "Delete this country-currency mapping?";
+    setDeleteMappingTarget({ country_id, currency_id, label });
+    setDeleteMappingOpen(true);
+  }
+
+  async function confirmDeleteCountryCurrency() {
+    if (!deleteMappingTarget) return;
+    setCountryErr(null);
+    try {
+      await adminAction("country_currency.delete", {
+        country_id: deleteMappingTarget.country_id,
+        currency_id: deleteMappingTarget.currency_id,
+      });
+      await loadSettings();
+    } catch (e: any) {
+      setCountryErr(e?.message || "Failed to delete country currency");
+    } finally {
+      setDeleteMappingOpen(false);
+      setDeleteMappingTarget(null);
+    }
+  }
+
   async function createFxRate() {
     setFxErr(null);
     try {
@@ -1152,6 +1198,37 @@ export default function InternalSettingsPage() {
       setShippingErr(e?.message || "Failed to update rate");
     } finally {
       setSavingRate(false);
+    }
+  }
+
+  async function recomputeWhiteLabelLanded() {
+    setRecomputeErr(null);
+    setRecomputeMsg(null);
+    if (!recomputeAllCountries && !recomputeCountryId) {
+      setRecomputeErr("Select a country or choose all countries.");
+      return;
+    }
+    setRecomputeLoading(true);
+    try {
+      const res = await fetch("/api/internal/white-label-landed/recompute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          all: recomputeAllCountries,
+          country_id: recomputeAllCountries ? null : recomputeCountryId,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to recompute landed costs");
+      setRecomputeMsg(
+        recomputeAllCountries
+          ? `Recomputed landed costs for ${data?.count || 0} countries.`
+          : "Recomputed landed costs."
+      );
+    } catch (e: any) {
+      setRecomputeErr(e?.message || "Failed to recompute landed costs");
+    } finally {
+      setRecomputeLoading(false);
     }
   }
 
@@ -2234,14 +2311,22 @@ export default function InternalSettingsPage() {
                   <span>
                     {cc.country_name || "Country"} → {cc.currency_code || "Currency"}
                   </span>
-                  <button
-                    onClick={() =>
-                      toggleCountryCurrency(cc.country_id, cc.currency_id, cc.is_active === 0 ? 1 : 0)
-                    }
-                    className="text-xs text-neutral-400 hover:text-neutral-100"
-                  >
-                    {cc.is_active === 0 ? "Activate" : "Deactivate"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        toggleCountryCurrency(cc.country_id, cc.currency_id, cc.is_active === 0 ? 1 : 0)
+                      }
+                      className="text-xs text-neutral-400 hover:text-neutral-100"
+                    >
+                      {cc.is_active === 0 ? "Activate" : "Deactivate"}
+                    </button>
+                    <button
+                      onClick={() => deleteCountryCurrency(cc.country_id, cc.currency_id)}
+                      className="text-xs text-rose-300 hover:text-rose-200"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2521,6 +2606,37 @@ export default function InternalSettingsPage() {
             ) : (
               <div className="mt-3 text-xs text-neutral-500">No shipping rates yet.</div>
             )}
+
+            <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-3">
+              <div className="text-xs font-semibold text-neutral-200">Recompute white label landed costs</div>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                <SearchableSelect
+                  value={recomputeCountryId ? String(recomputeCountryId) : ""}
+                  options={countries.map((c) => ({ value: String(c.id), label: c.name }))}
+                  onChange={(next) => setRecomputeCountryId(Number(next) || null)}
+                  placeholder="Select country"
+                  disabled={recomputeAllCountries}
+                />
+                <button
+                  onClick={recomputeWhiteLabelLanded}
+                  disabled={recomputeLoading}
+                  className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+                >
+                  {recomputeLoading ? "Recomputing..." : "Run now"}
+                </button>
+              </div>
+              <label className="mt-2 inline-flex items-center gap-2 text-[11px] text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={recomputeAllCountries}
+                  onChange={(e) => setRecomputeAllCountries(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                />
+                Recompute for all countries with sea rates
+              </label>
+              {recomputeErr ? <div className="mt-2 text-[11px] text-amber-400">{recomputeErr}</div> : null}
+              {recomputeMsg ? <div className="mt-2 text-[11px] text-emerald-300">{recomputeMsg}</div> : null}
+            </div>
           </div>
         </div>
 
@@ -3568,6 +3684,19 @@ export default function InternalSettingsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={deleteMappingOpen}
+        title="Delete mapping?"
+        description={deleteMappingTarget?.label || "Delete this country-currency mapping?"}
+        confirmText="Delete"
+        danger
+        onCancel={() => {
+          setDeleteMappingOpen(false);
+          setDeleteMappingTarget(null);
+        }}
+        onConfirm={confirmDeleteCountryCurrency}
+      />
     </div>
   );
 }

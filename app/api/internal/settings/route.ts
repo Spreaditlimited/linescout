@@ -378,6 +378,62 @@ export async function POST(req: Request) {
     return Number.isFinite(n) ? n : null;
   }
 
+  async function resolveCountryCurrencyFallback(conn: mysql.PoolConnection, countryId: number, ignoreCurrencyId?: number | null) {
+    const [countryRows]: any = await conn.query(
+      `SELECT c.default_currency_id, c.settlement_currency_code, cur.code AS default_currency_code
+       FROM linescout_countries c
+       LEFT JOIN linescout_currencies cur ON cur.id = c.default_currency_id
+       WHERE c.id = ?
+       LIMIT 1`,
+      [countryId]
+    );
+    const country = countryRows?.[0] || {};
+    const [mappingRows]: any = await conn.query(
+      `SELECT cur.code AS currency_code
+       FROM linescout_country_currencies cc
+       JOIN linescout_currencies cur ON cur.id = cc.currency_id
+       WHERE cc.country_id = ?
+         AND cc.is_active = 1
+         ${ignoreCurrencyId ? "AND cc.currency_id <> ?" : ""}
+       ORDER BY cur.code ASC
+       LIMIT 1`,
+      ignoreCurrencyId ? [countryId, ignoreCurrencyId] : [countryId]
+    );
+    const mappingCode = String(mappingRows?.[0]?.currency_code || "").toUpperCase();
+    const defaultCode = String(country.default_currency_code || "").toUpperCase();
+    const settlementCode = String(country.settlement_currency_code || "").toUpperCase();
+    return mappingCode || defaultCode || settlementCode || "NGN";
+  }
+
+  async function backfillCountryDisplayCurrency(
+    conn: mysql.PoolConnection,
+    countryId: number,
+    removedCurrencyId: number | null,
+    removedCode: string | null
+  ) {
+    if (!removedCode) return;
+    const fallback = await resolveCountryCurrencyFallback(conn, countryId, removedCurrencyId);
+    if (!fallback || fallback === removedCode) return;
+    await conn.query(
+      `UPDATE users
+       SET display_currency_code = ?
+       WHERE country_id = ? AND display_currency_code = ?`,
+      [fallback, countryId, removedCode]
+    );
+    await conn.query(
+      `UPDATE linescout_handoffs
+       SET display_currency_code = ?, settlement_currency_code = ?
+       WHERE country_id = ? AND display_currency_code = ?`,
+      [fallback, fallback, countryId, removedCode]
+    );
+    await conn.query(
+      `UPDATE linescout_quotes
+       SET display_currency_code = ?, settlement_currency_code = ?, updated_at = NOW()
+       WHERE country_id = ? AND display_currency_code = ?`,
+      [fallback, fallback, countryId, removedCode]
+    );
+  }
+
   const conn = await pool.getConnection();
 
   if (action) {
@@ -650,12 +706,39 @@ export async function POST(req: Request) {
         if (!country_id || !currency_id || is_active === null) {
           return NextResponse.json({ ok: false, error: "Invalid mapping or status" }, { status: 400 });
         }
+        const [currencyRows]: any = await conn.query(
+          `SELECT code FROM linescout_currencies WHERE id = ? LIMIT 1`,
+          [currency_id]
+        );
+        const removedCode = is_active === 0 ? String(currencyRows?.[0]?.code || "").toUpperCase() : null;
         await conn.query(
           `UPDATE linescout_country_currencies
            SET is_active = ?
            WHERE country_id = ? AND currency_id = ?`,
           [is_active, country_id, currency_id]
         );
+        if (is_active === 0) {
+          await backfillCountryDisplayCurrency(conn, country_id, currency_id, removedCode);
+        }
+        return NextResponse.json({ ok: true });
+      }
+
+      if (action === "country_currency.delete") {
+        const country_id = num(body?.country_id);
+        const currency_id = num(body?.currency_id);
+        if (!country_id || !currency_id) {
+          return NextResponse.json({ ok: false, error: "Invalid mapping" }, { status: 400 });
+        }
+        const [currencyRows]: any = await conn.query(
+          `SELECT code FROM linescout_currencies WHERE id = ? LIMIT 1`,
+          [currency_id]
+        );
+        const removedCode = String(currencyRows?.[0]?.code || "").toUpperCase() || null;
+        await conn.query(
+          `DELETE FROM linescout_country_currencies WHERE country_id = ? AND currency_id = ?`,
+          [country_id, currency_id]
+        );
+        await backfillCountryDisplayCurrency(conn, country_id, currency_id, removedCode);
         return NextResponse.json({ ok: true });
       }
 

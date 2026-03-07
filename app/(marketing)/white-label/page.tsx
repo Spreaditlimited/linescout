@@ -4,10 +4,8 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ArrowRight, BadgeCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
-import {
-  computeLandedRange,
-  ensureWhiteLabelProductsReady,
-} from "@/lib/white-label-products";
+import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
 import FilterForm from "@/components/filters/FilterForm";
@@ -15,16 +13,15 @@ import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountr
 import { currencyForCode } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { normalizeAmazonMarketplace, marketplaceCurrency } from "@/lib/white-label-marketplace";
+import { getFxRate } from "@/lib/fx";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
 // Keep in sync with social preview assets.
 
 const PAGE_SIZE = 20;
-const FX_RATE_NGN = 1500;
-const CBM_RATE_NGN = 450000;
-const MARKUP = 0.2;
-const LANDED_LOW_MULTIPLIER = 0.5;
 const BASE_URL = "https://linescout.sureimports.com";
 const SOCIAL_IMAGE = `${BASE_URL}/white-label-social.png`;
 
@@ -166,7 +163,15 @@ function slugify(value?: string | null) {
 
 function pickCountryFromCookie(
   cookieValue: string | undefined,
-  countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
+  countries: {
+    id: number;
+    name: string;
+    iso2: string;
+    default_currency_id?: number | null;
+    settlement_currency_code?: string | null;
+    amazon_marketplace?: string | null;
+    amazon_enabled?: number | boolean | null;
+  }[]
 ) {
   const normalized = String(cookieValue || "").trim().toUpperCase();
   const picked =
@@ -186,11 +191,8 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
-  if (allowed.has(candidate)) return candidate;
-  const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
-  return allowed.has(settlement) ? settlement : "NGN";
+  return candidate || "NGN";
 }
 
 function parseEligibleCountries(raw?: string | null) {
@@ -223,12 +225,14 @@ export default async function WhiteLabelPage({
   let categories: string[] = [];
   let mostViewed: any[] = [];
   let categorySpotlights: { category: string; items: any[] }[] = [];
-  let countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[] = [];
+  let countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null; amazon_marketplace?: string | null }[] = [];
   let countryOptions: { value: string; label: string }[] = [];
   let countryCode = "NG";
   let currencyCode = "NGN";
+  let countryId = 0;
   let amazonComparisonEnabled = false;
-  const effectivePrice = currencyCode === "NGN" ? price : "";
+  let pricingFallbackLabel: string | undefined;
+  let effectivePrice = "";
 
   try {
     await ensureCountryConfig(conn);
@@ -241,14 +245,24 @@ export default async function WhiteLabelPage({
     const picked = pickCountryFromCookie(countryCookie, countries);
     countryCode = picked?.iso2 ? String(picked.iso2).toUpperCase() : "NG";
     currencyCode = getCountryCurrencyCode(picked, currencyById);
+    countryId = picked?.id ? Number(picked.id) : 0;
     countryOptions = countries.map((c) => ({ value: String(c.iso2 || "").toUpperCase(), label: c.name }));
+    pricingFallbackLabel = picked?.name ? `No landed cost ranges yet for ${picked.name}.` : undefined;
+    effectivePrice = currencyCode === "NGN" ? price : "";
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
     const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
-    amazonComparisonEnabled = Boolean(countryCode) && eligible.has(countryCode) && currencyCode !== "NGN";
+    const normalizedMarketplace = normalizeAmazonMarketplace(picked?.amazon_marketplace);
+    amazonComparisonEnabled =
+      Boolean(countryCode) &&
+      eligible.has(countryCode) &&
+      Boolean(picked?.amazon_enabled) &&
+      Boolean(normalizedMarketplace) &&
+      isKeepaMarketplaceSupported(normalizedMarketplace);
 
     await ensureWhiteLabelProductsReady(conn);
+    await ensureWhiteLabelLandedCostTable(conn);
 
     const clauses = ["p.is_active = 1"];
     const params: any[] = [];
@@ -278,19 +292,17 @@ export default async function WhiteLabelPage({
       clauses.push(`COALESCE(p.regulatory_note,'') = ''`);
     }
 
-    const landedLowExpr = `(${LANDED_LOW_MULTIPLIER} * ((COALESCE(p.fob_low_usd,0) * ${FX_RATE_NGN}) + (COALESCE(p.cbm_per_1000,0) * ${CBM_RATE_NGN} / 1000)) * (1 + ${MARKUP}))`;
-
     if (effectivePrice) {
       if (price === "lt1k") {
-        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} < 1000`);
+        clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low < 1000`);
       } else if (price === "1k-3k") {
-        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} >= 1000 AND ${landedLowExpr} <= 3000`);
+        clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low >= 1000 AND lc.landed_per_unit_low <= 3000`);
       } else if (price === "3k-7k") {
-        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 3000 AND ${landedLowExpr} <= 7000`);
+        clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 3000 AND lc.landed_per_unit_low <= 7000`);
       } else if (price === "7k-15k") {
-        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 7000 AND ${landedLowExpr} <= 15000`);
+        clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 7000 AND lc.landed_per_unit_low <= 15000`);
       } else if (price === "15kplus") {
-        clauses.push(`p.fob_low_usd IS NOT NULL AND ${landedLowExpr} > 15000`);
+        clauses.push(`lc.landed_per_unit_low IS NOT NULL AND lc.landed_per_unit_low > 15000`);
       }
     }
 
@@ -298,12 +310,12 @@ export default async function WhiteLabelPage({
     const sortKey = sort || "recommended";
     const orderBy =
       sortKey === "price_low"
-        ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} ASC, p.id DESC`
-        : sortKey === "price_high"
-        ? `ORDER BY (p.fob_low_usd IS NULL) ASC, ${landedLowExpr} DESC, p.id DESC`
-        : sortKey === "name"
+        ? `ORDER BY (lc.landed_per_unit_low IS NULL) ASC, lc.landed_per_unit_low ASC, p.id DESC`
+      : sortKey === "price_high"
+        ? `ORDER BY (lc.landed_per_unit_low IS NULL) ASC, lc.landed_per_unit_low DESC, p.id DESC`
+      : sortKey === "name"
         ? "ORDER BY p.product_name ASC, p.id DESC"
-        : sortKey === "newest"
+      : sortKey === "newest"
         ? "ORDER BY p.id DESC"
         : `ORDER BY ${hasAmazonExpr} DESC, COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC`;
 
@@ -311,9 +323,11 @@ export default async function WhiteLabelPage({
       `
       SELECT COUNT(*) AS total
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       WHERE ${clauses.join(" AND ")}
       `,
-      params
+      [countryId, ...params]
     );
     total = Number(countRows?.[0]?.total || 0);
 
@@ -323,8 +337,11 @@ export default async function WhiteLabelPage({
 
     const [rows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
         FROM linescout_white_label_views
@@ -334,17 +351,50 @@ export default async function WhiteLabelPage({
       ${orderBy}
       LIMIT ? OFFSET ?
       `,
-      [...params, PAGE_SIZE, offset]
+      [countryId, ...params, PAGE_SIZE, offset]
     );
 
-    items = (rows || []).map((r: any) => ({
-      ...r,
-      ...computeLandedRange({
-        fob_low_usd: r.fob_low_usd,
-        fob_high_usd: r.fob_high_usd,
-        cbm_per_1000: r.cbm_per_1000,
-      }),
-    }));
+    const preferredMarketplace = amazonComparisonEnabled ? normalizeAmazonMarketplace(picked?.amazon_marketplace) : null;
+    const amazonCurrency = preferredMarketplace ? marketplaceCurrency(preferredMarketplace) : null;
+    const amazonFx =
+      preferredMarketplace && amazonCurrency
+        ? currencyCode === amazonCurrency
+          ? 1
+          : await getFxRate(conn, currencyCode, amazonCurrency)
+        : null;
+
+    const mapItem = (r: any) => {
+      const landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
+      const landedHigh = r.landed_per_unit_high != null ? Number(r.landed_per_unit_high) : null;
+      const amazonLandedLow = landedLow != null && amazonFx ? landedLow * amazonFx : null;
+      const amazonLandedHigh = landedHigh != null && amazonFx ? landedHigh * amazonFx : null;
+      const ukLow = r.amazon_uk_price_low != null ? Number(r.amazon_uk_price_low) : null;
+      const ukHigh = r.amazon_uk_price_high != null ? Number(r.amazon_uk_price_high) : null;
+      const caLow = r.amazon_ca_price_low != null ? Number(r.amazon_ca_price_low) : null;
+      const caHigh = r.amazon_ca_price_high != null ? Number(r.amazon_ca_price_high) : null;
+      const usLow = r.amazon_us_price_low != null ? Number(r.amazon_us_price_low) : null;
+      const usHigh = r.amazon_us_price_high != null ? Number(r.amazon_us_price_high) : null;
+      const market = amazonComparisonEnabled ? preferredMarketplace : null;
+      return {
+        ...r,
+        landed_per_unit_low: landedLow,
+        landed_per_unit_high: landedHigh,
+        landed_total_1000_low: r.landed_total_1000_low ?? null,
+        landed_total_1000_high: r.landed_total_1000_high ?? null,
+        landed_currency_code: currencyCode,
+        amazon_landed_per_unit_low: amazonLandedLow,
+        amazon_landed_per_unit_high: amazonLandedHigh,
+        amazon_display_marketplace: market,
+        amazon_display_currency: market ? marketplaceCurrency(market) : null,
+        amazon_display_price_low:
+          market === "US" ? usLow : market === "CA" ? caLow : market === "UK" ? ukLow : null,
+        amazon_display_price_high:
+          market === "US" ? usHigh : market === "CA" ? caHigh : market === "UK" ? ukHigh : null,
+        amazon_display_note: null,
+      };
+    };
+
+    items = (rows || []).map(mapItem);
 
     const [catRows]: any = await conn.query(
       `
@@ -360,8 +410,11 @@ export default async function WhiteLabelPage({
 
     const [viewRows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
         FROM linescout_white_label_views
@@ -371,16 +424,10 @@ export default async function WhiteLabelPage({
       ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
                view_count DESC, p.sort_order ASC, p.id DESC
       LIMIT 8
-      `
+      `,
+      [countryId]
     );
-    mostViewed = (viewRows || []).map((r: any) => ({
-      ...r,
-      ...computeLandedRange({
-        fob_low_usd: r.fob_low_usd,
-        fob_high_usd: r.fob_high_usd,
-        cbm_per_1000: r.cbm_per_1000,
-      }),
-    }));
+    mostViewed = (viewRows || []).map(mapItem);
 
     const [topCategoryRows]: any = await conn.query(
       `
@@ -398,8 +445,11 @@ export default async function WhiteLabelPage({
       if (!cat) continue;
       const [catRowsItems]: any = await conn.query(
         `
-        SELECT p.*, COALESCE(v.views, 0) AS view_count
+        SELECT p.*, COALESCE(v.views, 0) AS view_count,
+               lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
         FROM linescout_white_label_products p
+        LEFT JOIN linescout_white_label_landed_costs lc
+          ON lc.product_id = p.id AND lc.country_id = ?
         LEFT JOIN (
           SELECT product_id, COUNT(*) AS views
           FROM linescout_white_label_views
@@ -410,17 +460,10 @@ export default async function WhiteLabelPage({
                  view_count DESC, p.sort_order ASC, p.id DESC
         LIMIT 4
         `,
-        [cat]
+        [countryId, cat]
       );
 
-      const mapped = (catRowsItems || []).map((r: any) => ({
-        ...r,
-        ...computeLandedRange({
-          fob_low_usd: r.fob_low_usd,
-          fob_high_usd: r.fob_high_usd,
-          cbm_per_1000: r.cbm_per_1000,
-        }),
-      }));
+      const mapped = (catRowsItems || []).map(mapItem);
 
       if (mapped.length) {
         categorySpotlights.push({ category: cat, items: mapped });
@@ -645,6 +688,8 @@ export default async function WhiteLabelPage({
             lockAmazonComparison
             comparisonCtaHref="/sign-in?next=/white-label/ideas"
             comparisonCtaLabel="Sign in to compare Amazon prices"
+            pricingFallbackLabel={pricingFallbackLabel}
+            strictLanded
           />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">

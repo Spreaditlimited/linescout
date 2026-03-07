@@ -3,14 +3,16 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
 import DeferredSection from "@/components/white-label/DeferredSection";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
-import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { marketplaceCurrency, normalizeAmazonMarketplace } from "@/lib/white-label-marketplace";
+import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -35,14 +37,11 @@ type ProductRow = {
   fob_low_usd: number | null;
   fob_high_usd: number | null;
   cbm_per_1000: number | null;
-  landed_gbp_sea_per_unit_low?: number | null;
-  landed_gbp_sea_per_unit_high?: number | null;
-  landed_gbp_sea_total_1000_low?: number | null;
-  landed_gbp_sea_total_1000_high?: number | null;
-  landed_cad_sea_per_unit_low?: number | null;
-  landed_cad_sea_per_unit_high?: number | null;
-  landed_cad_sea_total_1000_low?: number | null;
-  landed_cad_sea_total_1000_high?: number | null;
+  landed_per_unit_low?: number | null;
+  landed_per_unit_high?: number | null;
+  landed_total_1000_low?: number | null;
+  landed_total_1000_high?: number | null;
+  landed_currency_code?: string | null;
   amazon_uk_asin?: string | null;
   amazon_uk_url?: string | null;
   amazon_uk_currency?: string | null;
@@ -128,7 +127,15 @@ function formatRegulatoryNote(note: string | null, countryIso2: string) {
 
 function pickCountryFromCookie(
   cookieValue: string | undefined,
-  countries: { id: number; name: string; iso2: string; default_currency_id?: number | null; settlement_currency_code?: string | null }[]
+  countries: {
+    id: number;
+    name: string;
+    iso2: string;
+    default_currency_id?: number | null;
+    settlement_currency_code?: string | null;
+    amazon_marketplace?: string | null;
+    amazon_enabled?: number | boolean | null;
+  }[]
 ) {
   const normalized = String(cookieValue || "").trim().toUpperCase();
   const picked =
@@ -148,11 +155,8 @@ function getCountryCurrencyCode(
   const fromDefault = country.default_currency_id
     ? currencyById.get(Number(country.default_currency_id)) || null
     : null;
-  const allowed = new Set(["NGN", "GBP", "CAD", "USD"]);
   const candidate = String(fromDefault || country.settlement_currency_code || "NGN").toUpperCase();
-  if (allowed.has(candidate)) return candidate;
-  const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
-  return allowed.has(settlement) ? settlement : "NGN";
+  return candidate || "NGN";
 }
 
 function parseEligibleCountries(raw?: string | null) {
@@ -267,8 +271,10 @@ export default async function WhiteLabelMarketingDetailPage({
   let similar: ProductRow[] = [];
   let mostViewed: ProductRow[] = [];
   let currencyCode = "NGN";
+  let countryId = 0;
   let countryIso2 = "";
   let amazonComparisonEnabled = false;
+  let pickedCountry: { amazon_marketplace?: string | null } | null = null;
   try {
     await ensureCountryConfig(conn);
     await ensureWhiteLabelSettings(conn);
@@ -277,20 +283,32 @@ export default async function WhiteLabelMarketingDetailPage({
       (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
     );
     const picked = pickCountryFromCookie(countryCookie, (lists.countries || []) as any[]);
+    pickedCountry = picked || null;
     currencyCode = getCountryCurrencyCode(picked, currencyById);
     countryIso2 = picked?.iso2 ? String(picked.iso2).toUpperCase() : "";
+    countryId = picked?.id ? Number(picked.id) : 0;
     const [settingsRows]: any = await conn.query(
       `SELECT white_label_subscription_countries FROM linescout_settings ORDER BY id DESC LIMIT 1`
     );
     const eligible = new Set(parseEligibleCountries(settingsRows?.[0]?.white_label_subscription_countries));
-    amazonComparisonEnabled = Boolean(countryIso2) && eligible.has(countryIso2) && currencyCode !== "NGN";
+    const normalizedMarketplace = normalizeAmazonMarketplace(picked?.amazon_marketplace);
+    amazonComparisonEnabled =
+      Boolean(countryIso2) &&
+      eligible.has(countryIso2) &&
+      Boolean(picked?.amazon_enabled) &&
+      Boolean(normalizedMarketplace) &&
+      isKeepaMarketplaceSupported(normalizedMarketplace);
 
     await ensureWhiteLabelProductsReady(conn);
+    await ensureWhiteLabelLandedCostTable(conn);
 
     const [rows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
         FROM linescout_white_label_views
@@ -299,7 +317,7 @@ export default async function WhiteLabelMarketingDetailPage({
       WHERE (p.slug = ? OR REGEXP_REPLACE(LOWER(p.product_name), '[^a-z0-9]+', '-') = ?) AND p.is_active = 1
       LIMIT 1
       `,
-      [slug, slug]
+      [countryId, slug, slug]
     );
     product = rows?.[0] || null;
 
@@ -309,8 +327,11 @@ export default async function WhiteLabelMarketingDetailPage({
 
     const [similarRows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
         FROM linescout_white_label_views
@@ -320,14 +341,17 @@ export default async function WhiteLabelMarketingDetailPage({
       ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
       LIMIT 6
       `,
-      [product.category, product.id]
+      [countryId, product.category, product.id]
     );
     similar = similarRows || [];
 
     const [viewRows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
+      LEFT JOIN linescout_white_label_landed_costs lc
+        ON lc.product_id = p.id AND lc.country_id = ?
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
         FROM linescout_white_label_views
@@ -336,7 +360,8 @@ export default async function WhiteLabelMarketingDetailPage({
       WHERE p.is_active = 1
       ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
       LIMIT 6
-      `
+      `,
+      [countryId]
     );
     mostViewed = viewRows || [];
   } finally {
@@ -347,13 +372,12 @@ export default async function WhiteLabelMarketingDetailPage({
 
   if (!product) return null;
 
-  const landedNgn = computeLandedRange({
-    fob_low_usd: product.fob_low_usd,
-    fob_high_usd: product.fob_high_usd,
-    cbm_per_1000: product.cbm_per_1000,
-  });
-  const landedBase = { ...product, ...landedNgn };
-  const landedPicked = pickLandedFieldsByCurrency(landedBase, currencyCode);
+  const landedPicked = {
+    perUnitLow: product.landed_per_unit_low ?? null,
+    perUnitHigh: product.landed_per_unit_high ?? null,
+    totalLow: product.landed_total_1000_low ?? null,
+    totalHigh: product.landed_total_1000_high ?? null,
+  };
 
   const summary = fallbackSummary(product);
   const marketNotes = fallbackMarketNotes(product);
@@ -368,39 +392,32 @@ export default async function WhiteLabelMarketingDetailPage({
   const hasUk = Number.isFinite(ukLow) || Number.isFinite(ukHigh);
   const hasCa = Number.isFinite(caLow) || Number.isFinite(caHigh);
   const hasUs = Number.isFinite(usLow) || Number.isFinite(usHigh);
-  const preferredMarket = resolveAmazonMarketplace({
-    countryIso2,
-    currencyCode,
-  });
-  const useUs = preferredMarket === "US" && hasUs;
-  const useCa = preferredMarket === "CA" && hasCa;
-  const useUk = preferredMarket === "UK" && hasUk;
-  const fallbackMarket = hasUk ? "UK" : hasCa ? "CA" : hasUs ? "US" : null;
-  const amazonMarketplace = useUs ? "US" : useCa ? "CA" : useUk ? "UK" : fallbackMarket;
-  const amazonLow = amazonMarketplace === "US" ? usLow : amazonMarketplace === "CA" ? caLow : ukLow;
-  const amazonHigh = amazonMarketplace === "US" ? usHigh : amazonMarketplace === "CA" ? caHigh : ukHigh;
-  const amazonCurrency = amazonMarketplace ? marketplaceCurrency(amazonMarketplace) : "GBP";
-  const hasAmazonComparison = hasUk || hasCa || hasUs;
-  const amazonPriceRange = hasAmazonComparison
-    ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency)
+  const amazonMarketplace = amazonComparisonEnabled
+    ? normalizeAmazonMarketplace(pickedCountry?.amazon_marketplace)
     : null;
+  const amazonLow =
+    amazonMarketplace === "US" ? usLow : amazonMarketplace === "CA" ? caLow : amazonMarketplace === "UK" ? ukLow : null;
+  const amazonHigh =
+    amazonMarketplace === "US" ? usHigh : amazonMarketplace === "CA" ? caHigh : amazonMarketplace === "UK" ? ukHigh : null;
+  const amazonCurrency = amazonMarketplace ? marketplaceCurrency(amazonMarketplace) : "GBP";
+  const hasAmazonComparison =
+    amazonMarketplace === "US"
+      ? hasUs
+      : amazonMarketplace === "CA"
+      ? hasCa
+      : amazonMarketplace === "UK"
+      ? hasUk
+      : false;
+  const amazonPriceRange = hasAmazonComparison ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency) : null;
 
   const similarItems = similar.map((item) => ({
     ...item,
-    ...computeLandedRange({
-      fob_low_usd: item.fob_low_usd,
-      fob_high_usd: item.fob_high_usd,
-      cbm_per_1000: item.cbm_per_1000,
-    }),
+    landed_currency_code: currencyCode,
   }));
 
   const trendingItems = mostViewed.map((item) => ({
     ...item,
-    ...computeLandedRange({
-      fob_low_usd: item.fob_low_usd,
-      fob_high_usd: item.fob_high_usd,
-      cbm_per_1000: item.cbm_per_1000,
-    }),
+    landed_currency_code: currencyCode,
   }));
 
   return (
@@ -560,8 +577,8 @@ export default async function WhiteLabelMarketingDetailPage({
                         <p className="text-sm font-semibold text-neutral-900">{item.product_name}</p>
                         <p className="text-xs text-neutral-500">
                         {formatPerUnitRangeWithCurrency(
-                          pickLandedFieldsByCurrency(item, currencyCode).perUnitLow,
-                          pickLandedFieldsByCurrency(item, currencyCode).perUnitHigh,
+                          item.landed_per_unit_low ?? null,
+                          item.landed_per_unit_high ?? null,
                           currency
                         ) || "Pricing pending"}
                         </p>

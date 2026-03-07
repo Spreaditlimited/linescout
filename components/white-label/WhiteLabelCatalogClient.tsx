@@ -128,6 +128,9 @@ export default function WhiteLabelCatalogClient({
   lockAmazonComparison = false,
   comparisonCtaHref = "/sign-in?next=/white-label/ideas",
   comparisonCtaLabel = "Sign in to compare Amazon prices",
+  pricingFallbackLabel,
+  pricingFallbackSubLabel,
+  strictLanded = false,
 }: {
   items: ProductItem[];
   detailBase?: string;
@@ -136,6 +139,9 @@ export default function WhiteLabelCatalogClient({
   lockAmazonComparison?: boolean;
   comparisonCtaHref?: string;
   comparisonCtaLabel?: string;
+  pricingFallbackLabel?: string;
+  pricingFallbackSubLabel?: string;
+  strictLanded?: boolean;
 }) {
   const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
   const currency = currencyForCode(currencyCode);
@@ -289,21 +295,37 @@ export default function WhiteLabelCatalogClient({
                       {item.product_name}
                     </h2>
                     {(() => {
-                      const landed = pickLandedFieldsByCurrency(item, currencyCode);
+                      const landed = strictLanded
+                        ? {
+                            perUnitLow: item.landed_per_unit_low,
+                            perUnitHigh: item.landed_per_unit_high,
+                            totalLow: item.landed_total_1000_low,
+                            totalHigh: item.landed_total_1000_high,
+                          }
+                        : pickLandedFieldsByCurrency(item, currencyCode);
                       const hasPerUnit = landed.perUnitLow != null || landed.perUnitHigh != null;
                       const hasTotal = landed.totalLow != null || landed.totalHigh != null;
+                      const showFallback = !hasPerUnit && !hasTotal && !!pricingFallbackLabel;
                       return (
                         <>
                           <p className="mt-3 text-sm text-neutral-600">
                             {hasPerUnit
                               ? formatPerUnitRange(landed.perUnitLow, landed.perUnitHigh, currencyCode)
+                              : showFallback
+                              ? pricingFallbackLabel
                               : "Pricing pending"}
                           </p>
-                          <p className="mt-1 text-xs text-neutral-500">
-                            {hasTotal
-                              ? formatTotalRange(landed.totalLow, landed.totalHigh, currencyCode)
-                              : "Pricing pending"}
-                          </p>
+                          {showFallback ? (
+                            pricingFallbackSubLabel ? (
+                              <p className="mt-1 text-xs text-neutral-500">{pricingFallbackSubLabel}</p>
+                            ) : null
+                          ) : (
+                            <p className="mt-1 text-xs text-neutral-500">
+                              {hasTotal
+                                ? formatTotalRange(landed.totalLow, landed.totalHigh, currencyCode)
+                                : "Pricing pending"}
+                            </p>
+                          )}
                         </>
                       );
                     })()}

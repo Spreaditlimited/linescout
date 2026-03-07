@@ -39,7 +39,11 @@ export async function ensureWhiteLabelLandedCostTable(conn: PoolConnection) {
 
 async function listSeaRates(conn: PoolConnection, countryId?: number | null): Promise<SeaRate[]> {
   const params: any[] = [];
-  const where: string[] = ["r.is_active = 1", "t.name = 'Sea'", "c.is_active = 1"];
+  const where: string[] = [
+    "r.is_active = 1",
+    "LOWER(TRIM(t.name)) IN ('sea','sea shipping')",
+    "c.is_active = 1",
+  ];
   if (countryId) {
     where.push("c.id = ?");
     params.push(countryId);
