@@ -466,7 +466,7 @@ export default function PaymentsPage() {
         <div className="flex flex-col gap-2">
           <h3 className="text-base font-semibold text-neutral-100">Quote payment providers by country</h3>
           <p className="text-xs text-neutral-500">
-            Nigeria uses the global quote provider. Other countries default to PayPal (GBP).
+            Nigeria uses the global quote provider. Other countries default to PayPal.
           </p>
         </div>
 
@@ -481,7 +481,7 @@ export default function PaymentsPage() {
 
             const options = isNigeria
               ? [{ value: "global", label: `Use global (${settings?.provider_default || "paystack"})` }]
-              : [{ value: "paypal", label: "PayPal (GBP)" }];
+              : [{ value: "paypal", label: "PayPal" }];
 
             return (
               <div

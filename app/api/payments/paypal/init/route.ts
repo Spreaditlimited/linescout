@@ -61,6 +61,8 @@ export async function POST(req: Request) {
     }
 
     let displayCurrency = "NGN";
+    let settlementCurrency = "NGN";
+    let countryIso2 = "";
     const conn = await db.getConnection();
     try {
       await ensureCountryConfig(conn);
@@ -68,7 +70,7 @@ export async function POST(req: Request) {
       await backfillUserDefaults(conn);
       const [rows]: any = await conn.query(
         `
-        SELECT u.display_currency_code, c.payment_provider, c.settlement_currency_code
+        SELECT u.display_currency_code, c.payment_provider, c.settlement_currency_code, c.iso2
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
         WHERE u.id = ?
@@ -76,12 +78,12 @@ export async function POST(req: Request) {
         `,
         [userId]
       );
-      const provider = String(rows?.[0]?.payment_provider || "").toLowerCase();
-      const settlementCurrency = String(rows?.[0]?.settlement_currency_code || "NGN").toUpperCase();
+      settlementCurrency = String(rows?.[0]?.settlement_currency_code || "NGN").toUpperCase();
+      countryIso2 = String(rows?.[0]?.iso2 || "").trim().toUpperCase();
       displayCurrency = String(rows?.[0]?.display_currency_code || settlementCurrency || "NGN").toUpperCase();
-      if (provider !== "paypal" || settlementCurrency !== "GBP") {
+      if (countryIso2 === "NG") {
         return NextResponse.json(
-          { ok: false, error: "PayPal is only available for GBP settlement." },
+          { ok: false, error: "PayPal is not available for Nigeria. Please use Paystack." },
           { status: 400 }
         );
       }
@@ -99,34 +101,35 @@ export async function POST(req: Request) {
 
     const fxConn = await db.getConnection();
     let displayAmount: number | null = null;
-    let gbpAmount: number | null = null;
+    let paypalAmount: number | null = null;
+    const paypalCurrency = (settlementCurrency || displayCurrency || "USD").toUpperCase();
     try {
       displayAmount = await convertAmount(fxConn, ngn, "NGN", displayCurrency);
       if (!displayAmount || !Number.isFinite(displayAmount)) {
         displayAmount = null;
       }
-      const baseForGbp = displayAmount ?? ngn;
+      const baseForPayPal = displayAmount ?? ngn;
       const baseCurrency = displayAmount ? displayCurrency : "NGN";
-      gbpAmount = await convertAmount(fxConn, baseForGbp, baseCurrency, "GBP");
+      paypalAmount = await convertAmount(fxConn, baseForPayPal, baseCurrency, paypalCurrency);
     } finally {
       fxConn.release();
     }
 
-    if (!gbpAmount || !Number.isFinite(gbpAmount) || gbpAmount <= 0) {
+    if (!paypalAmount || !Number.isFinite(paypalAmount) || paypalAmount <= 0) {
       return NextResponse.json(
-        { ok: false, error: "GBP exchange rate is not configured." },
+        { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
         { status: 500 }
       );
     }
 
-    const amount = gbpAmount.toFixed(2);
+    const amount = paypalAmount.toFixed(2);
     const returnUrl = `${callbackUrl}&provider=paypal`;
     const cancelUrl = callbackUrl;
 
     const customId = `LS_${userId}_${Date.now()}`;
     const order = await paypalCreateOrder({
       amount,
-      currency: "GBP",
+      currency: paypalCurrency,
       returnUrl,
       cancelUrl,
       customId,
@@ -150,7 +153,7 @@ export async function POST(req: Request) {
           purpose,
           routeType,
           amount: Number.isFinite(Number(amount)) ? Number(amount) : null,
-          currency: "GBP",
+          currency: paypalCurrency,
           meta: {
             source_conversation_id: body?.source_conversation_id || null,
             reorder_of_conversation_id: body?.reorder_of_conversation_id || null,
@@ -176,7 +179,7 @@ export async function POST(req: Request) {
       ok: true,
       order_id: order.id,
       approval_url: order.approveUrl,
-      currency: "GBP",
+      currency: paypalCurrency,
       amount,
     });
   } catch (e: any) {

@@ -268,10 +268,10 @@ export async function POST(req: Request) {
     let paymentAmount = commitmentDueNgn;
     let paymentCurrency = "NGN";
     if (paymentSource === "paypal") {
-      if (paypalCurrency !== "GBP" && paypalCurrency !== "CAD") {
+      if (paypalCurrency === "NGN") {
         await conn.rollback();
         return NextResponse.json(
-          { ok: false, error: "PayPal currency must be GBP or CAD for this user." },
+          { ok: false, error: "PayPal is not available for NGN. Please use Paystack." },
           { status: 400 }
         );
       }

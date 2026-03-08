@@ -1340,7 +1340,7 @@ export default function InternalSettingsPage() {
     const refOk = paymentRef.trim().length > 0;
     const paypalCurrency = currency.toUpperCase();
     const paypalCurrencyOk =
-      paymentSource === "paystack" || paypalCurrency === "GBP" || paypalCurrency === "CAD";
+      paymentSource === "paystack" || (paypalCurrency.length > 0 && paypalCurrency !== "NGN");
 
     if (!nameOk || !emailOk || !statusOk || !sourceOk || !paypalCurrencyOk || !refOk) return false;
     if (!selectedUserId) return false;
@@ -3670,9 +3670,9 @@ export default function InternalSettingsPage() {
                   <p className="mt-1 text-xs text-neutral-500">
                     Records the commitment payment source in history.
                   </p>
-                  {paymentSource === "paypal" && currency && currency !== "GBP" && currency !== "CAD" ? (
+                  {paymentSource === "paypal" && currency && currency.toUpperCase() === "NGN" ? (
                     <p className="mt-1 text-xs text-red-300">
-                      PayPal currency must be GBP or CAD for this user.
+                      PayPal is not available for NGN. Use Paystack for Nigeria.
                     </p>
                   ) : null}
                 </div>

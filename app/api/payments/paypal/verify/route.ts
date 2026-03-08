@@ -298,12 +298,12 @@ export async function POST(req: Request) {
     const purchaseUnit = Array.isArray(capture?.purchase_units) ? capture.purchase_units[0] : null;
     const paymentCapture = purchaseUnit?.payments?.captures?.[0];
     const amountValue = Number(paymentCapture?.amount?.value || 0);
-    const currency = String(paymentCapture?.amount?.currency_code || "GBP").toUpperCase();
+    const currency = String(paymentCapture?.amount?.currency_code || "").toUpperCase();
     if (!Number.isFinite(amountValue) || amountValue <= 0) {
       return NextResponse.json({ ok: false, error: "Invalid PayPal amount." }, { status: 400 });
     }
-    if (currency !== "GBP") {
-      return NextResponse.json({ ok: false, error: "PayPal currency must be GBP." }, { status: 400 });
+    if (!currency) {
+      return NextResponse.json({ ok: false, error: "Invalid PayPal currency." }, { status: 400 });
     }
 
     let sourceConversationId = Number(body?.source_conversation_id || 0) || null;

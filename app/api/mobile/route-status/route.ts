@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
         commitment_due_ngn: commitmentDueNgn,
         commitment_due_amount: commitmentDueAmount,
         commitment_due_currency_code: commitmentCurrency,
-        payment_provider: paymentProvider || (settlementCurrency === "GBP" ? "paypal" : "paystack"),
+        payment_provider: paymentProvider || (settlementCurrency === "NGN" ? "paystack" : "paypal"),
       },
       { status: 200 }
     );
