@@ -351,6 +351,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const [routeRows]: any = await conn.query(
       `SELECT c.route_type
+              , q.display_currency_code
        FROM linescout_quotes q
        JOIN linescout_conversations c ON c.handoff_id = q.handoff_id
        WHERE q.id = ?
@@ -359,6 +360,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       [quoteId]
     );
     const routeType = normalizeRouteType(routeRows?.[0]?.route_type || "");
+    const isNgnQuote =
+      String(routeRows?.[0]?.display_currency_code || "").trim().toUpperCase() === "NGN";
     const bandConfig = bands?.[routeType] || null;
     const bandCurrency = String(bandConfig?.currency || "GBP").trim().toUpperCase() || "GBP";
     let amountForBand = baseProductNgn;
@@ -369,7 +372,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     }
     const resolvedServiceCharge = resolveBandPercent(bands, routeType, amountForBand, lineScoutMarginPercent);
-    const service_charge_percent = Math.max(0, Math.min(resolvedServiceCharge, lineScoutMarginPercent));
+    const service_charge_percent = isNgnQuote
+      ? 0
+      : Math.max(0, Math.min(resolvedServiceCharge, lineScoutMarginPercent));
 
     const totals = computeTotals(
       items,

@@ -446,6 +446,7 @@ export async function POST(req: Request) {
     );
     const bands = parseServiceChargeBands(settingsRows?.[0]?.service_charge_bands_json);
     const lineScoutMarginPercent = Math.max(0, markup_percent - agent_percent);
+    const isNgnQuote = String(display_currency_code || "").trim().toUpperCase() === "NGN";
 
     let baseProductNgn = 0;
     for (const item of items) {
@@ -471,7 +472,9 @@ export async function POST(req: Request) {
       amountForBand,
       lineScoutMarginPercent
     );
-    const service_charge_percent = Math.max(0, Math.min(resolvedServiceCharge, lineScoutMarginPercent));
+    const service_charge_percent = isNgnQuote
+      ? 0
+      : Math.max(0, Math.min(resolvedServiceCharge, lineScoutMarginPercent));
 
     const totals = computeTotals(
       items,

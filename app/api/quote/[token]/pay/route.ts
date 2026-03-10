@@ -249,7 +249,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const defaults = await getNigeriaDefaults(conn);
     const quoteCountryId = Number(quote.country_id || defaults.country_id || 0);
     const resolved = await resolveCountryCurrency(conn, quote.country_id, quote.display_currency_code);
-    const displayCurrencyCode = String(resolved?.display_currency_code || "GBP").toUpperCase();
+    const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
     const items = pickItems(quote.items_json);
     const handoffId = Number(quote.handoff_id || 0);
     const commitmentDue = Math.max(0, num(quote.commitment_due_ngn, 0));
@@ -262,9 +262,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const markupPercent = num(quote.markup_percent, 0);
     const agentPercent = num(quote.agent_percent, 0);
     const lineScoutMarginPercent = Math.max(0, markupPercent - agentPercent);
-    const serviceChargePercent = Number.isFinite(Number(quote.service_charge_percent))
-      ? Number(quote.service_charge_percent)
-      : lineScoutMarginPercent;
+    const rawService = quote.service_charge_percent;
+    const parsedService = Number(rawService);
+    const fallbackService =
+      rawService == null || rawService === "" || !Number.isFinite(parsedService)
+        ? lineScoutMarginPercent
+        : parsedService;
+    const serviceChargePercent =
+      displayCurrencyCode === "NGN"
+        ? 0
+        : Math.max(0, Math.min(fallbackService, lineScoutMarginPercent));
     const vatRate = num(quote.vat_rate_percent, 0);
 
     const shipType = shippingTypeId || quote.shipping_type_id;

@@ -133,15 +133,21 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
 
     const exchangeRmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchangeUsd = (await getFxRate(conn, "USD", "NGN")) || 0;
+    const resolved = await resolveCountryCurrency(conn, quote.country_id, null);
+    const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
     const markupPercent = Number(settings?.markup_percent || quote.markup_percent || 0);
     const agentPercent = Number(quote.agent_percent || settings?.agent_percent || 0);
     const lineScoutMarginPercent = Math.max(0, markupPercent - agentPercent);
-    const serviceChargePercent = Number.isFinite(Number(quote.service_charge_percent))
-      ? Number(quote.service_charge_percent)
-      : lineScoutMarginPercent;
-
-    const resolved = await resolveCountryCurrency(conn, quote.country_id, null);
-    const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
+    const rawService = quote.service_charge_percent;
+    const parsedService = Number(rawService);
+    const fallbackService =
+      rawService == null || rawService === "" || !Number.isFinite(parsedService)
+        ? lineScoutMarginPercent
+        : parsedService;
+    const serviceChargePercent =
+      displayCurrencyCode === "NGN"
+        ? 0
+        : Math.max(0, Math.min(fallbackService, lineScoutMarginPercent));
     const displayFxRate =
       displayCurrencyCode === "NGN" ? 1 : (await getFxRate(conn, "NGN", displayCurrencyCode)) || 0;
     const shippingFxRate =
