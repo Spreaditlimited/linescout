@@ -97,16 +97,20 @@ export async function GET(req: Request) {
           ) AS sort_at
         FROM linescout_conversations c
         WHERE c.user_id = ?
-          AND c.route_type = ?
           AND (
-            c.conversation_kind IS NULL
-            OR c.conversation_kind <> 'quick_human'
-            OR (
+            (
               c.conversation_kind = 'quick_human'
               AND c.chat_mode = 'limited_human'
               AND c.project_status = 'active'
               AND (c.human_access_expires_at IS NULL OR c.human_access_expires_at > NOW())
               AND (c.human_message_limit = 0 OR c.human_message_used < c.human_message_limit)
+            )
+            OR (
+              c.route_type = ?
+              AND (
+                c.conversation_kind IS NULL
+                OR c.conversation_kind <> 'quick_human'
+              )
             )
           )
         ORDER BY sort_at DESC, c.id DESC

@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 import SearchableSelect from "@/app/internal/_components/SearchableSelect";
-import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, Bot, User, ArrowLeft, Sparkles, Package } from "lucide-react";
+import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, Bot, User, ArrowLeft, Sparkles, Package, MessageCircle } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/machine", label: "AI Chat", icon: Bot },
+  { href: "/quick-chats", label: "Quick Chats", icon: MessageCircle },
   { href: "/white-label/ideas", label: "White Label", icon: Sparkles },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/shipments", label: "Shipments", icon: Package },

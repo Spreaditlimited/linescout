@@ -137,6 +137,25 @@ export default function ConversationThreadPage() {
       if (!conversationId) return;
       setStatus("loading");
       setMessage(null);
+
+      const convRes = await authFetch(`/api/mobile/conversations/get?conversation_id=${conversationId}`);
+      const convJson = await convRes.json().catch(() => ({}));
+      if (!convRes.ok) {
+        if (convRes.status === 401) {
+          router.replace("/sign-in");
+          return;
+        }
+      } else {
+        const conversation = convJson?.conversation || null;
+        if (String(conversation?.conversation_kind || "") === "quick_human") {
+          const safeRoute = String(conversation?.route_type || "machine_sourcing");
+          router.replace(
+            `/quick-chat?route_type=${encodeURIComponent(safeRoute)}&conversation_id=${conversationId}`
+          );
+          return;
+        }
+      }
+
       const res = await authFetch(`/api/mobile/paid-chat/messages?conversation_id=${conversationId}&limit=80`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {

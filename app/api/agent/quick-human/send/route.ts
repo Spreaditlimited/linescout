@@ -334,7 +334,7 @@ export async function POST(req: Request) {
           );
           const email = String(emailRows?.[0]?.email || "").trim();
           if (email) {
-            const chatUrl = `https://linescout.sureimports.com/conversations/${conversationId}`;
+            const chatUrl = `https://linescout.sureimports.com/quick-chat?route_type=${encodeURIComponent(routeType)}&conversation_id=${conversationId}`;
             await sendNoticeEmail({
               to: email,
               subject: "New quick chat message",
