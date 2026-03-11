@@ -10,6 +10,7 @@ const shortDate = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeSt
 type MessageItem = {
   id: number;
   sender_type: "user" | "agent" | string;
+  sender_id?: number | null;
   message_text: string | null;
   reply_to_message_id?: number | null;
   reply_to_sender_type?: "user" | "agent" | string | null;
@@ -35,6 +36,8 @@ type MessagesResponse = {
   items: MessageItem[];
   last_id: number;
   has_more: boolean;
+  agent_name_map?: Record<string, string>;
+  admin_sender_ids?: number[];
   attachments_by_message_id?: Record<string, Attachment[]>;
   meta?: {
     handoff_status?: string | null;
@@ -126,6 +129,11 @@ export default function ConversationThreadPage() {
   const lastReadRef = useRef<number>(0);
 
   const attachmentsByMessage = useMemo(() => data?.attachments_by_message_id || {}, [data]);
+  const agentNameMap = useMemo(() => data?.agent_name_map || {}, [data]);
+  const adminSenderIdSet = useMemo(
+    () => new Set((data?.admin_sender_ids || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)),
+    [data]
+  );
   const agentName = data?.meta?.agent_name || "Agent";
   const customerName = data?.meta?.customer_name || "You";
   const stageLabel = formatStageLabel(data?.meta?.handoff_status) || "In progress";
@@ -495,6 +503,8 @@ export default function ConversationThreadPage() {
         <div ref={messagesRef} className="hide-scrollbar flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1 sm:max-h-[50vh]">
           {(data?.items || []).map((item) => {
             const isUser = item.sender_type === "user";
+            const senderId = Number(item.sender_id || 0);
+            const isAdminSender = item.sender_type === "agent" && senderId > 0 && adminSenderIdSet.has(senderId);
             const isDeleted = !!item.deleted_at;
             const createdMs = item.created_at ? new Date(item.created_at).getTime() : 0;
             const withinEditWindow = createdMs ? Date.now() - createdMs <= 24 * 60 * 60 * 1000 : false;
@@ -508,21 +518,23 @@ export default function ConversationThreadPage() {
             const timeLabel = `${shortDate.format(new Date(item.created_at))}${
               item.edited_at ? " · Edited" : ""
             }`;
+            const senderIdKey = senderId > 0 ? String(senderId) : "";
+            const mappedAgentName = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : "";
+            const agentLabel = mappedAgentName || agentName || "Agent";
+            const label = isUser ? customerName : isAdminSender ? "Admin" : agentLabel;
+            const bubbleClass = isUser
+              ? "bg-[var(--agent-blue)] text-white"
+              : isAdminSender
+                ? "border border-amber-200 bg-amber-50 text-amber-900"
+                : "bg-neutral-100 text-neutral-900";
+            const metaClass = isUser ? "text-white/80" : isAdminSender ? "text-amber-700" : "text-neutral-500";
 
             return (
               <div key={item.id} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                    isUser ? "bg-[var(--agent-blue)] text-white" : "bg-neutral-100 text-neutral-900"
-                  }`}
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${bubbleClass}`}
                 >
-                  <p
-                    className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${
-                      isUser ? "text-white/80" : "text-neutral-500"
-                    }`}
-                  >
-                    {isUser ? customerName : agentName}
-                  </p>
+                  <p className={`text-[10px] font-semibold uppercase tracking-[0.2em] ${metaClass}`}>{label}</p>
                   {item.reply_to_message_id ? (
                     <div
                       className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${
@@ -589,9 +601,7 @@ export default function ConversationThreadPage() {
                       ))}
                     </div>
                   ) : null}
-                  <p className={`mt-2 text-[10px] ${isUser ? "text-white/80" : "text-neutral-400"}`}>
-                    {timeLabel}
-                  </p>
+                  <p className={`mt-2 text-[10px] ${isUser ? "text-white/80" : isAdminSender ? "text-amber-700" : "text-neutral-400"}`}>{timeLabel}</p>
                   {canReply || canEdit || canDelete ? (
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.2em]">
                       {canReply ? (

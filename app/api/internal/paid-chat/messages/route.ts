@@ -365,10 +365,11 @@ export async function GET(req: Request) {
       )
     );
     const agentNameMap: Record<string, string> = {};
+    const adminSenderIds: number[] = [];
     if (agentIds.length) {
       const [agentRows]: any = await conn.query(
         `
-        SELECT id, username
+        SELECT id, username, role
         FROM internal_users
         WHERE id IN (?)
         `,
@@ -377,7 +378,9 @@ export async function GET(req: Request) {
       for (const row of agentRows || []) {
         const id = Number(row.id || 0);
         const name = String(row.username || "").trim();
+        const role = String(row.role || "").trim().toLowerCase();
         if (id && name) agentNameMap[String(id)] = name;
+        if (id && role === "admin") adminSenderIds.push(id);
       }
     }
 
@@ -392,6 +395,7 @@ export async function GET(req: Request) {
       attachments,
       attachments_by_message_id: attachmentsByMessageId,
       agent_name_map: agentNameMap,
+      admin_sender_ids: adminSenderIds,
       meta: {
         project_status: projectStatus || null,
         handoff_id: handoffId,

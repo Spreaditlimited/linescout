@@ -25,6 +25,7 @@ type MsgRes = {
   assigned_agent_id?: number | null;
   assigned_agent_username?: string | null;
   agent_name_map?: Record<string, string>;
+  admin_sender_ids?: number[];
   meta?: {
     can_send?: boolean;
     send_blocked_reason?: string | null;
@@ -124,6 +125,7 @@ function AgentChatThreadInner() {
   const [agentName, setAgentName] = useState<string>("You");
   const [handoffContext, setHandoffContext] = useState<string>("");
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
+  const [adminSenderIds, setAdminSenderIds] = useState<number[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<Msg | null>(null);
@@ -202,6 +204,7 @@ function AgentChatThreadInner() {
     agent_name: string;
     handoff_context: string;
     agent_name_map: Record<string, string>;
+    admin_sender_ids: number[];
     attachments_by_message_id: Record<string, Attachment[]>;
   }> {
     const endpoint = isQuick ? "/api/agent/quick-human/messages" : "/api/internal/paid-chat/messages";
@@ -237,6 +240,9 @@ function AgentChatThreadInner() {
         : {};
     const agent_name_map =
       typeof data?.agent_name_map === "object" && data.agent_name_map ? data.agent_name_map : {};
+    const admin_sender_ids = Array.isArray(data?.admin_sender_ids)
+      ? data.admin_sender_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
 
     return {
       rows,
@@ -249,6 +255,7 @@ function AgentChatThreadInner() {
       agent_name,
       handoff_context,
       agent_name_map,
+      admin_sender_ids,
       attachments_by_message_id,
     };
   }
@@ -304,6 +311,7 @@ function AgentChatThreadInner() {
         setAgentName(initial.agent_name);
         setHandoffContext(initial.handoff_context || "");
         setAgentNameMap(initial.agent_name_map || {});
+        setAdminSenderIds(initial.admin_sender_ids || []);
         setAttachmentsByMessageId(initial.attachments_by_message_id);
 
         setItems(initial.rows);
@@ -329,6 +337,7 @@ function AgentChatThreadInner() {
           agent_name,
           handoff_context,
           agent_name_map,
+          admin_sender_ids,
           attachments_by_message_id,
         } =
           await fetchNew(after);
@@ -342,6 +351,12 @@ function AgentChatThreadInner() {
         if (handoff_context) setHandoffContext(handoff_context);
         if (agent_name_map && Object.keys(agent_name_map).length) {
           setAgentNameMap((prev) => ({ ...prev, ...agent_name_map }));
+        }
+        if (admin_sender_ids.length) {
+          setAdminSenderIds((prev) => {
+            const merged = new Set<number>([...prev, ...admin_sender_ids]);
+            return Array.from(merged);
+          });
         }
         if (Object.keys(attachments_by_message_id).length) {
           setAttachmentsByMessageId((prev) => ({ ...prev, ...attachments_by_message_id }));
@@ -654,6 +669,9 @@ function AgentChatThreadInner() {
                 ].map((m, idx) => {
                   const isSystem = m.sender_type === "system";
                   const isAgent = m.sender_type === "agent";
+                  const senderIdNum = Number(m.sender_id || 0);
+                  const isAdminSender =
+                    isAgent && senderIdNum > 0 && adminSenderIds.includes(senderIdNum);
                   const isDeleted = !!m.deleted_at;
                   if (isSystem) {
                     return (
@@ -668,10 +686,16 @@ function AgentChatThreadInner() {
                     );
                   }
                   const bubble = isAgent
-                    ? "ml-auto bg-[#2D3461] text-white"
+                    ? isAdminSender
+                      ? "ml-auto border border-amber-200 bg-amber-50 text-amber-900"
+                      : "ml-auto bg-[#2D3461] text-white"
                     : "mr-auto bg-[#F4F7FB] text-neutral-800 border border-[rgba(45,52,97,0.12)]";
 
-                  const metaColor = isAgent ? "text-white/70" : "text-neutral-500";
+                  const metaColor = isAgent
+                    ? isAdminSender
+                      ? "text-amber-700"
+                      : "text-white/70"
+                    : "text-neutral-500";
                   const senderIdKey = m.sender_id != null ? String(m.sender_id) : "";
                   const agentLabel = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : agentName || "Agent";
                   const label =
@@ -679,7 +703,9 @@ function AgentChatThreadInner() {
                       ? "AI"
                       : m.sender_type === "user"
                       ? customerName || "Customer"
-                      : agentLabel;
+                      : isAdminSender
+                        ? "Admin"
+                        : agentLabel;
 
                   const attachments = isDeleted ? [] : attachmentsByMessageId[String(m.id)] || [];
                   const createdMs = m.created_at ? new Date(m.created_at).getTime() : 0;

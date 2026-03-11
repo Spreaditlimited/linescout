@@ -324,12 +324,42 @@ export async function GET(req: Request) {
         };
       });
 
+      const agentIds = Array.from(
+        new Set(
+          (items || [])
+            .filter((r: any) => r.sender_type === "agent")
+            .map((r: any) => Number(r.sender_id || 0))
+            .filter((n: number) => Number.isFinite(n) && n > 0)
+        )
+      );
+      const agentNameMap: Record<string, string> = {};
+      const adminSenderIds: number[] = [];
+      if (agentIds.length) {
+        const [agentRows]: any = await conn.query(
+          `
+          SELECT id, username, role
+          FROM internal_users
+          WHERE id IN (?)
+          `,
+          [agentIds]
+        );
+        for (const row of agentRows || []) {
+          const id = Number(row.id || 0);
+          const name = String(row.username || "").trim();
+          const role = String(row.role || "").trim().toLowerCase();
+          if (id && name) agentNameMap[String(id)] = name;
+          if (id && role === "admin") adminSenderIds.push(id);
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         conversation_id: Number(c.id),
         items: cleanedItems,
         last_id: lastId,
         has_more: hasMore,
+        agent_name_map: agentNameMap,
+        admin_sender_ids: adminSenderIds,
 
         // NEW: attachments
         attachments, // optional flat list

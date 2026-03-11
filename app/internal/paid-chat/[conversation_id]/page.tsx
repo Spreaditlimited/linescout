@@ -31,6 +31,9 @@ type Msg = {
   sender_type: "user" | "ai" | "agent";
   sender_id: number | null;
   message_text: string;
+  reply_to_message_id?: number | null;
+  reply_to_sender_type?: "user" | "agent" | "ai" | string | null;
+  reply_to_text?: string | null;
   created_at: string;
 };
 
@@ -39,6 +42,8 @@ type MsgRes = {
   conversation_id: number;
   assigned_agent_id?: number | null;
   assigned_agent_username?: string | null;
+  agent_name_map?: Record<string, string>;
+  admin_sender_ids?: number[];
   meta?: {
     customer_name?: string | null;
   };
@@ -128,6 +133,8 @@ export default function PaidChatThreadPage() {
   const [assignedAgentId, setAssignedAgentId] = useState<number | null>(null);
   const [assignedAgentUsername, setAssignedAgentUsername] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
+  const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
+  const [adminSenderIds, setAdminSenderIds] = useState<number[]>([]);
 
   const [takeoverConfirmOpen, setTakeoverConfirmOpen] = useState(false);
   const [handoverOpen, setHandoverOpen] = useState(false);
@@ -169,6 +176,8 @@ export default function PaidChatThreadPage() {
     assigned_agent_id: number | null;
     assigned_agent_username: string | null;
     customer_name: string | null;
+    agent_name_map: Record<string, string>;
+    admin_sender_ids: number[];
   }> {
     const res = await fetch(
       `/api/internal/paid-chat/messages?conversation_id=${conversationId}&after_id=${after}&limit=120`,
@@ -195,8 +204,21 @@ export default function PaidChatThreadPage() {
       typeof data?.meta?.customer_name === "string" && data.meta.customer_name.trim()
         ? data.meta.customer_name.trim()
         : null;
+    const agent_name_map =
+      typeof data?.agent_name_map === "object" && data.agent_name_map ? data.agent_name_map : {};
+    const admin_sender_ids = Array.isArray(data?.admin_sender_ids)
+      ? data.admin_sender_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
 
-    return { rows, last, assigned_agent_id, assigned_agent_username, customer_name };
+    return {
+      rows,
+      last,
+      assigned_agent_id,
+      assigned_agent_username,
+      customer_name,
+      agent_name_map,
+      admin_sender_ids,
+    };
   }
 
   async function loadMe() {
@@ -334,6 +356,8 @@ export default function PaidChatThreadPage() {
         setAssignedAgentId(initial.assigned_agent_id);
         setAssignedAgentUsername(initial.assigned_agent_username);
         setCustomerName(initial.customer_name);
+        setAgentNameMap(initial.agent_name_map || {});
+        setAdminSenderIds(initial.admin_sender_ids || []);
 
         setItems(initial.rows);
         setLastId(initial.last);
@@ -347,19 +371,51 @@ export default function PaidChatThreadPage() {
       try {
         const after = lastIdRef.current || 0;
 
-        const { rows, last, assigned_agent_id, assigned_agent_username, customer_name } =
+        const {
+          rows,
+          last,
+          assigned_agent_id,
+          assigned_agent_username,
+          customer_name,
+          agent_name_map,
+          admin_sender_ids,
+        } =
           await fetchNew(after);
 
         // always keep assignment fresh
         setAssignedAgentId(assigned_agent_id);
         setAssignedAgentUsername(assigned_agent_username);
         if (customer_name) setCustomerName(customer_name);
+        if (agent_name_map && Object.keys(agent_name_map).length) {
+          setAgentNameMap((prev) => ({ ...prev, ...agent_name_map }));
+        }
+        if (admin_sender_ids.length) {
+          setAdminSenderIds((prev) => {
+            const merged = new Set<number>([...prev, ...admin_sender_ids]);
+            return Array.from(merged);
+          });
+        }
 
         if (!rows.length) return;
 
         setItems((prev) => {
-          const seen = new Set(prev.map((m) => m.id));
-          const merged = [...prev];
+          const incoming = rows || [];
+          const incomingKeys = new Set(
+            incoming.map(
+              (r) => `${r.sender_type}|${String(r.message_text || "").trim()}|${Number(r.reply_to_message_id || 0)}`
+            )
+          );
+          const cleanedPrev = prev.filter((m) => {
+            const isOptimistic = m.id > 1000000000000;
+            if (!isOptimistic) return true;
+            const key = `${m.sender_type}|${String(m.message_text || "").trim()}|${Number(
+              m.reply_to_message_id || 0
+            )}`;
+            return !incomingKeys.has(key);
+          });
+
+          const seen = new Set(cleanedPrev.map((m) => m.id));
+          const merged = [...cleanedPrev];
           for (const r of rows) {
             if (!seen.has(r.id)) merged.push(r);
           }
@@ -431,7 +487,15 @@ export default function PaidChatThreadPage() {
         return;
       }
 
-      setItems((prev) => prev.map((m) => (m.id === optimisticId ? data.item! : m)));
+      setItems((prev) => {
+        const next = prev.map((m) => (m.id === optimisticId ? data.item! : m));
+        const seen = new Set<number>();
+        return next.filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+      });
 
       const realId = Number(data.item.id || 0);
       if (realId > lastIdRef.current) {
@@ -528,13 +592,29 @@ export default function PaidChatThreadPage() {
             <div className="mx-auto w-full max-w-3xl space-y-3">
               {items.map((m) => {
                 const isAgent = m.sender_type === "agent";
+                const senderIdNum = Number(m.sender_id || 0);
+                const isAdminSender = isAgent && senderIdNum > 0 && adminSenderIds.includes(senderIdNum);
                 const bubble = isAgent
-                  ? "ml-auto bg-white text-neutral-950"
+                  ? isAdminSender
+                    ? "ml-auto border border-amber-300/70 bg-amber-100 text-amber-950"
+                    : "ml-auto bg-white text-neutral-950"
                   : "mr-auto bg-white/[0.06] border border-white/10 text-white";
 
-                const metaColor = isAgent ? "text-black/50" : "text-white/50";
+                const metaColor = isAgent
+                  ? isAdminSender
+                    ? "text-amber-900/70"
+                    : "text-black/50"
+                  : "text-white/50";
+                const senderIdKey = senderIdNum > 0 ? String(senderIdNum) : "";
+                const agentLabel = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : "Agent";
                 const label =
-                  m.sender_type === "ai" ? "AI" : m.sender_type === "user" ? "Customer" : "You";
+                  m.sender_type === "ai"
+                    ? "AI"
+                    : m.sender_type === "user"
+                      ? "Customer"
+                      : isAdminSender
+                        ? "Admin"
+                        : agentLabel;
 
                 return (
                   <div
