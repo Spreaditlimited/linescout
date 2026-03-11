@@ -552,7 +552,7 @@ export default async function WhiteLabelPage({
             </p>
             <div className="mt-6 flex flex-nowrap gap-3">
               <Link
-                href="/sourcing-project?route_type=white_label"
+                href="/sign-in"
                 className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)] whitespace-nowrap"
               >
                 Start sourcing <ArrowRight className="h-4 w-4" />
@@ -689,7 +689,6 @@ export default async function WhiteLabelPage({
             comparisonCtaHref="/sign-in?next=/white-label/ideas"
             comparisonCtaLabel="Sign in to compare Amazon prices"
             pricingFallbackLabel={pricingFallbackLabel}
-            strictLanded
           />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
