@@ -431,6 +431,64 @@ export async function POST(req: Request) {
       }
     } catch {}
 
+    // Notify assigned agent when admin sends a message.
+    if (auth.role === "admin") {
+      try {
+        const [agentRows]: any = await conn.query(
+          `
+          SELECT
+            c.assigned_agent_id,
+            iu.username AS assigned_username,
+            ap.email AS assigned_email,
+            ap.email_notifications_enabled AS assigned_email_notifications_enabled
+          FROM linescout_conversations c
+          LEFT JOIN internal_users iu ON iu.id = c.assigned_agent_id
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = c.assigned_agent_id
+          WHERE c.id = ?
+          LIMIT 1
+          `,
+          [conversationId]
+        );
+
+        const assignedAgentId = agentRows?.[0]?.assigned_agent_id
+          ? Number(agentRows[0].assigned_agent_id)
+          : null;
+
+        // Skip self-notification if the current admin is also the assigned agent.
+        if (assignedAgentId && assignedAgentId !== auth.userId) {
+          const [tokenRows]: any = await conn.query(
+            `SELECT token FROM linescout_agent_device_tokens WHERE is_active = 1 AND agent_id = ?`,
+            [assignedAgentId]
+          );
+          const tokens = (tokenRows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+          await sendExpoPush(tokens, {
+            title: "New admin message in paid chat",
+            body: (hasText ? messageText : "Attachment").slice(0, 120),
+            data: { kind: "paid", conversation_id: conversationId },
+          });
+
+          const email = String(agentRows?.[0]?.assigned_email || "").trim();
+          const emailEnabled = Number(agentRows?.[0]?.assigned_email_notifications_enabled ?? 1) === 1;
+          if (email && emailEnabled) {
+            await sendNoticeEmail({
+              to: email,
+              subject: "New admin message in paid chat",
+              title: "New admin message",
+              lines: [
+                "Admin sent a new message in a paid chat assigned to you.",
+                `Conversation ID: ${conversationId}`,
+                `Preview: ${(hasText ? messageText : "Attachment").trim().slice(0, 120) || "Attachment"}`,
+              ],
+              ctaLabel: "Open chat",
+              ctaUrl: `https://linescout.sureimports.com/agent-app/inbox/${conversationId}`,
+              footerNote:
+                "This email was sent because an admin sent a message in a paid chat assigned to you on LineScout.",
+            });
+          }
+        }
+      } catch {}
+    }
+
     return NextResponse.json({ ok: true, item: rows?.[0] || null, attachments: attRows || [] });
   } catch (e: any) {
     try {

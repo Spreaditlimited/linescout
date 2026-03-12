@@ -57,12 +57,16 @@ type SettingsItem = {
   white_label_yearly_price_gbp?: number | null;
   white_label_monthly_price_cad?: number | null;
   white_label_yearly_price_cad?: number | null;
+  white_label_monthly_price_usd?: number | null;
+  white_label_yearly_price_usd?: number | null;
   white_label_subscription_countries?: string | null;
   white_label_paypal_product_id?: string | null;
   white_label_paypal_plan_monthly_gbp?: string | null;
   white_label_paypal_plan_yearly_gbp?: string | null;
   white_label_paypal_plan_monthly_cad?: string | null;
   white_label_paypal_plan_yearly_cad?: string | null;
+  white_label_paypal_plan_monthly_usd?: string | null;
+  white_label_paypal_plan_yearly_usd?: string | null;
   affiliate_enabled?: number | boolean;
   affiliate_terms_url?: string | null;
   affiliate_min_payout_amount?: number | null;
@@ -269,12 +273,16 @@ export default function InternalSettingsPage() {
   const [whiteLabelYearlyPriceGbp, setWhiteLabelYearlyPriceGbp] = useState("");
   const [whiteLabelMonthlyPriceCad, setWhiteLabelMonthlyPriceCad] = useState("");
   const [whiteLabelYearlyPriceCad, setWhiteLabelYearlyPriceCad] = useState("");
-  const [whiteLabelSubscriptionCountries, setWhiteLabelSubscriptionCountries] = useState("GB,CA");
+  const [whiteLabelMonthlyPriceUsd, setWhiteLabelMonthlyPriceUsd] = useState("");
+  const [whiteLabelYearlyPriceUsd, setWhiteLabelYearlyPriceUsd] = useState("");
+  const [whiteLabelSubscriptionCountries, setWhiteLabelSubscriptionCountries] = useState("GB,CA,US");
   const [whiteLabelPaypalProductId, setWhiteLabelPaypalProductId] = useState("");
   const [whiteLabelPaypalMonthlyGbp, setWhiteLabelPaypalMonthlyGbp] = useState("");
   const [whiteLabelPaypalYearlyGbp, setWhiteLabelPaypalYearlyGbp] = useState("");
   const [whiteLabelPaypalMonthlyCad, setWhiteLabelPaypalMonthlyCad] = useState("");
   const [whiteLabelPaypalYearlyCad, setWhiteLabelPaypalYearlyCad] = useState("");
+  const [whiteLabelPaypalMonthlyUsd, setWhiteLabelPaypalMonthlyUsd] = useState("");
+  const [whiteLabelPaypalYearlyUsd, setWhiteLabelPaypalYearlyUsd] = useState("");
 
   const [wlExemptions, setWlExemptions] = useState<any[]>([]);
   const [wlExemptionsLoading, setWlExemptionsLoading] = useState(false);
@@ -292,6 +300,8 @@ export default function InternalSettingsPage() {
   const [paypalPlanLoading, setPaypalPlanLoading] = useState(false);
   const [paypalPlanMsg, setPaypalPlanMsg] = useState<string | null>(null);
   const [paypalPlanErr, setPaypalPlanErr] = useState<string | null>(null);
+  const [paypalPlanRecreateLoading, setPaypalPlanRecreateLoading] = useState(false);
+  const [paypalPlanRecreateOpen, setPaypalPlanRecreateOpen] = useState(false);
 
   // Countries & currencies (Phase 1)
   const [countries, setCountries] = useState<CountryItem[]>([]);
@@ -558,12 +568,20 @@ export default function InternalSettingsPage() {
       setWhiteLabelYearlyPriceCad(
         item.white_label_yearly_price_cad != null ? String(item.white_label_yearly_price_cad) : ""
       );
-      setWhiteLabelSubscriptionCountries(String(item.white_label_subscription_countries || "GB,CA"));
+      setWhiteLabelMonthlyPriceUsd(
+        item.white_label_monthly_price_usd != null ? String(item.white_label_monthly_price_usd) : ""
+      );
+      setWhiteLabelYearlyPriceUsd(
+        item.white_label_yearly_price_usd != null ? String(item.white_label_yearly_price_usd) : ""
+      );
+      setWhiteLabelSubscriptionCountries(String(item.white_label_subscription_countries || "GB,CA,US"));
       setWhiteLabelPaypalProductId(String(item.white_label_paypal_product_id || ""));
       setWhiteLabelPaypalMonthlyGbp(String(item.white_label_paypal_plan_monthly_gbp || ""));
       setWhiteLabelPaypalYearlyGbp(String(item.white_label_paypal_plan_yearly_gbp || ""));
       setWhiteLabelPaypalMonthlyCad(String(item.white_label_paypal_plan_monthly_cad || ""));
       setWhiteLabelPaypalYearlyCad(String(item.white_label_paypal_plan_yearly_cad || ""));
+      setWhiteLabelPaypalMonthlyUsd(String(item.white_label_paypal_plan_monthly_usd || ""));
+      setWhiteLabelPaypalYearlyUsd(String(item.white_label_paypal_plan_yearly_usd || ""));
       if (item.test_emails_json) {
         const raw = item.test_emails_json;
         const parsed =
@@ -1022,12 +1040,16 @@ export default function InternalSettingsPage() {
         white_label_yearly_price_gbp: whiteLabelYearlyPriceGbp ? Number(whiteLabelYearlyPriceGbp) : null,
         white_label_monthly_price_cad: whiteLabelMonthlyPriceCad ? Number(whiteLabelMonthlyPriceCad) : null,
         white_label_yearly_price_cad: whiteLabelYearlyPriceCad ? Number(whiteLabelYearlyPriceCad) : null,
+        white_label_monthly_price_usd: whiteLabelMonthlyPriceUsd ? Number(whiteLabelMonthlyPriceUsd) : null,
+        white_label_yearly_price_usd: whiteLabelYearlyPriceUsd ? Number(whiteLabelYearlyPriceUsd) : null,
         white_label_subscription_countries: whiteLabelSubscriptionCountries.trim() || null,
         white_label_paypal_product_id: whiteLabelPaypalProductId.trim() || null,
         white_label_paypal_plan_monthly_gbp: whiteLabelPaypalMonthlyGbp.trim() || null,
         white_label_paypal_plan_yearly_gbp: whiteLabelPaypalYearlyGbp.trim() || null,
         white_label_paypal_plan_monthly_cad: whiteLabelPaypalMonthlyCad.trim() || null,
         white_label_paypal_plan_yearly_cad: whiteLabelPaypalYearlyCad.trim() || null,
+        white_label_paypal_plan_monthly_usd: whiteLabelPaypalMonthlyUsd.trim() || null,
+        white_label_paypal_plan_yearly_usd: whiteLabelPaypalYearlyUsd.trim() || null,
       };
 
       const res = await fetch("/api/internal/settings", {
@@ -1053,7 +1075,7 @@ export default function InternalSettingsPage() {
       const res = await fetch("/api/internal/settings/paypal-plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_name: "LineScout White Label Ideas" }),
+        body: JSON.stringify({ product_name: "LineScout White Label Ideas", force_recreate: false }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to create PayPal plans");
@@ -1063,6 +1085,28 @@ export default function InternalSettingsPage() {
       setPaypalPlanErr(e?.message || "Failed to create PayPal plans");
     } finally {
       setPaypalPlanLoading(false);
+    }
+  }
+
+  async function confirmRecreatePaypalPlans() {
+    setPaypalPlanErr(null);
+    setPaypalPlanMsg(null);
+    setPaypalPlanRecreateLoading(true);
+    try {
+      const res = await fetch("/api/internal/settings/paypal-plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_name: "LineScout White Label Ideas", force_recreate: true }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to recreate PayPal plans");
+      setPaypalPlanMsg("PayPal plans recreated and mappings updated.");
+      await loadSettings();
+    } catch (e: any) {
+      setPaypalPlanErr(e?.message || "Failed to recreate PayPal plans");
+    } finally {
+      setPaypalPlanRecreateOpen(false);
+      setPaypalPlanRecreateLoading(false);
     }
   }
 
@@ -1381,6 +1425,8 @@ export default function InternalSettingsPage() {
     const yearlyGbp = whiteLabelYearlyPriceGbp ? Number(whiteLabelYearlyPriceGbp) : null;
     const monthlyCad = whiteLabelMonthlyPriceCad ? Number(whiteLabelMonthlyPriceCad) : null;
     const yearlyCad = whiteLabelYearlyPriceCad ? Number(whiteLabelYearlyPriceCad) : null;
+    const monthlyUsd = whiteLabelMonthlyPriceUsd ? Number(whiteLabelMonthlyPriceUsd) : null;
+    const yearlyUsd = whiteLabelYearlyPriceUsd ? Number(whiteLabelYearlyPriceUsd) : null;
     const testEmails = testEmailsText
       .split(/[\n,]/)
       .map((v) => v.trim().toLowerCase())
@@ -1464,6 +1510,12 @@ export default function InternalSettingsPage() {
     if (yearlyCad != null && (!Number.isFinite(yearlyCad) || yearlyCad < 0)) {
       errors.push("White-label yearly price (CAD) must be 0 or more.");
     }
+    if (monthlyUsd != null && (!Number.isFinite(monthlyUsd) || monthlyUsd < 0)) {
+      errors.push("White-label monthly price (USD) must be 0 or more.");
+    }
+    if (yearlyUsd != null && (!Number.isFinite(yearlyUsd) || yearlyUsd < 0)) {
+      errors.push("White-label yearly price (USD) must be 0 or more.");
+    }
     if (testEmails.some((email) => !email.includes("@"))) {
       errors.push("Test emails must be valid email addresses.");
     }
@@ -1493,10 +1545,14 @@ export default function InternalSettingsPage() {
     whiteLabelYearlyPriceGbp,
     whiteLabelMonthlyPriceCad,
     whiteLabelYearlyPriceCad,
+    whiteLabelMonthlyPriceUsd,
+    whiteLabelYearlyPriceUsd,
     whiteLabelPaypalMonthlyGbp,
     whiteLabelPaypalYearlyGbp,
     whiteLabelPaypalMonthlyCad,
     whiteLabelPaypalYearlyCad,
+    whiteLabelPaypalMonthlyUsd,
+    whiteLabelPaypalYearlyUsd,
     affiliateMinPayouts,
   ]);
 
@@ -2705,16 +2761,25 @@ export default function InternalSettingsPage() {
           <div>
             <h3 className="text-sm font-semibold text-neutral-100">White label subscriptions</h3>
             <p className="mt-1 text-xs text-neutral-500">
-              Configure trial length, daily reveal limits, and PayPal plan IDs for UK/CAD.
+              Configure trial length, daily reveal limits, and PayPal plan IDs for GBP/CAD/USD.
             </p>
           </div>
-          <button
-            onClick={createPaypalPlans}
-            disabled={paypalPlanLoading}
-            className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
-          >
-            {paypalPlanLoading ? "Creating..." : "Create PayPal plans"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={createPaypalPlans}
+              disabled={paypalPlanLoading || paypalPlanRecreateLoading}
+              className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+            >
+              {paypalPlanLoading ? "Creating..." : "Create PayPal plans"}
+            </button>
+            <button
+              onClick={() => setPaypalPlanRecreateOpen(true)}
+              disabled={paypalPlanLoading || paypalPlanRecreateLoading}
+              className="inline-flex items-center justify-center rounded-xl border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-xs font-semibold text-amber-200 hover:border-amber-600 disabled:opacity-60"
+            >
+              {paypalPlanRecreateLoading ? "Recreating..." : "Recreate PayPal plans"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -2754,7 +2819,7 @@ export default function InternalSettingsPage() {
                   value={whiteLabelSubscriptionCountries}
                   onChange={(e) => setWhiteLabelSubscriptionCountries(e.target.value.toUpperCase())}
                   className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                  placeholder="GB,CA"
+                  placeholder="GB,CA,US"
                 />
                 <p className="mt-2 text-[11px] text-neutral-500">
                   Comma-separated ISO2 codes. Only these countries can see Amazon comparison and subscribe.
@@ -2840,6 +2905,48 @@ export default function InternalSettingsPage() {
                   <input
                     value={whiteLabelPaypalYearlyCad}
                     onChange={(e) => setWhiteLabelPaypalYearlyCad(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                    placeholder="Yearly plan ID"
+                    disabled
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="text-sm font-semibold text-neutral-100">Prices (USD)</div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <label className="text-xs text-neutral-400">Monthly price</label>
+                <input
+                  value={whiteLabelMonthlyPriceUsd}
+                  onChange={(e) => setWhiteLabelMonthlyPriceUsd(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  inputMode="decimal"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-400">Yearly price</label>
+                <input
+                  value={whiteLabelYearlyPriceUsd}
+                  onChange={(e) => setWhiteLabelYearlyPriceUsd(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs text-neutral-400">PayPal plan IDs (USD)</label>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <input
+                    value={whiteLabelPaypalMonthlyUsd}
+                    onChange={(e) => setWhiteLabelPaypalMonthlyUsd(e.target.value)}
+                    className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                    placeholder="Monthly plan ID"
+                    disabled
+                  />
+                  <input
+                    value={whiteLabelPaypalYearlyUsd}
+                    onChange={(e) => setWhiteLabelPaypalYearlyUsd(e.target.value)}
                     className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="Yearly plan ID"
                     disabled
@@ -3749,6 +3856,18 @@ export default function InternalSettingsPage() {
           setDeleteMappingTarget(null);
         }}
         onConfirm={confirmDeleteCountryCurrency}
+      />
+      <ConfirmModal
+        open={paypalPlanRecreateOpen}
+        title="Recreate PayPal plans?"
+        description="This will create fresh white-label PayPal plans and overwrite existing plan ID mappings in settings."
+        confirmText={paypalPlanRecreateLoading ? "Recreating..." : "Recreate"}
+        danger
+        onCancel={() => {
+          if (paypalPlanRecreateLoading) return;
+          setPaypalPlanRecreateOpen(false);
+        }}
+        onConfirm={confirmRecreatePaypalPlans}
       />
     </div>
   );

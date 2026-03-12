@@ -193,6 +193,22 @@ export async function paypalCreateSubscription(params: {
   };
 }
 
+export async function paypalGetPlan(planId: string) {
+  const token = await paypalAccessToken();
+  const res = await fetch(`${paypalBaseUrl()}/v1/billing/plans/${encodeURIComponent(planId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    throw new Error(json?.message || "PayPal get plan failed");
+  }
+  return json;
+}
+
 export async function paypalCaptureOrder(orderId: string) {
   const token = await paypalAccessToken();
   const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {

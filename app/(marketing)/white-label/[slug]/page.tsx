@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
@@ -13,6 +13,7 @@ import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/cou
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 import { marketplaceCurrency, normalizeAmazonMarketplace } from "@/lib/white-label-marketplace";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
+import { getFxRate } from "@/lib/fx";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -123,6 +124,40 @@ function formatRegulatoryNote(note: string | null, countryIso2: string) {
     return "Regulatory requirements vary by market. We’ll guide you through local compliance for your country.";
   }
   return cleaned;
+}
+
+function pickProductLandedByCurrency(row: any, currencyCode: string) {
+  const code = String(currencyCode || "").toUpperCase();
+  if (code === "GBP") {
+    return {
+      low: row.landed_gbp_sea_per_unit_low != null ? Number(row.landed_gbp_sea_per_unit_low) : null,
+      high: row.landed_gbp_sea_per_unit_high != null ? Number(row.landed_gbp_sea_per_unit_high) : null,
+      totalLow: row.landed_gbp_sea_total_1000_low != null ? Number(row.landed_gbp_sea_total_1000_low) : null,
+      totalHigh: row.landed_gbp_sea_total_1000_high != null ? Number(row.landed_gbp_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "CAD") {
+    return {
+      low: row.landed_cad_sea_per_unit_low != null ? Number(row.landed_cad_sea_per_unit_low) : null,
+      high: row.landed_cad_sea_per_unit_high != null ? Number(row.landed_cad_sea_per_unit_high) : null,
+      totalLow: row.landed_cad_sea_total_1000_low != null ? Number(row.landed_cad_sea_total_1000_low) : null,
+      totalHigh: row.landed_cad_sea_total_1000_high != null ? Number(row.landed_cad_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "USD") {
+    return {
+      low: row.landed_usd_sea_per_unit_low != null ? Number(row.landed_usd_sea_per_unit_low) : null,
+      high: row.landed_usd_sea_per_unit_high != null ? Number(row.landed_usd_sea_per_unit_high) : null,
+      totalLow: row.landed_usd_sea_total_1000_low != null ? Number(row.landed_usd_sea_total_1000_low) : null,
+      totalHigh: row.landed_usd_sea_total_1000_high != null ? Number(row.landed_usd_sea_total_1000_high) : null,
+    };
+  }
+  return {
+    low: row.landed_ngn_per_unit_low != null ? Number(row.landed_ngn_per_unit_low) : null,
+    high: row.landed_ngn_per_unit_high != null ? Number(row.landed_ngn_per_unit_high) : null,
+    totalLow: row.landed_ngn_total_1000_low != null ? Number(row.landed_ngn_total_1000_low) : null,
+    totalHigh: row.landed_ngn_total_1000_high != null ? Number(row.landed_ngn_total_1000_high) : null,
+  };
 }
 
 function pickCountryFromCookie(
@@ -319,7 +354,68 @@ export default async function WhiteLabelMarketingDetailPage({
       `,
       [countryId, slug, slug]
     );
-    product = rows?.[0] || null;
+    const ngnToDisplayFx =
+      currencyCode === "NGN" ? 1 : await getFxRate(conn, "NGN", currencyCode);
+    const withLanded = (item: any) => {
+      let landedLow = item.landed_per_unit_low != null ? Number(item.landed_per_unit_low) : null;
+      let landedHigh = item.landed_per_unit_high != null ? Number(item.landed_per_unit_high) : null;
+      let landedTotalLow =
+        item.landed_total_1000_low != null ? Number(item.landed_total_1000_low) : null;
+      let landedTotalHigh =
+        item.landed_total_1000_high != null ? Number(item.landed_total_1000_high) : null;
+
+      const productLanded = pickProductLandedByCurrency(item, currencyCode);
+      landedLow = landedLow ?? productLanded.low;
+      landedHigh = landedHigh ?? productLanded.high;
+      landedTotalLow = landedTotalLow ?? productLanded.totalLow;
+      landedTotalHigh = landedTotalHigh ?? productLanded.totalHigh;
+
+      if (landedLow == null || landedHigh == null || landedTotalLow == null || landedTotalHigh == null) {
+        const computedNgn = computeLandedRange({
+          fob_low_usd: item.fob_low_usd,
+          fob_high_usd: item.fob_high_usd,
+          cbm_per_1000: item.cbm_per_1000,
+        });
+        if (currencyCode === "NGN") {
+          landedLow = landedLow ?? computedNgn.landed_ngn_per_unit_low;
+          landedHigh = landedHigh ?? computedNgn.landed_ngn_per_unit_high;
+          landedTotalLow = landedTotalLow ?? computedNgn.landed_ngn_total_1000_low;
+          landedTotalHigh = landedTotalHigh ?? computedNgn.landed_ngn_total_1000_high;
+        } else if (ngnToDisplayFx && ngnToDisplayFx > 0) {
+          landedLow =
+            landedLow ??
+            (computedNgn.landed_ngn_per_unit_low != null
+              ? Number(computedNgn.landed_ngn_per_unit_low) * ngnToDisplayFx
+              : null);
+          landedHigh =
+            landedHigh ??
+            (computedNgn.landed_ngn_per_unit_high != null
+              ? Number(computedNgn.landed_ngn_per_unit_high) * ngnToDisplayFx
+              : null);
+          landedTotalLow =
+            landedTotalLow ??
+            (computedNgn.landed_ngn_total_1000_low != null
+              ? Number(computedNgn.landed_ngn_total_1000_low) * ngnToDisplayFx
+              : null);
+          landedTotalHigh =
+            landedTotalHigh ??
+            (computedNgn.landed_ngn_total_1000_high != null
+              ? Number(computedNgn.landed_ngn_total_1000_high) * ngnToDisplayFx
+              : null);
+        }
+      }
+
+      return {
+        ...item,
+        landed_per_unit_low: landedLow,
+        landed_per_unit_high: landedHigh,
+        landed_total_1000_low: landedTotalLow,
+        landed_total_1000_high: landedTotalHigh,
+        landed_currency_code: currencyCode,
+      };
+    };
+
+    product = rows?.[0] ? withLanded(rows[0]) : null;
 
     if (!product) {
       notFound();
@@ -343,7 +439,7 @@ export default async function WhiteLabelMarketingDetailPage({
       `,
       [countryId, product.category, product.id]
     );
-    similar = similarRows || [];
+    similar = (similarRows || []).map(withLanded);
 
     const [viewRows]: any = await conn.query(
       `
@@ -363,7 +459,7 @@ export default async function WhiteLabelMarketingDetailPage({
       `,
       [countryId]
     );
-    mostViewed = viewRows || [];
+    mostViewed = (viewRows || []).map(withLanded);
   } finally {
     conn.release();
   }
@@ -410,15 +506,9 @@ export default async function WhiteLabelMarketingDetailPage({
       : false;
   const amazonPriceRange = hasAmazonComparison ? formatAmazonPriceRange(amazonLow, amazonHigh, amazonCurrency) : null;
 
-  const similarItems = similar.map((item) => ({
-    ...item,
-    landed_currency_code: currencyCode,
-  }));
+  const similarItems = similar;
 
-  const trendingItems = mostViewed.map((item) => ({
-    ...item,
-    landed_currency_code: currencyCode,
-  }));
+  const trendingItems = mostViewed;
 
   return (
     <main className="min-h-screen bg-[#F5F6FA] text-neutral-900">

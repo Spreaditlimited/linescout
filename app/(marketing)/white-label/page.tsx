@@ -204,6 +204,40 @@ function parseEligibleCountries(raw?: string | null) {
     .map((c) => (c === "UK" ? "GB" : c));
 }
 
+function pickProductLandedByCurrency(row: any, currencyCode: string) {
+  const code = String(currencyCode || "").toUpperCase();
+  if (code === "GBP") {
+    return {
+      low: row.landed_gbp_sea_per_unit_low != null ? Number(row.landed_gbp_sea_per_unit_low) : null,
+      high: row.landed_gbp_sea_per_unit_high != null ? Number(row.landed_gbp_sea_per_unit_high) : null,
+      totalLow: row.landed_gbp_sea_total_1000_low != null ? Number(row.landed_gbp_sea_total_1000_low) : null,
+      totalHigh: row.landed_gbp_sea_total_1000_high != null ? Number(row.landed_gbp_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "CAD") {
+    return {
+      low: row.landed_cad_sea_per_unit_low != null ? Number(row.landed_cad_sea_per_unit_low) : null,
+      high: row.landed_cad_sea_per_unit_high != null ? Number(row.landed_cad_sea_per_unit_high) : null,
+      totalLow: row.landed_cad_sea_total_1000_low != null ? Number(row.landed_cad_sea_total_1000_low) : null,
+      totalHigh: row.landed_cad_sea_total_1000_high != null ? Number(row.landed_cad_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "USD") {
+    return {
+      low: row.landed_usd_sea_per_unit_low != null ? Number(row.landed_usd_sea_per_unit_low) : null,
+      high: row.landed_usd_sea_per_unit_high != null ? Number(row.landed_usd_sea_per_unit_high) : null,
+      totalLow: row.landed_usd_sea_total_1000_low != null ? Number(row.landed_usd_sea_total_1000_low) : null,
+      totalHigh: row.landed_usd_sea_total_1000_high != null ? Number(row.landed_usd_sea_total_1000_high) : null,
+    };
+  }
+  return {
+    low: row.landed_ngn_per_unit_low != null ? Number(row.landed_ngn_per_unit_low) : null,
+    high: row.landed_ngn_per_unit_high != null ? Number(row.landed_ngn_per_unit_high) : null,
+    totalLow: row.landed_ngn_total_1000_low != null ? Number(row.landed_ngn_total_1000_low) : null,
+    totalHigh: row.landed_ngn_total_1000_high != null ? Number(row.landed_ngn_total_1000_high) : null,
+  };
+}
+
 export default async function WhiteLabelPage({
   searchParams,
 }: {
@@ -362,6 +396,8 @@ export default async function WhiteLabelPage({
           ? 1
           : await getFxRate(conn, currencyCode, amazonCurrency)
         : null;
+    const ngnToDisplayFx =
+      currencyCode === "NGN" ? 1 : await getFxRate(conn, "NGN", currencyCode);
 
     const mapItem = (r: any) => {
       let landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
@@ -371,17 +407,45 @@ export default async function WhiteLabelPage({
       let landedTotalHigh =
         r.landed_total_1000_high != null ? Number(r.landed_total_1000_high) : null;
 
-      // NGN marketing fallback: if landed-cost table rows are missing, derive from FOB+CBM defaults.
-      if (currencyCode === "NGN") {
+      const productLanded = pickProductLandedByCurrency(r, currencyCode);
+      landedLow = landedLow ?? productLanded.low;
+      landedHigh = landedHigh ?? productLanded.high;
+      landedTotalLow = landedTotalLow ?? productLanded.totalLow;
+      landedTotalHigh = landedTotalHigh ?? productLanded.totalHigh;
+
+      if (landedLow == null || landedHigh == null || landedTotalLow == null || landedTotalHigh == null) {
         const computed = computeLandedRange({
           fob_low_usd: r.fob_low_usd,
           fob_high_usd: r.fob_high_usd,
           cbm_per_1000: r.cbm_per_1000,
         });
-        landedLow = landedLow ?? computed.landed_ngn_per_unit_low;
-        landedHigh = landedHigh ?? computed.landed_ngn_per_unit_high;
-        landedTotalLow = landedTotalLow ?? computed.landed_ngn_total_1000_low;
-        landedTotalHigh = landedTotalHigh ?? computed.landed_ngn_total_1000_high;
+        if (currencyCode === "NGN") {
+          landedLow = landedLow ?? computed.landed_ngn_per_unit_low;
+          landedHigh = landedHigh ?? computed.landed_ngn_per_unit_high;
+          landedTotalLow = landedTotalLow ?? computed.landed_ngn_total_1000_low;
+          landedTotalHigh = landedTotalHigh ?? computed.landed_ngn_total_1000_high;
+        } else if (ngnToDisplayFx && ngnToDisplayFx > 0) {
+          landedLow =
+            landedLow ??
+            (computed.landed_ngn_per_unit_low != null
+              ? Number(computed.landed_ngn_per_unit_low) * ngnToDisplayFx
+              : null);
+          landedHigh =
+            landedHigh ??
+            (computed.landed_ngn_per_unit_high != null
+              ? Number(computed.landed_ngn_per_unit_high) * ngnToDisplayFx
+              : null);
+          landedTotalLow =
+            landedTotalLow ??
+            (computed.landed_ngn_total_1000_low != null
+              ? Number(computed.landed_ngn_total_1000_low) * ngnToDisplayFx
+              : null);
+          landedTotalHigh =
+            landedTotalHigh ??
+            (computed.landed_ngn_total_1000_high != null
+              ? Number(computed.landed_ngn_total_1000_high) * ngnToDisplayFx
+              : null);
+        }
       }
 
       const amazonLandedLow = landedLow != null && amazonFx ? landedLow * amazonFx : null;

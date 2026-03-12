@@ -10,6 +10,14 @@ type Config = {
   yearly_price_gbp: number | null;
   monthly_price_cad: number | null;
   yearly_price_cad: number | null;
+  monthly_price_usd: number | null;
+  yearly_price_usd: number | null;
+  monthly_price: number | null;
+  yearly_price: number | null;
+  currency: "GBP" | "CAD" | "USD";
+  country_iso2?: string | null;
+  amazon_enabled?: boolean;
+  subscription_eligible?: boolean;
 };
 
 type Profile = {
@@ -27,16 +35,17 @@ type Profile = {
   } | null;
 };
 
-function fmt(amount: number | null, currency: "GBP" | "CAD") {
+function fmt(amount: number | null, currency: "GBP" | "CAD" | "USD") {
   if (amount == null || !Number.isFinite(amount)) return "—";
   try {
-    return new Intl.NumberFormat(currency === "GBP" ? "en-GB" : "en-CA", {
+    const locale = currency === "GBP" ? "en-GB" : currency === "CAD" ? "en-CA" : "en-US";
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency,
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    const symbol = currency === "GBP" ? "£" : "CA$";
+    const symbol = currency === "GBP" ? "£" : currency === "CAD" ? "CA$" : "$";
     return `${symbol}${Number(amount).toFixed(2)}`;
   }
 }
@@ -225,13 +234,11 @@ export default function WhiteLabelSubscribePage() {
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="text-sm font-semibold text-neutral-900">Monthly</div>
-              <div className="mt-2 text-2xl font-semibold text-neutral-900">
-                {fmt(config.monthly_price_gbp, "GBP")} / {fmt(config.monthly_price_cad, "CAD")}
-              </div>
+              <div className="mt-2 text-2xl font-semibold text-neutral-900">{fmt(config.monthly_price, config.currency)}</div>
               <button
                 type="button"
                 onClick={() => startSubscription("monthly")}
-                disabled={submitting === "monthly"}
+                disabled={submitting === "monthly" || config.subscription_eligible === false}
                 className="btn btn-primary mt-4 w-full px-4 py-3 text-sm disabled:opacity-60"
               >
                 {submitting === "monthly" ? "Redirecting…" : "Subscribe monthly"}
@@ -240,19 +247,23 @@ export default function WhiteLabelSubscribePage() {
 
             <div className="rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
               <div className="text-sm font-semibold text-neutral-900">Yearly</div>
-              <div className="mt-2 text-2xl font-semibold text-neutral-900">
-                {fmt(config.yearly_price_gbp, "GBP")} / {fmt(config.yearly_price_cad, "CAD")}
-              </div>
+              <div className="mt-2 text-2xl font-semibold text-neutral-900">{fmt(config.yearly_price, config.currency)}</div>
               <button
                 type="button"
                 onClick={() => startSubscription("yearly")}
-                disabled={submitting === "yearly"}
+                disabled={submitting === "yearly" || config.subscription_eligible === false}
                 className="btn btn-outline mt-4 w-full px-4 py-3 text-sm disabled:opacity-60"
               >
                 {submitting === "yearly" ? "Redirecting…" : "Subscribe yearly"}
               </button>
             </div>
           </div>
+        ) : null}
+        {config && config.subscription_eligible === false ? (
+          <p className="mt-4 text-xs text-amber-700">
+            Subscription pricing is only available for countries with Amazon reveal enabled.
+            {config.country_iso2 ? ` Current country: ${config.country_iso2}.` : ""}
+          </p>
         ) : null}
       </div>
     </div>

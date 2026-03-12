@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mysql from "mysql2/promise";
-import { paypalCreateProduct, paypalCreatePlan } from "@/lib/paypal";
+import { paypalCreateProduct, paypalCreatePlan, paypalGetPlan } from "@/lib/paypal";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 
 export const runtime = "nodejs";
@@ -48,9 +48,92 @@ async function requireAdmin() {
   }
 }
 
-function asMoney(value: any, fallback: number) {
+function asMoney(value: any) {
   const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : fallback.toFixed(2);
+  return Number.isFinite(n) && n > 0 ? n.toFixed(2) : null;
+}
+
+function countriesToCurrencies(raw: any): Set<"GBP" | "CAD" | "USD"> {
+  const out = new Set<"GBP" | "CAD" | "USD">();
+  const parts = String(raw || "")
+    .split(",")
+    .map((part) => part.trim().toUpperCase())
+    .filter(Boolean)
+    .map((code) => (code === "UK" ? "GB" : code));
+  for (const code of parts) {
+    if (code === "GB") out.add("GBP");
+    if (code === "CA") out.add("CAD");
+    if (code === "US") out.add("USD");
+  }
+  if (!out.size) {
+    out.add("GBP");
+    out.add("CAD");
+    out.add("USD");
+  }
+  return out;
+}
+
+function asFixed2(value: any) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(2) : null;
+}
+
+async function planMatches(params: {
+  planId: string;
+  currency: "GBP" | "CAD" | "USD";
+  price: string;
+  interval: "MONTH" | "YEAR";
+}) {
+  try {
+    const plan: any = await paypalGetPlan(params.planId);
+    const cycle = Array.isArray(plan?.billing_cycles)
+      ? plan.billing_cycles.find((c: any) => String(c?.tenure_type || "").toUpperCase() === "REGULAR")
+      : null;
+    const price = asFixed2(cycle?.pricing_scheme?.fixed_price?.value);
+    const currency = String(cycle?.pricing_scheme?.fixed_price?.currency_code || "").toUpperCase();
+    const interval = String(cycle?.frequency?.interval_unit || "").toUpperCase();
+    return (
+      price === asFixed2(params.price) &&
+      currency === params.currency &&
+      interval === params.interval
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function ensurePlan(params: {
+  enabled: boolean;
+  existingPlanId: string | null;
+  forceRecreate: boolean;
+  productId: string;
+  name: string;
+  currency: "GBP" | "CAD" | "USD";
+  price: string;
+  interval: "MONTH" | "YEAR";
+}) {
+  if (!params.enabled) {
+    return params.existingPlanId ? String(params.existingPlanId).trim() || null : null;
+  }
+  const existing = params.existingPlanId ? String(params.existingPlanId).trim() : "";
+  if (!params.forceRecreate && existing) {
+    const matches = await planMatches({
+      planId: existing,
+      currency: params.currency,
+      price: params.price,
+      interval: params.interval,
+    });
+    if (matches) return existing;
+  }
+  const created = await paypalCreatePlan({
+    productId: params.productId,
+    name: params.name,
+    currency: params.currency,
+    price: params.price,
+    interval: params.interval,
+    intervalCount: 1,
+  });
+  return created.id;
 }
 
 export async function POST(req: Request) {
@@ -59,6 +142,7 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const productName = String(body?.product_name || "LineScout White Label Ideas").trim();
+  const forceRecreate = Boolean(body?.force_recreate);
 
   const conn = await pool.getConnection();
   try {
@@ -71,10 +155,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Settings not found." }, { status: 500 });
     }
 
-    const monthlyGbp = asMoney(row.white_label_monthly_price_gbp, 29);
-    const yearlyGbp = asMoney(row.white_label_yearly_price_gbp, 299);
-    const monthlyCad = asMoney(row.white_label_monthly_price_cad, 49);
-    const yearlyCad = asMoney(row.white_label_yearly_price_cad, 499);
+    const monthlyGbp = asMoney(row.white_label_monthly_price_gbp);
+    const yearlyGbp = asMoney(row.white_label_yearly_price_gbp);
+    const monthlyCad = asMoney(row.white_label_monthly_price_cad);
+    const yearlyCad = asMoney(row.white_label_yearly_price_cad);
+    const monthlyUsd = asMoney(row.white_label_monthly_price_usd);
+    const yearlyUsd = asMoney(row.white_label_yearly_price_usd);
+
+    const enabledCurrencies = countriesToCurrencies(row.white_label_subscription_countries);
+    const missing: string[] = [];
+    if (enabledCurrencies.has("GBP") && !monthlyGbp) missing.push("GBP monthly");
+    if (enabledCurrencies.has("GBP") && !yearlyGbp) missing.push("GBP yearly");
+    if (enabledCurrencies.has("CAD") && !monthlyCad) missing.push("CAD monthly");
+    if (enabledCurrencies.has("CAD") && !yearlyCad) missing.push("CAD yearly");
+    if (enabledCurrencies.has("USD") && !monthlyUsd) missing.push("USD monthly");
+    if (enabledCurrencies.has("USD") && !yearlyUsd) missing.push("USD yearly");
+    if (missing.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Set required white-label prices before creating PayPal plans: ${missing.join(", ")}.`,
+        },
+        { status: 400 }
+      );
+    }
 
     let productId = String(row.white_label_paypal_product_id || "").trim();
     if (!productId) {
@@ -85,49 +189,66 @@ export async function POST(req: Request) {
       productId = product.id;
     }
 
-    const monthlyGbpId =
-      row.white_label_paypal_plan_monthly_gbp ||
-      (await paypalCreatePlan({
-        productId,
-        name: "White Label Monthly (GBP)",
-        currency: "GBP",
-        price: monthlyGbp,
-        interval: "MONTH",
-        intervalCount: 1,
-      })).id;
-
-    const yearlyGbpId =
-      row.white_label_paypal_plan_yearly_gbp ||
-      (await paypalCreatePlan({
-        productId,
-        name: "White Label Yearly (GBP)",
-        currency: "GBP",
-        price: yearlyGbp,
-        interval: "YEAR",
-        intervalCount: 1,
-      })).id;
-
-    const monthlyCadId =
-      row.white_label_paypal_plan_monthly_cad ||
-      (await paypalCreatePlan({
-        productId,
-        name: "White Label Monthly (CAD)",
-        currency: "CAD",
-        price: monthlyCad,
-        interval: "MONTH",
-        intervalCount: 1,
-      })).id;
-
-    const yearlyCadId =
-      row.white_label_paypal_plan_yearly_cad ||
-      (await paypalCreatePlan({
-        productId,
-        name: "White Label Yearly (CAD)",
-        currency: "CAD",
-        price: yearlyCad,
-        interval: "YEAR",
-        intervalCount: 1,
-      })).id;
+    const monthlyGbpId = await ensurePlan({
+      enabled: enabledCurrencies.has("GBP"),
+      existingPlanId: row.white_label_paypal_plan_monthly_gbp || null,
+      forceRecreate,
+      productId,
+      name: "White Label Monthly (GBP)",
+      currency: "GBP",
+      price: monthlyGbp!,
+      interval: "MONTH",
+    });
+    const yearlyGbpId = await ensurePlan({
+      enabled: enabledCurrencies.has("GBP"),
+      existingPlanId: row.white_label_paypal_plan_yearly_gbp || null,
+      forceRecreate,
+      productId,
+      name: "White Label Yearly (GBP)",
+      currency: "GBP",
+      price: yearlyGbp!,
+      interval: "YEAR",
+    });
+    const monthlyCadId = await ensurePlan({
+      enabled: enabledCurrencies.has("CAD"),
+      existingPlanId: row.white_label_paypal_plan_monthly_cad || null,
+      forceRecreate,
+      productId,
+      name: "White Label Monthly (CAD)",
+      currency: "CAD",
+      price: monthlyCad!,
+      interval: "MONTH",
+    });
+    const yearlyCadId = await ensurePlan({
+      enabled: enabledCurrencies.has("CAD"),
+      existingPlanId: row.white_label_paypal_plan_yearly_cad || null,
+      forceRecreate,
+      productId,
+      name: "White Label Yearly (CAD)",
+      currency: "CAD",
+      price: yearlyCad!,
+      interval: "YEAR",
+    });
+    const monthlyUsdId = await ensurePlan({
+      enabled: enabledCurrencies.has("USD"),
+      existingPlanId: row.white_label_paypal_plan_monthly_usd || null,
+      forceRecreate,
+      productId,
+      name: "White Label Monthly (USD)",
+      currency: "USD",
+      price: monthlyUsd!,
+      interval: "MONTH",
+    });
+    const yearlyUsdId = await ensurePlan({
+      enabled: enabledCurrencies.has("USD"),
+      existingPlanId: row.white_label_paypal_plan_yearly_usd || null,
+      forceRecreate,
+      productId,
+      name: "White Label Yearly (USD)",
+      currency: "USD",
+      price: yearlyUsd!,
+      interval: "YEAR",
+    });
 
     await conn.query(
       `UPDATE linescout_settings
@@ -136,19 +257,24 @@ export async function POST(req: Request) {
            white_label_paypal_plan_yearly_gbp = ?,
            white_label_paypal_plan_monthly_cad = ?,
            white_label_paypal_plan_yearly_cad = ?,
+           white_label_paypal_plan_monthly_usd = ?,
+           white_label_paypal_plan_yearly_usd = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [productId, monthlyGbpId, yearlyGbpId, monthlyCadId, yearlyCadId, row.id]
+      [productId, monthlyGbpId, yearlyGbpId, monthlyCadId, yearlyCadId, monthlyUsdId, yearlyUsdId, row.id]
     );
 
     return NextResponse.json({
       ok: true,
+      force_recreate: forceRecreate,
       product_id: productId,
       plans: {
         monthly_gbp: monthlyGbpId,
         yearly_gbp: yearlyGbpId,
         monthly_cad: monthlyCadId,
         yearly_cad: yearlyCadId,
+        monthly_usd: monthlyUsdId,
+        yearly_usd: yearlyUsdId,
       },
     });
   } catch (e: any) {

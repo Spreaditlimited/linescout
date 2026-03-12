@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type BillingPeriod = "monthly" | "yearly";
+type BillingCurrency = "GBP" | "CAD" | "USD";
 
 function isValidPeriod(v: any): v is BillingPeriod {
   return v === "monthly" || v === "yearly";
@@ -56,11 +57,14 @@ export async function POST(req: Request) {
 
       const [[row]]: any = await conn.query(
         `
-        SELECT u.display_currency_code, c.settlement_currency_code,
+        SELECT u.display_currency_code, c.settlement_currency_code, c.iso2, c.amazon_enabled,
+               s.white_label_subscription_countries,
                s.white_label_paypal_plan_monthly_gbp,
                s.white_label_paypal_plan_yearly_gbp,
                s.white_label_paypal_plan_monthly_cad,
-               s.white_label_paypal_plan_yearly_cad
+               s.white_label_paypal_plan_yearly_cad,
+               s.white_label_paypal_plan_monthly_usd,
+               s.white_label_paypal_plan_yearly_usd
         FROM users u
         LEFT JOIN linescout_countries c ON c.id = u.country_id
         CROSS JOIN (SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1) s
@@ -70,15 +74,41 @@ export async function POST(req: Request) {
         [userId]
       );
 
-      const settlement = String(row?.settlement_currency_code || "GBP").toUpperCase();
-      const display = String(row?.display_currency_code || settlement || "GBP").toUpperCase();
-      const currency = display === "CAD" ? "CAD" : "GBP";
+      const settlement = String(row?.settlement_currency_code || "").toUpperCase();
+      const display = String(row?.display_currency_code || settlement || "").toUpperCase();
+      const iso2Raw = String(row?.iso2 || "").trim().toUpperCase();
+      const iso2 = iso2Raw === "UK" ? "GB" : iso2Raw;
+      const amazonEnabled = Number(row?.amazon_enabled || 0) === 1;
+      const allowedCountries = String(row?.white_label_subscription_countries || "")
+        .split(",")
+        .map((part) => part.trim().toUpperCase())
+        .filter(Boolean)
+        .map((code) => (code === "UK" ? "GB" : code));
+      const countryAllowed = !allowedCountries.length || (iso2 ? allowedCountries.includes(iso2) : false);
+      if (!amazonEnabled || !countryAllowed) {
+        return NextResponse.json(
+          { ok: false, error: "White-label subscription is not enabled for your country." },
+          { status: 400 }
+        );
+      }
+
+      const currency: BillingCurrency =
+        display === "CAD" || iso2 === "CA"
+          ? "CAD"
+          : display === "USD" || iso2 === "US"
+          ? "USD"
+          : "GBP";
 
       if (currency === "CAD") {
         planId =
           period === "monthly"
             ? String(row?.white_label_paypal_plan_monthly_cad || "")
             : String(row?.white_label_paypal_plan_yearly_cad || "");
+      } else if (currency === "USD") {
+        planId =
+          period === "monthly"
+            ? String(row?.white_label_paypal_plan_monthly_usd || "")
+            : String(row?.white_label_paypal_plan_yearly_usd || "");
       } else {
         planId =
           period === "monthly"

@@ -28,12 +28,16 @@ export async function ensureWhiteLabelSettings(conn: PoolConnection) {
   await ensureColumn(conn, "linescout_settings", "white_label_yearly_price_gbp", "DECIMAL(10,2) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_monthly_price_cad", "DECIMAL(10,2) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_yearly_price_cad", "DECIMAL(10,2) NULL");
+  await ensureColumn(conn, "linescout_settings", "white_label_monthly_price_usd", "DECIMAL(10,2) NULL");
+  await ensureColumn(conn, "linescout_settings", "white_label_yearly_price_usd", "DECIMAL(10,2) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_subscription_countries", "VARCHAR(64) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_paypal_product_id", "VARCHAR(64) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_monthly_gbp", "VARCHAR(64) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_yearly_gbp", "VARCHAR(64) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_monthly_cad", "VARCHAR(64) NULL");
   await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_yearly_cad", "VARCHAR(64) NULL");
+  await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_monthly_usd", "VARCHAR(64) NULL");
+  await ensureColumn(conn, "linescout_settings", "white_label_paypal_plan_yearly_usd", "VARCHAR(64) NULL");
 }
 
 export async function ensureWhiteLabelUserColumns(conn: PoolConnection) {

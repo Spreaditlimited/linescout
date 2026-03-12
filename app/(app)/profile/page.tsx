@@ -215,6 +215,7 @@ export default function ProfilePage() {
     ? `Trial ends ${new Date(trialEndsAt || "").toLocaleDateString()}`
     : null;
   const showManageLink = subscriptionProvider.toLowerCase() === "paypal" && Boolean(subscriptionId);
+  const showSubscribeLink = !subscriptionActive && !cancelledActive;
   const accessLabel = subscriptionActive
     ? "Paid subscription"
     : cancelledActive
@@ -379,14 +380,24 @@ export default function ProfilePage() {
                 {new Date(nextBillingAt).toLocaleDateString()}.
               </div>
             ) : null}
-            {showManageLink ? (
+            {showManageLink || showSubscribeLink ? (
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <Link
-                  href="/white-label/subscribe"
-                  className="inline-flex text-xs font-semibold text-[var(--agent-blue)]"
-                >
-                  Manage billing
-                </Link>
+                {showSubscribeLink ? (
+                  <Link
+                    href="/white-label/subscribe"
+                    className="btn btn-primary inline-flex items-center justify-center px-4 py-2 text-xs font-semibold"
+                  >
+                    Subscribe now
+                  </Link>
+                ) : null}
+                {showManageLink ? (
+                  <Link
+                    href="/white-label/subscribe"
+                    className="inline-flex text-xs font-semibold text-[var(--agent-blue)]"
+                  >
+                    Manage billing
+                  </Link>
+                ) : null}
               </div>
             ) : null}
           </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
 import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
@@ -56,6 +56,40 @@ function getCountryCurrencyCode(
   if (allowed.has(candidate)) return candidate;
   const settlement = String(country.settlement_currency_code || "NGN").toUpperCase();
   return allowed.has(settlement) ? settlement : "NGN";
+}
+
+function pickProductLandedByCurrency(row: any, currencyCode: string) {
+  const code = String(currencyCode || "").toUpperCase();
+  if (code === "GBP") {
+    return {
+      low: row.landed_gbp_sea_per_unit_low != null ? Number(row.landed_gbp_sea_per_unit_low) : null,
+      high: row.landed_gbp_sea_per_unit_high != null ? Number(row.landed_gbp_sea_per_unit_high) : null,
+      totalLow: row.landed_gbp_sea_total_1000_low != null ? Number(row.landed_gbp_sea_total_1000_low) : null,
+      totalHigh: row.landed_gbp_sea_total_1000_high != null ? Number(row.landed_gbp_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "CAD") {
+    return {
+      low: row.landed_cad_sea_per_unit_low != null ? Number(row.landed_cad_sea_per_unit_low) : null,
+      high: row.landed_cad_sea_per_unit_high != null ? Number(row.landed_cad_sea_per_unit_high) : null,
+      totalLow: row.landed_cad_sea_total_1000_low != null ? Number(row.landed_cad_sea_total_1000_low) : null,
+      totalHigh: row.landed_cad_sea_total_1000_high != null ? Number(row.landed_cad_sea_total_1000_high) : null,
+    };
+  }
+  if (code === "USD") {
+    return {
+      low: row.landed_usd_sea_per_unit_low != null ? Number(row.landed_usd_sea_per_unit_low) : null,
+      high: row.landed_usd_sea_per_unit_high != null ? Number(row.landed_usd_sea_per_unit_high) : null,
+      totalLow: row.landed_usd_sea_total_1000_low != null ? Number(row.landed_usd_sea_total_1000_low) : null,
+      totalHigh: row.landed_usd_sea_total_1000_high != null ? Number(row.landed_usd_sea_total_1000_high) : null,
+    };
+  }
+  return {
+    low: row.landed_ngn_per_unit_low != null ? Number(row.landed_ngn_per_unit_low) : null,
+    high: row.landed_ngn_per_unit_high != null ? Number(row.landed_ngn_per_unit_high) : null,
+    totalLow: row.landed_ngn_total_1000_low != null ? Number(row.landed_ngn_total_1000_low) : null,
+    totalHigh: row.landed_ngn_total_1000_high != null ? Number(row.landed_ngn_total_1000_high) : null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -192,10 +226,59 @@ export async function GET(req: Request) {
       const amazonCurrency = marketplaceCurrency(preferredMarketplace);
       const amazonFx =
         currencyCode === amazonCurrency ? 1 : await getFxRate(conn, currencyCode, amazonCurrency);
+      const ngnToDisplayFx =
+        currencyCode === "NGN" ? 1 : await getFxRate(conn, "NGN", currencyCode);
 
       const withLanded = (item: any) => {
-        const landedLow = item.landed_per_unit_low != null ? Number(item.landed_per_unit_low) : null;
-        const landedHigh = item.landed_per_unit_high != null ? Number(item.landed_per_unit_high) : null;
+        let landedLow = item.landed_per_unit_low != null ? Number(item.landed_per_unit_low) : null;
+        let landedHigh = item.landed_per_unit_high != null ? Number(item.landed_per_unit_high) : null;
+        let landedTotalLow =
+          item.landed_total_1000_low != null ? Number(item.landed_total_1000_low) : null;
+        let landedTotalHigh =
+          item.landed_total_1000_high != null ? Number(item.landed_total_1000_high) : null;
+
+        const productLanded = pickProductLandedByCurrency(item, currencyCode);
+        landedLow = landedLow ?? productLanded.low;
+        landedHigh = landedHigh ?? productLanded.high;
+        landedTotalLow = landedTotalLow ?? productLanded.totalLow;
+        landedTotalHigh = landedTotalHigh ?? productLanded.totalHigh;
+
+        if (landedLow == null || landedHigh == null || landedTotalLow == null || landedTotalHigh == null) {
+          const computedNgn = computeLandedRange({
+            fob_low_usd: item.fob_low_usd,
+            fob_high_usd: item.fob_high_usd,
+            cbm_per_1000: item.cbm_per_1000,
+          });
+
+          if (currencyCode === "NGN") {
+            landedLow = landedLow ?? computedNgn.landed_ngn_per_unit_low;
+            landedHigh = landedHigh ?? computedNgn.landed_ngn_per_unit_high;
+            landedTotalLow = landedTotalLow ?? computedNgn.landed_ngn_total_1000_low;
+            landedTotalHigh = landedTotalHigh ?? computedNgn.landed_ngn_total_1000_high;
+          } else if (ngnToDisplayFx && ngnToDisplayFx > 0) {
+            landedLow =
+              landedLow ??
+              (computedNgn.landed_ngn_per_unit_low != null
+                ? Number(computedNgn.landed_ngn_per_unit_low) * ngnToDisplayFx
+                : null);
+            landedHigh =
+              landedHigh ??
+              (computedNgn.landed_ngn_per_unit_high != null
+                ? Number(computedNgn.landed_ngn_per_unit_high) * ngnToDisplayFx
+                : null);
+            landedTotalLow =
+              landedTotalLow ??
+              (computedNgn.landed_ngn_total_1000_low != null
+                ? Number(computedNgn.landed_ngn_total_1000_low) * ngnToDisplayFx
+                : null);
+            landedTotalHigh =
+              landedTotalHigh ??
+              (computedNgn.landed_ngn_total_1000_high != null
+                ? Number(computedNgn.landed_ngn_total_1000_high) * ngnToDisplayFx
+                : null);
+          }
+        }
+
         const ukLow = item.amazon_uk_price_low != null ? Number(item.amazon_uk_price_low) : null;
         const ukHigh = item.amazon_uk_price_high != null ? Number(item.amazon_uk_price_high) : null;
         const caLow = item.amazon_ca_price_low != null ? Number(item.amazon_ca_price_low) : null;
@@ -210,8 +293,8 @@ export async function GET(req: Request) {
           ...item,
           landed_per_unit_low: landedLow,
           landed_per_unit_high: landedHigh,
-          landed_total_1000_low: item.landed_total_1000_low ?? null,
-          landed_total_1000_high: item.landed_total_1000_high ?? null,
+          landed_total_1000_low: landedTotalLow,
+          landed_total_1000_high: landedTotalHigh,
           landed_currency_code: currencyCode,
           amazon_landed_per_unit_low: landedLow != null && amazonFx ? landedLow * amazonFx : null,
           amazon_landed_per_unit_high: landedHigh != null && amazonFx ? landedHigh * amazonFx : null,
