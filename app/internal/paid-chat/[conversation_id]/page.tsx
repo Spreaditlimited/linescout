@@ -44,12 +44,22 @@ type MsgRes = {
   assigned_agent_username?: string | null;
   agent_name_map?: Record<string, string>;
   admin_sender_ids?: number[];
+  attachments_by_message_id?: Record<string, Attachment[]>;
   meta?: {
     customer_name?: string | null;
   };
   items: Msg[];
   last_id: number;
   error?: string;
+};
+
+type Attachment = {
+  id: number;
+  message_id: number;
+  kind: string | null;
+  original_filename: string | null;
+  secure_url: string | null;
+  mime_type: string | null;
 };
 
 type SendRes = {
@@ -135,6 +145,7 @@ export default function PaidChatThreadPage() {
   const [customerName, setCustomerName] = useState<string | null>(null);
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [adminSenderIds, setAdminSenderIds] = useState<number[]>([]);
+  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
 
   const [takeoverConfirmOpen, setTakeoverConfirmOpen] = useState(false);
   const [handoverOpen, setHandoverOpen] = useState(false);
@@ -178,6 +189,7 @@ export default function PaidChatThreadPage() {
     customer_name: string | null;
     agent_name_map: Record<string, string>;
     admin_sender_ids: number[];
+    attachments_by_message_id: Record<string, Attachment[]>;
   }> {
     const res = await fetch(
       `/api/internal/paid-chat/messages?conversation_id=${conversationId}&after_id=${after}&limit=120`,
@@ -209,6 +221,10 @@ export default function PaidChatThreadPage() {
     const admin_sender_ids = Array.isArray(data?.admin_sender_ids)
       ? data.admin_sender_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
       : [];
+    const attachments_by_message_id =
+      typeof data?.attachments_by_message_id === "object" && data.attachments_by_message_id
+        ? data.attachments_by_message_id
+        : {};
 
     return {
       rows,
@@ -218,6 +234,7 @@ export default function PaidChatThreadPage() {
       customer_name,
       agent_name_map,
       admin_sender_ids,
+      attachments_by_message_id,
     };
   }
 
@@ -358,6 +375,7 @@ export default function PaidChatThreadPage() {
         setCustomerName(initial.customer_name);
         setAgentNameMap(initial.agent_name_map || {});
         setAdminSenderIds(initial.admin_sender_ids || []);
+        setAttachmentsByMessageId(initial.attachments_by_message_id || {});
 
         setItems(initial.rows);
         setLastId(initial.last);
@@ -379,6 +397,7 @@ export default function PaidChatThreadPage() {
           customer_name,
           agent_name_map,
           admin_sender_ids,
+          attachments_by_message_id,
         } =
           await fetchNew(after);
 
@@ -394,6 +413,9 @@ export default function PaidChatThreadPage() {
             const merged = new Set<number>([...prev, ...admin_sender_ids]);
             return Array.from(merged);
           });
+        }
+        if (Object.keys(attachments_by_message_id).length) {
+          setAttachmentsByMessageId((prev) => ({ ...prev, ...attachments_by_message_id }));
         }
 
         if (!rows.length) return;
@@ -611,10 +633,11 @@ export default function PaidChatThreadPage() {
                   m.sender_type === "ai"
                     ? "AI"
                     : m.sender_type === "user"
-                      ? "Customer"
+                      ? customerName || "Customer"
                       : isAdminSender
                         ? "Admin"
                         : agentLabel;
+                const attachments = attachmentsByMessageId[String(m.id)] || [];
 
                 return (
                   <div
@@ -627,6 +650,31 @@ export default function PaidChatThreadPage() {
                     <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
                       {renderMessageWithLinks(m.message_text)}
                     </div>
+                    {attachments.length ? (
+                      <div className="mt-2 grid gap-2">
+                        {attachments.map((a) =>
+                          a.kind === "image" ? (
+                            <a key={a.id} href={a.secure_url || "#"} target="_blank" rel="noreferrer">
+                              <img
+                                src={a.secure_url || ""}
+                                alt={a.original_filename || "Attachment"}
+                                className="max-h-48 rounded-xl object-cover"
+                              />
+                            </a>
+                          ) : (
+                            <a
+                              key={a.id}
+                              href={a.secure_url || "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-xl border border-neutral-200 bg-white/80 px-3 py-2 text-xs font-semibold text-neutral-900"
+                            >
+                              {a.original_filename || "Attachment"}
+                            </a>
+                          )
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

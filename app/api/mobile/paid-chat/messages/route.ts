@@ -337,15 +337,16 @@ export async function GET(req: Request) {
       if (agentIds.length) {
         const [agentRows]: any = await conn.query(
           `
-          SELECT id, username, role
-          FROM internal_users
-          WHERE id IN (?)
+          SELECT iu.id, iu.username, iu.role, ap.first_name
+          FROM internal_users iu
+          LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = iu.id
+          WHERE iu.id IN (?)
           `,
           [agentIds]
         );
         for (const row of agentRows || []) {
           const id = Number(row.id || 0);
-          const name = String(row.username || "").trim();
+          const name = String(row.first_name || row.username || "").trim();
           const role = String(row.role || "").trim().toLowerCase();
           if (id && name) agentNameMap[String(id)] = name;
           if (id && role === "admin") adminSenderIds.push(id);
