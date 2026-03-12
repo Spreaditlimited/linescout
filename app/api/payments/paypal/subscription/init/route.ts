@@ -30,6 +30,12 @@ function safeCallbackUrl(req: Request, raw: any) {
   }
 }
 
+function withStatusParam(rawUrl: string, status: "success" | "cancel") {
+  const url = new URL(rawUrl);
+  url.searchParams.set("status", status);
+  return url.toString();
+}
+
 export async function POST(req: Request) {
   try {
     const u = await requireUser(req);
@@ -127,8 +133,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const returnUrl = `${callbackUrl}&status=success`;
-    const cancelUrl = `${callbackUrl}&status=cancel`;
+    const returnUrl = withStatusParam(callbackUrl, "success");
+    const cancelUrl = withStatusParam(callbackUrl, "cancel");
     const customId = `LS_USER_${userId}`;
     const subscription = await paypalCreateSubscription({
       planId,

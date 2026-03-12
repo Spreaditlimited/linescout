@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { authFetch } from "@/lib/auth-client";
 import SearchableSelect from "../../internal/_components/SearchableSelect";
@@ -37,6 +37,7 @@ type ProfileResponse = {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -238,6 +239,7 @@ export default function ProfilePage() {
     subscriptionActive || exemptionActive || cancelledActive ? "Unlimited" : `${dailyReveals} per day`;
   const insightsLabel =
     subscriptionActive || exemptionActive || cancelledActive ? "Unlimited" : `${dailyInsights} per day`;
+  const returnStatus = String(searchParams.get("status") || "").toLowerCase();
 
 
   return (
@@ -247,6 +249,16 @@ export default function ProfilePage() {
         <p className="mt-1 text-sm text-neutral-600">
           Update your personal details. Phone number is required for virtual accounts.
         </p>
+        {returnStatus === "success" ? (
+          <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            Subscription approved. Access updates automatically once PayPal confirmation is received.
+          </p>
+        ) : null}
+        {returnStatus === "cancel" ? (
+          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Subscription checkout was canceled.
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-6 max-w-xl rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">

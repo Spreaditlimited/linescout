@@ -85,7 +85,7 @@ export default function WhiteLabelSubscribePage() {
     setSubmitting(period);
     setErr(null);
     try {
-      const callback = `${window.location.origin}/white-label/subscribe`;
+      const callback = `${window.location.origin}/profile`;
       const res = await fetch("/api/payments/paypal/subscription/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
