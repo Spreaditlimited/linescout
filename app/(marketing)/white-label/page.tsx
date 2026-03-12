@@ -4,7 +4,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ArrowRight, BadgeCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
-import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
 import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
 import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
@@ -364,8 +364,26 @@ export default async function WhiteLabelPage({
         : null;
 
     const mapItem = (r: any) => {
-      const landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
-      const landedHigh = r.landed_per_unit_high != null ? Number(r.landed_per_unit_high) : null;
+      let landedLow = r.landed_per_unit_low != null ? Number(r.landed_per_unit_low) : null;
+      let landedHigh = r.landed_per_unit_high != null ? Number(r.landed_per_unit_high) : null;
+      let landedTotalLow =
+        r.landed_total_1000_low != null ? Number(r.landed_total_1000_low) : null;
+      let landedTotalHigh =
+        r.landed_total_1000_high != null ? Number(r.landed_total_1000_high) : null;
+
+      // NGN marketing fallback: if landed-cost table rows are missing, derive from FOB+CBM defaults.
+      if (currencyCode === "NGN") {
+        const computed = computeLandedRange({
+          fob_low_usd: r.fob_low_usd,
+          fob_high_usd: r.fob_high_usd,
+          cbm_per_1000: r.cbm_per_1000,
+        });
+        landedLow = landedLow ?? computed.landed_ngn_per_unit_low;
+        landedHigh = landedHigh ?? computed.landed_ngn_per_unit_high;
+        landedTotalLow = landedTotalLow ?? computed.landed_ngn_total_1000_low;
+        landedTotalHigh = landedTotalHigh ?? computed.landed_ngn_total_1000_high;
+      }
+
       const amazonLandedLow = landedLow != null && amazonFx ? landedLow * amazonFx : null;
       const amazonLandedHigh = landedHigh != null && amazonFx ? landedHigh * amazonFx : null;
       const ukLow = r.amazon_uk_price_low != null ? Number(r.amazon_uk_price_low) : null;
@@ -379,8 +397,8 @@ export default async function WhiteLabelPage({
         ...r,
         landed_per_unit_low: landedLow,
         landed_per_unit_high: landedHigh,
-        landed_total_1000_low: r.landed_total_1000_low ?? null,
-        landed_total_1000_high: r.landed_total_1000_high ?? null,
+        landed_total_1000_low: landedTotalLow,
+        landed_total_1000_high: landedTotalHigh,
         landed_currency_code: currencyCode,
         amazon_landed_per_unit_low: amazonLandedLow,
         amazon_landed_per_unit_high: amazonLandedHigh,
