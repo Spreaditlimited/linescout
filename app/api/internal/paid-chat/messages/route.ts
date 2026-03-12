@@ -135,12 +135,13 @@ export async function GET(req: Request) {
     const customerUserId = conv.user_id == null ? null : Number(conv.user_id);
     const assignedAgentId = conv.assigned_agent_id == null ? null : Number(conv.assigned_agent_id);
 
-    const assignedAgentUsername =
-      typeof conv.assigned_agent_username === "string" && conv.assigned_agent_username.trim()
-        ? String(conv.assigned_agent_username).trim()
-        : null;
     const assignedFirst = String(conv.assigned_agent_first_name || "").trim();
     const assignedLast = String(conv.assigned_agent_last_name || "").trim();
+    const assignedAgentUsername =
+      assignedFirst ||
+      (typeof conv.assigned_agent_username === "string" && conv.assigned_agent_username.trim()
+        ? String(conv.assigned_agent_username).trim()
+        : null);
     const assignedAgentName = assignedFirst || assignedAgentUsername || null;
     const customerRaw = String(conv.customer_name || conv.lead_name || "").trim();
     const customerFirst = customerRaw ? customerRaw.split(/\s+/)[0] : "";

@@ -125,7 +125,14 @@ export async function POST(req: Request) {
 
     const [agentRows]: any = await conn.query(
       `
-      SELECT u.id, u.username, u.is_active, ap.approval_status, ap.email, ap.email_notifications_enabled
+      SELECT
+        u.id,
+        u.username,
+        u.is_active,
+        ap.approval_status,
+        ap.email,
+        ap.email_notifications_enabled,
+        ap.first_name
       FROM internal_users u
       LEFT JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
       WHERE u.id = ?
@@ -281,7 +288,7 @@ export async function POST(req: Request) {
       ok: true,
       conversation_id: conversationId,
       assigned_agent_id: agentId,
-      assigned_agent_username: String(agent.username || ""),
+      assigned_agent_username: String(agent.first_name || agent.username || ""),
     });
   } catch (e: any) {
     try {
