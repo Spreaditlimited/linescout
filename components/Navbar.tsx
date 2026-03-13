@@ -23,7 +23,7 @@ export default function Navbar() {
       <nav className="w-full border-b border-neutral-800 bg-neutral-900/50 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 min-w-0">
+          <Link href="/" className="flex min-w-0 flex-col items-start gap-1">
             <Image
               src="/linescout-logo.png"
               alt="LineScout Logo"
@@ -32,6 +32,9 @@ export default function Navbar() {
               className="h-auto w-auto"
               priority
             />
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
+              BY SURE IMPORTS
+            </span>
           </Link>
 
           {/* Desktop links (never wrap) */}

@@ -169,7 +169,7 @@ export default function EmailOtpForm() {
     <div className="w-full max-w-md rounded-3xl border border-neutral-200 bg-white/80 p-8 shadow-2xl shadow-[rgba(45,52,97,0.25)] backdrop-blur">
       <div className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-          LineScout
+          LINESCOUT BY SURE IMPORTS
         </p>
         <h1 className="text-3xl font-semibold text-neutral-900">Welcome to LineScout</h1>
         <p className="text-sm text-neutral-600">

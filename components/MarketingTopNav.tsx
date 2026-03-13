@@ -48,8 +48,11 @@ export default function MarketingTopNav({
     <header className={`relative z-40 border-b ${borderClassName} ${backgroundClassName} backdrop-blur`}>
       <div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <Link href="/" aria-label="LineScout home">
+          <Link href="/" aria-label="LineScout home" className="flex flex-col items-start gap-1">
             <Image src="/linescout-logo.png" alt="LineScout" width={130} height={36} priority />
+            <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${accentClassName}`}>
+              BY SURE IMPORTS
+            </span>
           </Link>
           <span className={`hidden h-7 w-px rounded-full sm:inline-block ${dividerClassName}`} />
           <div className="hidden sm:block">

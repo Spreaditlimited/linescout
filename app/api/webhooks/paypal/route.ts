@@ -43,17 +43,40 @@ export async function POST(req: Request) {
 
     const eventType = String(body?.event_type || "").toUpperCase();
     const resource = body?.resource || {};
-    const subscriptionId = String(resource?.id || "");
-    const customId = String(resource?.custom_id || "");
+    const subscriptionId = String(resource?.id || "").trim();
+    const customId = String(resource?.custom_id || "").trim();
     const nextBillingAt = resource?.billing_info?.next_billing_time || null;
 
     const userIdMatch = customId.match(/LS_USER_(\d+)/);
     const userId = userIdMatch ? Number(userIdMatch[1]) : null;
 
-    if (subscriptionId && userId) {
+    if (subscriptionId) {
       const conn = await db.getConnection();
       try {
         await ensureWhiteLabelUserColumns(conn);
+        let targetUserIds: number[] = [];
+        if (userId && Number.isFinite(userId) && userId > 0) {
+          targetUserIds = [userId];
+        } else {
+          const [rows]: any = await conn.query(
+            `SELECT id
+             FROM users
+             WHERE white_label_subscription_id = ?
+             ORDER BY id ASC`,
+            [subscriptionId]
+          );
+          targetUserIds = Array.isArray(rows)
+            ? rows
+                .map((r: any) => Number(r?.id || 0))
+                .filter((id: number) => Number.isFinite(id) && id > 0)
+            : [];
+        }
+
+        if (!targetUserIds.length) {
+          return NextResponse.json({ ok: true, skipped: "no_matching_user" });
+        }
+
+        const idPlaceholders = targetUserIds.map(() => "?").join(", ");
         const setActive = () =>
           conn.query(
             `UPDATE users
@@ -62,9 +85,8 @@ export async function POST(req: Request) {
                  white_label_subscription_id = ?,
                  white_label_subscription_status = 'active',
                  white_label_next_billing_at = COALESCE(?, white_label_next_billing_at)
-             WHERE id = ?
-             LIMIT 1`,
-            [subscriptionId, nextBillingAt, userId]
+             WHERE id IN (${idPlaceholders})`,
+            [subscriptionId, nextBillingAt, ...targetUserIds]
           );
 
         const setStatus = (status: string, plan: string) =>
@@ -75,9 +97,8 @@ export async function POST(req: Request) {
                  white_label_subscription_id = ?,
                  white_label_subscription_status = ?,
                  white_label_next_billing_at = COALESCE(?, white_label_next_billing_at)
-             WHERE id = ?
-             LIMIT 1`,
-            [plan, subscriptionId, status, nextBillingAt, userId]
+             WHERE id IN (${idPlaceholders})`,
+            [plan, subscriptionId, status, nextBillingAt, ...targetUserIds]
           );
 
         if (eventType === "BILLING.SUBSCRIPTION.ACTIVATED") {
