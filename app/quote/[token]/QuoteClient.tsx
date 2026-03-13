@@ -1598,6 +1598,35 @@ export default function QuoteClient({
                         </button>
                       </div>
                     ) : null}
+                    {p.status !== "paid" && p.method === "providus" ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
+                        <span>Bank transfer (Providus)</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`${verifyApiBase}/providus/verify`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ payment_id: p.id }),
+                              });
+                              const json = await res.json().catch(() => null);
+                              if (!res.ok || !json?.ok) {
+                                setPayErr(json?.error || "Verification failed.");
+                                return;
+                              }
+                              setPayMsg("Payment verified.");
+                              await refreshPayments();
+                            } catch (e: any) {
+                              setPayErr(e?.message || "Verification failed.");
+                            }
+                          }}
+                          className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                        >
+                          Verify payment
+                        </button>
+                      </div>
+                    ) : null}
                     {p.status === "paid" ? (
                       <button
                         type="button"
