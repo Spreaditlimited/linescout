@@ -68,6 +68,7 @@ export async function POST(req: Request) {
          pt.account_number,
          pt.transaction_amount,
          pt.settled_amount,
+         pt.fee_amount,
          pt.currency,
          pt.tran_date_time,
          pt.created_at
@@ -78,8 +79,12 @@ export async function POST(req: Request) {
        WHERE pt.provider = 'providus'
          AND va.owner_type = 'user'
          AND va.owner_id = ?
-         AND ROUND(COALESCE(NULLIF(pt.settled_amount, 0), pt.transaction_amount), 2) = ROUND(?, 2)
-         AND (? IS NULL OR pt.created_at >= DATE_SUB(?, INTERVAL 7 DAY))
+         AND (
+           ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2)
+           OR ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2)
+           OR ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2)
+         )
+         AND (? IS NULL OR pt.created_at >= DATE_SUB(?, INTERVAL 30 DAY))
          AND NOT EXISTS (
            SELECT 1
            FROM linescout_quote_payments qp2
@@ -87,9 +92,26 @@ export async function POST(req: Request) {
              AND qp2.status = 'paid'
              AND qp2.provider_ref = pt.settlement_id
          )
-       ORDER BY pt.created_at DESC
+       ORDER BY
+         CASE
+           WHEN ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2) THEN 1
+           WHEN ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2) THEN 2
+           WHEN ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2) THEN 3
+           ELSE 9
+         END,
+         pt.created_at DESC
        LIMIT 2`,
-      [userId, quoteAmount, quoteCreatedAt, quoteCreatedAt]
+      [
+        userId,
+        quoteAmount,
+        quoteAmount,
+        quoteAmount,
+        quoteCreatedAt,
+        quoteCreatedAt,
+        quoteAmount,
+        quoteAmount,
+        quoteAmount,
+      ]
     );
 
     if (!matchRows?.length) {
@@ -113,7 +135,7 @@ export async function POST(req: Request) {
     }
 
     const tx = matchRows[0];
-    const paidAmount = num(tx.settled_amount, 0) || num(tx.transaction_amount, 0);
+    const paidAmount = num(row.amount, 0) || num(tx.transaction_amount, 0) || num(tx.settled_amount, 0);
     const paidCurrency = String(tx.currency || row.currency || "NGN");
     const settlementId = String(tx.settlement_id || "").trim() || null;
     const sessionId = String(tx.session_id || "").trim() || null;

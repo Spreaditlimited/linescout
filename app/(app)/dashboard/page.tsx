@@ -86,11 +86,6 @@ export default function DashboardPage() {
       const rows: ProjectRow[] = Array.isArray(projectsJson?.projects)
         ? projectsJson.projects
         : [];
-      const hasActive = rows.some((p) => String(p.conversation_status || "") === "active");
-      if (!hasActive) {
-        router.replace("/projects/new");
-        return;
-      }
 
       const summariesRes = await Promise.all(
         rows.map(async (project) => {

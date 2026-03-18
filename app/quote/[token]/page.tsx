@@ -9,6 +9,7 @@ import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefault
 import { selectPaymentProvider } from "@/lib/payment-provider";
 import { ensureQuotePaymentProviderTable, resolveQuotePaymentProvider } from "@/lib/quote-payment-provider";
 import { getQuoteAddonLines } from "@/lib/quote-addons";
+import { resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
 import QuoteClient from "./QuoteClient";
 
 export const dynamic = "force-dynamic";
@@ -154,6 +155,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
       displayCurrencyCode === "NGN" ? 0 : (await getFxRate(conn, "USD", displayCurrencyCode)) || 0;
     const productFxRate =
       displayCurrencyCode === "NGN" ? 0 : (await getFxRate(conn, "RMB", displayCurrencyCode)) || 0;
+    const paypalFeeRule = resolvePaypalQuoteFeeRule(settings?.quote_paypal_fee_config_json, displayCurrencyCode);
 
     let shippingRates: any[] = [];
     try {
@@ -258,6 +260,8 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           displayFxRate={displayFxRate}
           shippingFxRate={shippingFxRate}
           productFxRate={productFxRate}
+          paypalFeePercent={Number(paypalFeeRule?.percent || 0)}
+          paypalFeeFixed={Number(paypalFeeRule?.fixed || 0)}
         />
       </Suspense>
     );

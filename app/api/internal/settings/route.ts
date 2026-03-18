@@ -6,6 +6,7 @@ import { ensureAffiliateSettingsColumns } from "@/lib/affiliates";
 import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 import { recomputeWhiteLabelLandedCostsForCountry } from "@/lib/white-label-landed";
+import { DEFAULT_PAYPAL_QUOTE_FEE_CONFIG, parsePaypalQuoteFeeConfig } from "@/lib/paypal-quote-fees";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -368,14 +369,56 @@ async function ensureRow(conn: mysql.PoolConnection) {
       `ALTER TABLE linescout_settings ADD COLUMN white_label_paypal_plan_yearly_usd VARCHAR(64) NULL`
     );
   }
+  const [quotePaypalFeeCols]: any = await conn.query(
+    `
+    SELECT COLUMN_NAME
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'linescout_settings'
+      AND column_name = 'quote_paypal_fee_config_json'
+    LIMIT 1
+    `
+  );
+  if (!quotePaypalFeeCols?.length) {
+    await conn.query(
+      `ALTER TABLE linescout_settings ADD COLUMN quote_paypal_fee_config_json JSON NULL`
+    );
+  }
 
   const [rows]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
-  if (rows?.length) return rows[0];
+  if (rows?.length) {
+    const row = rows[0];
+    const existing = parsePaypalQuoteFeeConfig(row.quote_paypal_fee_config_json);
+    const merged = {
+      ...DEFAULT_PAYPAL_QUOTE_FEE_CONFIG,
+      ...existing,
+    };
+    const changed = ["GBP", "CAD", "USD"].some((code) => {
+      const a = existing[code];
+      const b = merged[code];
+      if (!b) return false;
+      if (!a) return true;
+      return Number(a.percent) !== Number(b.percent) || Number(a.fixed) !== Number(b.fixed);
+    });
+    if (changed) {
+      await conn.query(
+        `UPDATE linescout_settings
+         SET quote_paypal_fee_config_json = ?,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [JSON.stringify(merged), row.id]
+      );
+      row.quote_paypal_fee_config_json = merged;
+    }
+    return row;
+  }
 
   await conn.query(
     `INSERT INTO linescout_settings
-     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit, white_label_subscription_countries)
-     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10, 2, 'GB,CA,US')`
+     (commitment_due_ngn, agent_percent, agent_commitment_percent, markup_percent, exchange_rate_usd, exchange_rate_rmb, payout_summary_email, agent_otp_mode, points_value_ngn, points_config_json, sticky_notice_enabled, sticky_notice_title, sticky_notice_body, sticky_notice_target, sticky_notice_version, test_emails_json, max_active_claims, white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit, white_label_subscription_countries, quote_paypal_fee_config_json)
+     VALUES (0, 5, 40, 20, 0, 0, NULL, 'phone', 0, NULL, 0, NULL, NULL, 'both', 0, NULL, 3, 3, 10, 2, 'GB,CA,US', ?)`
+    ,
+    [JSON.stringify(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG)]
   );
 
   const [after]: any = await conn.query("SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1");
@@ -958,6 +1001,28 @@ export async function POST(req: Request) {
     typeof body?.white_label_paypal_product_id === "string"
       ? body.white_label_paypal_product_id.trim()
       : "";
+  const quote_paypal_fee_config_json_raw = body?.quote_paypal_fee_config_json;
+  let quote_paypal_fee_config_json: Record<string, { percent: number; fixed: number }> | null = null;
+  if (
+    quote_paypal_fee_config_json_raw &&
+    typeof quote_paypal_fee_config_json_raw === "object" &&
+    !Array.isArray(quote_paypal_fee_config_json_raw)
+  ) {
+    const next: Record<string, { percent: number; fixed: number }> = {};
+    Object.entries(quote_paypal_fee_config_json_raw).forEach(([codeRaw, ruleRaw]) => {
+      const code = String(codeRaw || "").trim().toUpperCase();
+      if (!code) return;
+      const percent = Number((ruleRaw as any)?.percent);
+      const fixed = Number((ruleRaw as any)?.fixed);
+      if (!Number.isFinite(percent) || percent < 0 || percent >= 100) return;
+      if (!Number.isFinite(fixed) || fixed < 0) return;
+      next[code] = {
+        percent: Number(percent.toFixed(4)),
+        fixed: Number(fixed.toFixed(2)),
+      };
+    });
+    quote_paypal_fee_config_json = Object.keys(next).length ? next : null;
+  }
   const hasStickyPayload =
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_enabled") ||
     Object.prototype.hasOwnProperty.call(body || {}, "sticky_notice_title") ||
@@ -1065,6 +1130,7 @@ export async function POST(req: Request) {
            white_label_paypal_plan_yearly_cad = ?,
            white_label_paypal_plan_monthly_usd = ?,
            white_label_paypal_plan_yearly_usd = ?,
+           quote_paypal_fee_config_json = ?,
            affiliate_enabled = ?,
            affiliate_terms_url = ?,
            affiliate_min_payout_amount = ?,
@@ -1109,6 +1175,7 @@ export async function POST(req: Request) {
         white_label_paypal_plan_yearly_cad || null,
         white_label_paypal_plan_monthly_usd || null,
         white_label_paypal_plan_yearly_usd || null,
+        quote_paypal_fee_config_json ? JSON.stringify(quote_paypal_fee_config_json) : null,
         affiliate_enabled,
         affiliate_terms_url || null,
         affiliate_min_payout_amount,

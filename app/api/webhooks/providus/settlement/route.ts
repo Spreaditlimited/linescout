@@ -176,7 +176,8 @@ export async function POST(req: Request) {
       walletId,
     ]);
 
-    // Try to auto-apply to a pending Providus quote payment if there's a single exact match.
+    // Try to auto-apply to a pending Providus quote payment.
+    // Providus may report both gross (transactionAmount) and net (settledAmount) values.
     if (acct.owner_type === "user") {
       const [pendingRows]: any = await conn.query(
         `SELECT id, quote_id, handoff_id, amount, purpose
@@ -184,13 +185,18 @@ export async function POST(req: Request) {
          WHERE user_id = ?
            AND method = 'providus'
            AND status = 'pending'
-           AND amount = ?
+           AND (
+             ABS(amount - ?) < 0.01
+             OR ABS(amount - ?) < 0.01
+             OR ABS(amount - (? + ?)) < 0.01
+           )
          ORDER BY id ASC`,
-        [acct.owner_id, creditAmount]
+        [acct.owner_id, amount, settledAmount, settledAmount, feeAmount]
       );
 
       if (pendingRows?.length === 1) {
         const qp = pendingRows[0];
+        const quoteAmount = Number(qp.amount || 0) || creditAmount;
         await conn.query(
           `UPDATE linescout_quote_payments
            SET status = 'paid',
@@ -207,7 +213,7 @@ export async function POST(req: Request) {
             `INSERT INTO linescout_handoff_payments
              (handoff_id, amount, currency, purpose, note, paid_at, created_at)
              VALUES (?, ?, ?, ?, 'Quote payment (providus)', NOW(), NOW())`,
-            [qp.handoff_id, creditAmount, currency || "NGN", handoffPurpose]
+            [qp.handoff_id, quoteAmount, currency || "NGN", handoffPurpose]
           );
         }
 
@@ -217,7 +223,7 @@ export async function POST(req: Request) {
             quoteId: Number(qp.quote_id || 0),
             handoffId: Number(qp.handoff_id || 0),
             purpose,
-            amountNgn: creditAmount,
+            amountNgn: quoteAmount,
             currency: currency || "NGN",
           });
         }
@@ -242,12 +248,12 @@ export async function POST(req: Request) {
           [
             acct.owner_id,
             title,
-            `${purposeLabel} of NGN ${creditAmount.toLocaleString()} has been received.`,
+            `${purposeLabel} of NGN ${quoteAmount.toLocaleString()} has been received.`,
             JSON.stringify({
               type: "quote_payment",
               quote_id: qp.quote_id,
               handoff_id: qp.handoff_id,
-              amount: creditAmount,
+              amount: quoteAmount,
               purpose,
             }),
           ]
@@ -258,7 +264,7 @@ export async function POST(req: Request) {
             subject: "Payment received",
             title: "Payment received",
             lines: [
-              `Amount: NGN ${creditAmount.toLocaleString()}`,
+              `Amount: NGN ${quoteAmount.toLocaleString()}`,
               `Purpose: ${purposeLabel}`,
               displayName ? `Customer: ${displayName}` : "",
             ].filter(Boolean),

@@ -11,6 +11,8 @@ import { paypalCreateOrder } from "@/lib/paypal";
 import { convertAmount, getFxRate } from "@/lib/fx";
 import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/lib/quote-payment-provider";
 import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults, resolveCountryCurrency } from "@/lib/country-config";
+import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
+import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -232,6 +234,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   try {
     await ensureAffiliateTables(conn);
     await ensureQuoteAddonTables(conn);
+    await ensureQuotePaymentFeeColumns(conn);
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
     const [rows]: any = await conn.query(
@@ -376,8 +379,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
     const [paidRows]: any = await conn.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS product_paid,
-         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN amount ELSE 0 END), 0) AS shipping_paid
+         COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS product_paid,
+         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS shipping_paid
        FROM linescout_quote_payments
        WHERE quote_id = ?`,
       [quote.id]
@@ -569,19 +572,35 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
     if (provider === "paypal") {
       const paypalCurrency = displayCurrencyCode || "GBP";
-      const converted = await convertAmount(conn, remaining, "NGN", paypalCurrency);
-      if (!converted || !Number.isFinite(converted) || converted <= 0) {
+      const convertedBase = await convertAmount(conn, remaining, "NGN", paypalCurrency);
+      if (!convertedBase || !Number.isFinite(convertedBase) || convertedBase <= 0) {
         return NextResponse.json(
           { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
           { status: 500 }
         );
       }
+      const [settingsRows]: any = await conn.query(`SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1`);
+      const feeRule = resolvePaypalQuoteFeeRule(settingsRows?.[0]?.quote_paypal_fee_config_json, paypalCurrency);
+      if (!feeRule) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `PayPal fee config is missing for ${paypalCurrency}. Ask admin to set quote PayPal fee for this currency.`,
+          },
+          { status: 400 }
+        );
+      }
+      const feeResult = computeGrossFromBaseWithPaypalFee({
+        baseAmount: convertedBase,
+        percent: feeRule.percent,
+        fixed: feeRule.fixed,
+      });
 
       const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
       const returnUrl = `${baseUrl}/quote/paypal/verify?quote=${encodeURIComponent(String(quote.token || ""))}`;
       const cancelUrl = `${baseUrl}/quote/${encodeURIComponent(String(quote.token || ""))}`;
       const order = await paypalCreateOrder({
-        amount: converted.toFixed(2),
+        amount: feeResult.gross.toFixed(2),
         currency: paypalCurrency,
         returnUrl,
         cancelUrl,
@@ -591,9 +610,26 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
       await conn.query(
         `INSERT INTO linescout_quote_payments
-         (quote_id, handoff_id, user_id, purpose, method, status, amount, currency, provider_ref, shipping_type_id, created_at)
-         VALUES (?, ?, ?, ?, 'paypal', 'pending', ?, ?, ?, ?, NOW())`,
-        [quote.id, handoffId || null, ownerUserId, purpose, converted, paypalCurrency, order.id, shipType || null]
+         (quote_id, handoff_id, user_id, purpose, method, status, amount, base_amount, processing_fee_amount, processing_fee_meta_json, currency, provider_ref, shipping_type_id, created_at)
+         VALUES (?, ?, ?, ?, 'paypal', 'pending', ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          quote.id,
+          handoffId || null,
+          ownerUserId,
+          purpose,
+          feeResult.base,
+          feeResult.base,
+          feeResult.fee,
+          JSON.stringify({
+            provider: "paypal",
+            percent: feeRule.percent,
+            fixed: feeRule.fixed,
+            charged_total: feeResult.gross,
+          }),
+          paypalCurrency,
+          order.id,
+          shipType || null,
+        ]
       );
 
       return NextResponse.json({
@@ -601,7 +637,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
         provider: "paypal",
         approval_url: order.approveUrl,
         wallet_applied: walletApplied,
-        remaining: converted,
+        remaining: feeResult.base,
+        processing_fee: feeResult.fee,
+        total_charged: feeResult.gross,
         currency: paypalCurrency,
       });
     }

@@ -8,6 +8,8 @@ import { convertAmount } from "@/lib/fx";
 import { ensureCountryConfig, ensureUserCountryColumns } from "@/lib/country-config";
 import { ensureShippingQuoteTables } from "@/lib/shipping-quotes";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
+import { ensureShippingQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
+import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,6 +134,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   try {
     await ensureAffiliateTables(conn);
     await ensureShippingQuoteTables(conn);
+    await ensureShippingQuotePaymentFeeColumns(conn);
     await ensureCountryConfig(conn);
     await ensureUserCountryColumns(conn);
     const [rows]: any = await conn.query(
@@ -379,22 +382,38 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
     if (provider === "paypal") {
       const paypalCurrency = paymentCurrency || "USD";
-      const converted =
+      const convertedBase =
         paypalCurrency === paymentCurrency
           ? remaining
           : await convertAmount(conn, remaining, paymentCurrency, paypalCurrency);
-      if (!converted || !Number.isFinite(converted) || converted <= 0) {
+      if (!convertedBase || !Number.isFinite(convertedBase) || convertedBase <= 0) {
         return NextResponse.json(
           { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
           { status: 500 }
         );
       }
+      const [settingsRows]: any = await conn.query(`SELECT * FROM linescout_settings ORDER BY id DESC LIMIT 1`);
+      const feeRule = resolvePaypalQuoteFeeRule(settingsRows?.[0]?.quote_paypal_fee_config_json, paypalCurrency);
+      if (!feeRule) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `PayPal fee config is missing for ${paypalCurrency}. Ask admin to set quote PayPal fee for this currency.`,
+          },
+          { status: 400 }
+        );
+      }
+      const feeResult = computeGrossFromBaseWithPaypalFee({
+        baseAmount: convertedBase,
+        percent: feeRule.percent,
+        fixed: feeRule.fixed,
+      });
 
       const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
       const returnUrl = `${baseUrl}/shipping-quote/paypal/verify?quote=${encodeURIComponent(String(quote.token || ""))}`;
       const cancelUrl = `${baseUrl}/shipping-quote/${encodeURIComponent(String(quote.token || ""))}`;
       const order = await paypalCreateOrder({
-        amount: converted.toFixed(2),
+        amount: feeResult.gross.toFixed(2),
         currency: paypalCurrency,
         returnUrl,
         cancelUrl,
@@ -404,9 +423,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
       await conn.query(
         `INSERT INTO linescout_shipping_quote_payments
-         (shipping_quote_id, user_id, purpose, method, status, amount, currency, provider_ref, created_at)
-         VALUES (?, ?, ?, 'paypal', 'pending', ?, ?, ?, NOW())`,
-        [quote.id, ownerUserId, purpose, converted, paypalCurrency, order.id]
+         (shipping_quote_id, user_id, purpose, method, status, amount, base_amount, processing_fee_amount, processing_fee_meta_json, currency, provider_ref, created_at)
+         VALUES (?, ?, ?, 'paypal', 'pending', ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          quote.id,
+          ownerUserId,
+          purpose,
+          feeResult.base,
+          feeResult.base,
+          feeResult.fee,
+          JSON.stringify({
+            provider: "paypal",
+            percent: feeRule.percent,
+            fixed: feeRule.fixed,
+            charged_total: feeResult.gross,
+          }),
+          paypalCurrency,
+          order.id,
+        ]
       );
 
       return NextResponse.json({
@@ -414,7 +448,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
         provider: "paypal",
         approval_url: order.approveUrl,
         wallet_applied: walletApplied,
-        remaining: converted,
+        remaining: feeResult.base,
+        processing_fee: feeResult.fee,
+        total_charged: feeResult.gross,
         currency: paypalCurrency,
       });
     }

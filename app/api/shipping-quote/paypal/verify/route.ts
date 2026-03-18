@@ -4,6 +4,7 @@ import { paypalCaptureOrder } from "@/lib/paypal";
 import { ensureShippingQuoteTables } from "@/lib/shipping-quotes";
 import { ensureShipmentTables } from "@/lib/shipments";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
+import { ensureShippingQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,8 +36,9 @@ export async function POST(req: Request) {
   try {
     await ensureAffiliateTables(conn);
     await ensureShippingQuoteTables(conn);
+    await ensureShippingQuotePaymentFeeColumns(conn);
     const [rows]: any = await conn.query(
-      `SELECT id, shipping_quote_id, user_id, status
+      `SELECT id, shipping_quote_id, user_id, status, COALESCE(base_amount, amount) AS base_amount
        FROM linescout_shipping_quote_payments
        WHERE provider_ref = ?
        LIMIT 1`,
@@ -47,6 +49,7 @@ export async function POST(req: Request) {
     }
 
     const row = rows[0];
+    const baseAmount = num(row.base_amount, 0) || amountValue;
     if (String(row.status || "") === "paid") {
       const [qRows]: any = await conn.query(
         `SELECT token FROM linescout_shipping_quotes WHERE id = ? LIMIT 1`,
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
         transaction_type: "shipping_payment",
         source_table: "linescout_shipping_quote_payments",
         source_id: Number(row.id),
-        base_amount: amountValue,
+        base_amount: baseAmount,
         currency: currency || "GBP",
       });
     }
@@ -109,7 +112,7 @@ export async function POST(req: Request) {
       status: "paid",
       shipping_quote_id: Number(row.shipping_quote_id || 0),
       token: quoteToken,
-      amount: amountValue,
+      amount: baseAmount,
       currency,
     });
   } finally {

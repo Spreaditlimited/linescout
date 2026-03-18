@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
 
   const conn = await db.getConnection();
   try {
+    await ensureQuotePaymentFeeColumns(conn);
     const [rows]: any = await conn.query(
       `SELECT q.id, h.status AS handoff_status
        FROM linescout_quotes q
@@ -25,16 +27,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     const handoffStatus = String(rows[0].handoff_status || "").trim() || null;
     const [sumRows]: any = await conn.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN purpose = 'deposit' AND status = 'paid' THEN amount ELSE 0 END), 0) AS deposit_paid,
-         COALESCE(SUM(CASE WHEN purpose IN ('product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS product_paid,
-         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN amount ELSE 0 END), 0) AS shipping_paid
+         COALESCE(SUM(CASE WHEN purpose = 'deposit' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS deposit_paid,
+         COALESCE(SUM(CASE WHEN purpose IN ('product_balance','full_product_payment') AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS product_paid,
+         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS shipping_paid
        FROM linescout_quote_payments
        WHERE quote_id = ?`,
       [quoteId]
     );
 
     const [paymentRows]: any = await conn.query(
-      `SELECT id, purpose, method, status, amount, currency, provider_ref, created_at, paid_at
+      `SELECT id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, processing_fee_amount, currency, provider_ref, created_at, paid_at
        FROM linescout_quote_payments
        WHERE quote_id = ?
        ORDER BY id DESC
@@ -57,6 +59,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
         method: p.method,
         status: p.status,
         amount: Number(p.amount || 0),
+        base_amount: Number(p.base_amount || p.amount || 0),
+        processing_fee_amount: Number(p.processing_fee_amount || 0),
         currency: p.currency || "NGN",
         provider_ref: p.provider_ref || null,
         created_at: p.created_at,

@@ -50,6 +50,8 @@ type QuoteClientProps = {
   displayFxRate?: number | null;
   shippingFxRate?: number | null;
   productFxRate?: number | null;
+  paypalFeePercent?: number;
+  paypalFeeFixed?: number;
 };
 
 type QuotePayment = {
@@ -58,6 +60,8 @@ type QuotePayment = {
   method: string;
   status: string;
   amount: number;
+  base_amount?: number;
+  processing_fee_amount?: number;
   currency: string;
   provider_ref?: string | null;
   created_at?: string | null;
@@ -206,6 +210,8 @@ export default function QuoteClient({
   displayFxRate,
   shippingFxRate,
   productFxRate,
+  paypalFeePercent = 0,
+  paypalFeeFixed = 0,
 }: QuoteClientProps) {
   const rawDisplayCurrency = String(displayCurrencyCode || "NGN").toUpperCase();
   const effectiveDisplayCurrency = rawDisplayCurrency || "NGN";
@@ -446,7 +452,8 @@ export default function QuoteClient({
     const totals = { deposit: 0, product: 0, shipping: 0 };
     for (const p of payments) {
       if (p.status !== "paid") continue;
-      const amt = convert(Number(p.amount || 0), p.currency || "NGN");
+      const base = Number((p.base_amount ?? p.amount) || 0);
+      const amt = convert(base, p.currency || "NGN");
       if (!amt) continue;
       if (p.purpose === "deposit") totals.deposit += amt;
       else if (p.purpose === "shipping_payment") totals.shipping += amt;
@@ -572,6 +579,20 @@ export default function QuoteClient({
       : paymentOption === "shipping"
       ? shippingRemainingDisplay
       : productRemainingDisplay;
+  const paypalChargePreview = useMemo(() => {
+    if (!isPaypal) return null;
+    const base = Number(totalDueDisplay || 0);
+    const pct = Number(paypalFeePercent || 0);
+    const fixed = Number(paypalFeeFixed || 0);
+    if (!Number.isFinite(base) || base <= 0) return null;
+    if (!Number.isFinite(pct) || pct < 0 || pct >= 100) return null;
+    if (!Number.isFinite(fixed) || fixed < 0) return null;
+    const ratio = 1 - pct / 100;
+    if (ratio <= 0) return null;
+    const gross = Math.ceil(((base + fixed) / ratio) * 100) / 100;
+    const fee = Math.max(0, Number((gross - base).toFixed(2)));
+    return { fee, gross };
+  }, [isPaypal, totalDueDisplay, paypalFeePercent, paypalFeeFixed]);
 
   const hasShippingRemaining =
     effectiveDisplayCurrency === "NGN" ? shippingRemainingNgn > 0 : shippingRemainingDisplay > 0;
@@ -1338,6 +1359,18 @@ export default function QuoteClient({
               >
                 Pay exact remaining balance
               </button>
+              {isPaypal && paypalChargePreview ? (
+                <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
+                  <div className="flex items-center justify-between">
+                    <span>PayPal processing fee</span>
+                    <span>{fmtCurrency(paypalChargePreview.fee, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-neutral-800">
+                    <span>Total charged at checkout</span>
+                    <span>{fmtCurrency(paypalChargePreview.gross, effectiveDisplayCurrency)}</span>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -1535,8 +1568,15 @@ export default function QuoteClient({
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-neutral-600">
-                      {p.currency} {Number(p.amount || 0).toLocaleString()} · {p.method}
+                      {p.currency} {Number((p.base_amount ?? p.amount) || 0).toLocaleString()} · {p.method}
                     </div>
+                    {Number(p.processing_fee_amount || 0) > 0 ? (
+                      <div className="mt-1 text-[11px] text-neutral-500">
+                        PayPal fee: {p.currency} {Number(p.processing_fee_amount || 0).toLocaleString()} ·
+                        Charged total: {p.currency}{" "}
+                        {Number(((p.base_amount ?? p.amount) || 0) + Number(p.processing_fee_amount || 0)).toLocaleString()}
+                      </div>
+                    ) : null}
                     <div className="mt-1 text-[11px] text-neutral-500">
                       {p.paid_at ? `Paid ${fmtDate(p.paid_at)}` : `Created ${fmtDate(p.created_at)}`}
                     </div>

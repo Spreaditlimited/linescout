@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { paypalCaptureOrder } from "@/lib/paypal";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
+import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,8 +34,9 @@ export async function POST(req: Request) {
   const conn = await db.getConnection();
   try {
     await ensureAffiliateTables(conn);
+    await ensureQuotePaymentFeeColumns(conn);
     const [rows]: any = await conn.query(
-      `SELECT id, quote_id, handoff_id, user_id, purpose, status
+      `SELECT id, quote_id, handoff_id, user_id, purpose, status, COALESCE(base_amount, amount) AS base_amount
        FROM linescout_quote_payments
        WHERE provider_ref = ?
        LIMIT 1`,
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
     }
 
     const row = rows[0];
+    const baseAmount = num(row.base_amount, 0) || amountValue;
     if (String(row.status || "") === "paid") {
       const [qRows]: any = await conn.query(
         `SELECT token FROM linescout_quotes WHERE id = ? LIMIT 1`,
@@ -77,7 +80,7 @@ export async function POST(req: Request) {
         `INSERT INTO linescout_handoff_payments
          (handoff_id, amount, currency, purpose, note, paid_at, created_at)
          VALUES (?, ?, ?, ?, 'Quote payment (paypal)', NOW(), NOW())`,
-        [row.handoff_id, amountValue, currency || "GBP", handoffPurpose]
+        [row.handoff_id, baseAmount, currency || "GBP", handoffPurpose]
       );
     }
 
@@ -87,7 +90,7 @@ export async function POST(req: Request) {
         quoteId: Number(row.quote_id || 0),
         handoffId: Number(row.handoff_id || 0),
         purpose,
-        amountNgn: amountValue,
+        amountNgn: baseAmount,
         currency: currency || "GBP",
       });
     }
@@ -100,7 +103,7 @@ export async function POST(req: Request) {
         transaction_type: affiliateType,
         source_table: "linescout_quote_payments",
         source_id: Number(row.id),
-        base_amount: amountValue,
+        base_amount: baseAmount,
         currency: currency || "GBP",
       });
     }

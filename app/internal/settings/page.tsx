@@ -5,6 +5,7 @@ import Link from "next/link";
 import SearchableSelect from "../_components/SearchableSelect";
 import ShippingCompaniesPanel from "../_components/ShippingCompaniesPanel";
 import ConfirmModal from "../_components/ConfirmModal";
+import { DEFAULT_PAYPAL_QUOTE_FEE_CONFIG } from "@/lib/paypal-quote-fees";
 
 type MeResponse =
   | { ok: true; user: { username: string; role: string } }
@@ -67,6 +68,7 @@ type SettingsItem = {
   white_label_paypal_plan_yearly_cad?: string | null;
   white_label_paypal_plan_monthly_usd?: string | null;
   white_label_paypal_plan_yearly_usd?: string | null;
+  quote_paypal_fee_config_json?: any;
   affiliate_enabled?: number | boolean;
   affiliate_terms_url?: string | null;
   affiliate_min_payout_amount?: number | null;
@@ -144,6 +146,7 @@ type ServiceChargeConfig = {
 };
 
 type ServiceChargeBands = Record<string, ServiceChargeConfig>;
+type PaypalQuoteFeeMap = Record<string, { percent: string; fixed: string }>;
 
 const DEFAULT_SERVICE_CHARGE_BANDS: ServiceChargeBands = {
   machine_sourcing: {
@@ -283,6 +286,11 @@ export default function InternalSettingsPage() {
   const [whiteLabelPaypalYearlyCad, setWhiteLabelPaypalYearlyCad] = useState("");
   const [whiteLabelPaypalMonthlyUsd, setWhiteLabelPaypalMonthlyUsd] = useState("");
   const [whiteLabelPaypalYearlyUsd, setWhiteLabelPaypalYearlyUsd] = useState("");
+  const [paypalQuoteFeeMap, setPaypalQuoteFeeMap] = useState<PaypalQuoteFeeMap>({
+    GBP: { percent: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.GBP.percent), fixed: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.GBP.fixed) },
+    CAD: { percent: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.CAD.percent), fixed: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.CAD.fixed) },
+    USD: { percent: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.USD.percent), fixed: String(DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.USD.fixed) },
+  });
 
   const [wlExemptions, setWlExemptions] = useState<any[]>([]);
   const [wlExemptionsLoading, setWlExemptionsLoading] = useState(false);
@@ -582,6 +590,36 @@ export default function InternalSettingsPage() {
       setWhiteLabelPaypalYearlyCad(String(item.white_label_paypal_plan_yearly_cad || ""));
       setWhiteLabelPaypalMonthlyUsd(String(item.white_label_paypal_plan_monthly_usd || ""));
       setWhiteLabelPaypalYearlyUsd(String(item.white_label_paypal_plan_yearly_usd || ""));
+      const feeRaw = item.quote_paypal_fee_config_json;
+      const feeParsed =
+        typeof feeRaw === "string"
+          ? (() => {
+              try {
+                return JSON.parse(feeRaw);
+              } catch {
+                return null;
+              }
+            })()
+          : feeRaw;
+      const requiredFeeCurrencies = new Set<string>(["GBP", "CAD", "USD"]);
+      ((data.countries || []) as CountryItem[]).forEach((country) => {
+        if (String(country.payment_provider || "").toLowerCase() !== "paypal") return;
+        const code = String(country.settlement_currency_code || "").trim().toUpperCase();
+        if (code) requiredFeeCurrencies.add(code);
+      });
+      const nextFeeMap: PaypalQuoteFeeMap = {};
+      Array.from(requiredFeeCurrencies)
+        .sort()
+        .forEach((code) => {
+          const percent = Number(feeParsed?.[code]?.percent);
+          const fixed = Number(feeParsed?.[code]?.fixed);
+          const fallback = DEFAULT_PAYPAL_QUOTE_FEE_CONFIG[code] || DEFAULT_PAYPAL_QUOTE_FEE_CONFIG.USD;
+          nextFeeMap[code] = {
+            percent: Number.isFinite(percent) ? String(percent) : String(fallback.percent),
+            fixed: Number.isFinite(fixed) ? String(fixed) : String(fallback.fixed),
+          };
+        });
+      setPaypalQuoteFeeMap(nextFeeMap);
       if (item.test_emails_json) {
         const raw = item.test_emails_json;
         const parsed =
@@ -1050,6 +1088,15 @@ export default function InternalSettingsPage() {
         white_label_paypal_plan_yearly_cad: whiteLabelPaypalYearlyCad.trim() || null,
         white_label_paypal_plan_monthly_usd: whiteLabelPaypalMonthlyUsd.trim() || null,
         white_label_paypal_plan_yearly_usd: whiteLabelPaypalYearlyUsd.trim() || null,
+        quote_paypal_fee_config_json: Object.fromEntries(
+          Object.entries(paypalQuoteFeeMap).map(([code, value]) => [
+            code,
+            {
+              percent: Number(value.percent || 0),
+              fixed: Number(value.fixed || 0),
+            },
+          ])
+        ),
       };
 
       const res = await fetch("/api/internal/settings", {
@@ -1516,6 +1563,16 @@ export default function InternalSettingsPage() {
     if (yearlyUsd != null && (!Number.isFinite(yearlyUsd) || yearlyUsd < 0)) {
       errors.push("White-label yearly price (USD) must be 0 or more.");
     }
+    Object.entries(paypalQuoteFeeMap).forEach(([code, rule]) => {
+      const percent = Number(rule.percent);
+      const fixed = Number(rule.fixed);
+      if (!Number.isFinite(percent) || percent < 0 || percent >= 100) {
+        errors.push(`PayPal quote fee % for ${code} must be between 0 and 100.`);
+      }
+      if (!Number.isFinite(fixed) || fixed < 0) {
+        errors.push(`PayPal fixed fee for ${code} must be 0 or more.`);
+      }
+    });
     if (testEmails.some((email) => !email.includes("@"))) {
       errors.push("Test emails must be valid email addresses.");
     }
@@ -1553,6 +1610,7 @@ export default function InternalSettingsPage() {
     whiteLabelPaypalYearlyCad,
     whiteLabelPaypalMonthlyUsd,
     whiteLabelPaypalYearlyUsd,
+    paypalQuoteFeeMap,
     affiliateMinPayouts,
   ]);
 
@@ -2970,6 +3028,52 @@ export default function InternalSettingsPage() {
             <p className="mt-2 text-[11px] text-neutral-500">
               If empty, the helper will create a product and fill this automatically.
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 lg:col-span-2">
+            <div className="text-sm font-semibold text-neutral-100">Quote PayPal processing fees (non-Nigeria)</div>
+            <p className="mt-1 text-xs text-neutral-500">
+              Admin-controlled only. Charged total is grossed up from quote due amount using these currency rules.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {Object.keys(paypalQuoteFeeMap)
+                .sort()
+                .map((code) => (
+                  <div key={code} className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+                    <div className="text-xs font-semibold text-neutral-200">{code}</div>
+                    <div className="mt-2">
+                      <label className="text-[11px] text-neutral-500">Percent fee</label>
+                      <input
+                        value={paypalQuoteFeeMap[code]?.percent || "0"}
+                        onChange={(e) =>
+                          setPaypalQuoteFeeMap((prev) => ({
+                            ...prev,
+                            [code]: { ...(prev[code] || { percent: "0", fixed: "0" }), percent: e.target.value },
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                        inputMode="decimal"
+                        placeholder="e.g. 4.40"
+                      />
+                    </div>
+                    <div className="mt-2">
+                      <label className="text-[11px] text-neutral-500">Fixed fee ({code})</label>
+                      <input
+                        value={paypalQuoteFeeMap[code]?.fixed || "0"}
+                        onChange={(e) =>
+                          setPaypalQuoteFeeMap((prev) => ({
+                            ...prev,
+                            [code]: { ...(prev[code] || { percent: "0", fixed: "0" }), fixed: e.target.value },
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-neutral-600"
+                        inputMode="decimal"
+                        placeholder="e.g. 0.30"
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
           </div>
 
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4 lg:col-span-2">
