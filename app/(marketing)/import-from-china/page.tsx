@@ -33,15 +33,15 @@ export default function ImportFromChinaPage() {
 
   return (
     <div
-      className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900 antialiased"
+      className="relative flex min-h-[100dvh] flex-col bg-[#F5F6FA] text-neutral-900 antialiased"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
-      {/* Background Orbs - Adjusted for softer blending */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-24 right-[-10%] h-[600px] w-[600px] rounded-full bg-[rgba(45,52,97,0.12)] blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-5%] h-[500px] w-[500px] rounded-full bg-[rgba(45,52,97,0.08)] blur-[100px]" />
-      </div>
-
+      <style>{`
+        html,
+        body {
+          background: #F5F6FA !important;
+        }
+      `}</style>
       <MarketingTopNav
         backgroundClassName="bg-white/80 backdrop-blur-md"
         borderClassName="border-b border-neutral-200/50"
