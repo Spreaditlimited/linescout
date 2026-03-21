@@ -76,7 +76,7 @@ export default function ImportFromChinaPage() {
             </h1>
             
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-neutral-600">
-              Source machines, build your brand, and scale with confidence. We connect you to
+              Source machines, build your brand, and buy products in bulk. We connect you to
               trusted specialists on the ground in China who help you find the right manufacturer,
               negotiate prices, handle purchasing, and coordinate shipping to your destination.
             </p>
