@@ -12,10 +12,12 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isWhiteLabelWebinar = pathname.startsWith("/white-label-webinar");
   const isMachineSourcingLeads = pathname.startsWith("/machine-sourcing-webinar");
   const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
+  const isImportFromChina = pathname.startsWith("/import-from-china");
   const isWhiteLabelMarketing = pathname === "/white-label" || isWhiteLabelLeads || isWhiteLabelWebinar;
   const isMachineWebinarMarketing = isMachineSourcingLeads || isMachineSourcingWebinar;
   const isAffiliate = pathname.startsWith("/affiliates");
   const isMarketing =
+    isImportFromChina ||
     pathname.startsWith("/white-label") ||
     pathname.startsWith("/machines") ||
     pathname.startsWith("/machine-sourcing-webinar") ||
@@ -23,6 +25,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/track");
   const isLanding =
     pathname === "/" ||
+    isImportFromChina ||
     pathname.startsWith("/account-deletion") ||
     isAgents ||
     pathname.startsWith("/track");
