@@ -82,7 +82,7 @@ function isInternalRequest(req: Request) {
 async function loadUserById(conn: any, userId: number) {
   const [rows]: any = await conn.query(
     `
-    SELECT id, email, display_name, first_name, firstname, firstName, name
+    SELECT id, email, display_name
     FROM users
     WHERE id = ?
     LIMIT 1
@@ -181,6 +181,7 @@ function firstNameFromUser(u: any) {
     u?.first_name,
     u?.firstname,
     u?.firstName,
+    u?.display_name,
     u?.name, // if name is full name, we can still split
   ]
     .map((x: any) => (typeof x === "string" ? x.trim() : ""))
@@ -427,6 +428,92 @@ async function sendExpoPush(tokens: string[], payload: { title: string; body: st
   }).catch(() => {});
 }
 
+async function resendPaidProjectNotifications(
+  conn: any,
+  params: {
+    routeType: RouteType;
+    handoffId: number;
+    conversationId: number;
+    customerEmail: string;
+    agentLabel: string;
+  }
+) {
+  const { routeType, handoffId, conversationId, customerEmail, agentLabel } = params;
+  const [trows]: any = await conn.query(
+    `
+    SELECT t.token
+    FROM linescout_agent_device_tokens t
+    JOIN internal_users u ON u.id = t.agent_id
+    JOIN linescout_agent_profiles ap ON ap.internal_user_id = u.id
+    WHERE t.is_active = 1
+      AND u.is_active = 1
+      AND ap.approval_status = 'approved'
+    `
+  );
+  const tokens = (trows || []).map((r: any) => String(r.token || "")).filter(Boolean);
+  await sendExpoPush(tokens, {
+    title: "New paid chat available",
+    body: `${agentLabel} just opened a paid chat. Tap to claim.`,
+    data: { kind: "paid", conversation_id: conversationId, handoff_id: handoffId, route_type: routeType },
+  });
+
+  const [emailRows]: any = await conn.query(
+    `
+    SELECT ap.email
+    FROM linescout_agent_profiles ap
+    JOIN internal_users u ON u.id = ap.internal_user_id
+    WHERE u.is_active = 1
+      AND ap.approval_status = 'approved'
+      AND COALESCE(ap.email_notifications_enabled, 1) = 1
+      AND ap.email IS NOT NULL
+      AND ap.email <> ''
+    `
+  );
+  const emails = (emailRows || [])
+    .map((r: any) => String(r.email || "").trim())
+    .filter(Boolean);
+
+  for (const email of emails) {
+    const mail = buildNoticeEmail({
+      subject: "New paid chat available",
+      title: "New paid chat",
+      lines: [
+        `${agentLabel} just opened a paid chat.`,
+        `Route: ${routeLabel(routeType)}`,
+        `Handoff ID: ${handoffId}`,
+        "Open the LineScout Agent app to claim this project.",
+      ],
+      footerNote: "This email was sent because a new paid chat became available for LineScout agents.",
+    });
+    await sendEmail({
+      to: email,
+      replyTo: "hello@sureimports.com",
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+    });
+  }
+
+  const adminMail = buildNoticeEmail({
+    subject: "New paid chat started",
+    title: "New paid chat started",
+    lines: [
+      `Route: ${routeLabel(routeType)}`,
+      `Handoff ID: ${handoffId}`,
+      `Conversation ID: ${conversationId}`,
+      `Customer email: ${customerEmail}`,
+    ],
+    footerNote: "This email was sent because a paid chat was started on LineScout.",
+  });
+  await sendEmail({
+    to: "sureimporters@gmail.com",
+    replyTo: "hello@sureimports.com",
+    subject: adminMail.subject,
+    text: adminMail.text,
+    html: adminMail.html,
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const internal = isInternalRequest(req);
@@ -445,6 +532,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const reference = String(body?.reference || "").trim();
     const purpose = normalizePurpose(body?.purpose);
+    const forceNotify = body?.force_notify === true;
 
     if (!reference) {
       return NextResponse.json({ ok: false, error: "reference is required" }, { status: 400 });
@@ -1183,6 +1271,39 @@ export async function POST(req: Request) {
           }
 
           if (handoffId || conversationId) {
+            if (forceNotify && handoffId && conversationId) {
+              try {
+                const [ctxRows]: any = await conn.query(
+                  `
+                  SELECT h.email, c.route_type, c.user_id
+                  FROM linescout_handoffs h
+                  LEFT JOIN linescout_conversations c ON c.id = h.conversation_id
+                  WHERE h.id = ?
+                  LIMIT 1
+                  `,
+                  [handoffId]
+                );
+                const ctx = ctxRows?.[0] || null;
+                const inferredRouteType = isValidRouteType(String(ctx?.route_type || ""))
+                  ? (String(ctx?.route_type) as RouteType)
+                  : finalRouteType;
+                let agentLabel = "Customer";
+                if (ctx?.user_id) {
+                  const [uRows]: any = await conn.query(
+                    `SELECT display_name FROM users WHERE id = ? LIMIT 1`,
+                    [Number(ctx.user_id)]
+                  );
+                  agentLabel = firstNameFromUser(uRows?.[0] || null) || "Customer";
+                }
+                await resendPaidProjectNotifications(conn, {
+                  routeType: inferredRouteType,
+                  handoffId: Number(handoffId),
+                  conversationId: Number(conversationId),
+                  customerEmail: String(ctx?.email || ""),
+                  agentLabel,
+                });
+              } catch {}
+            }
             return NextResponse.json({
               ok: true,
               purpose,

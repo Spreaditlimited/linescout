@@ -79,8 +79,8 @@ export async function POST(req: Request) {
     provider === "paystack" ? "/api/payments/paystack/verify" : "/api/payments/paypal/verify";
   const payload =
     provider === "paystack"
-      ? { reference, purpose: body?.purpose || "sourcing" }
-      : { order_id: reference };
+      ? { reference, purpose: body?.purpose || "sourcing", force_notify: true }
+      : { order_id: reference, force_notify: true };
 
   const res = await fetch(`${baseUrl}${endpoint}`, {
     method: "POST",

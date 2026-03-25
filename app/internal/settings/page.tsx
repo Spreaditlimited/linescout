@@ -405,6 +405,12 @@ export default function InternalSettingsPage() {
   const [paymentSource, setPaymentSource] = useState<"paystack" | "paypal">("paystack");
   const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>("");
   const [paymentRef, setPaymentRef] = useState("");
+  const [reconcileProvider, setReconcileProvider] = useState<"paystack" | "paypal">("paystack");
+  const [reconcilePurpose, setReconcilePurpose] = useState<"sourcing" | "reorder" | "business_plan">("sourcing");
+  const [reconcileReference, setReconcileReference] = useState("");
+  const [reconcileLoading, setReconcileLoading] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
+  const [reconcileErr, setReconcileErr] = useState<string | null>(null);
 
   // Optional financials + initial payment
   const [totalDue, setTotalDue] = useState<string>("");
@@ -1725,6 +1731,58 @@ export default function InternalSettingsPage() {
       setResult({ ok: false, error: "Failed to create manual handoff" });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function triggerPaymentRecovery() {
+    const reference = reconcileReference.trim();
+    if (!reference) {
+      setReconcileErr("Reference is required.");
+      setReconcileMsg(null);
+      return;
+    }
+
+    setReconcileLoading(true);
+    setReconcileMsg(null);
+    setReconcileErr(null);
+    try {
+      const payload: any = {
+        provider: reconcileProvider,
+        reference,
+      };
+      if (reconcileProvider === "paystack") {
+        payload.purpose = reconcilePurpose;
+      }
+
+      const res = await fetch("/api/internal/payments/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.response?.error || data?.error || "Recovery failed");
+      }
+
+      const recoveredHandoffId = Number(data?.response?.handoff_id || 0) || null;
+      const recoveredConversationId = Number(data?.response?.conversation_id || 0) || null;
+      const alreadyProcessed = !!data?.response?.already_processed;
+
+      const summary = [
+        alreadyProcessed ? "Payment already processed." : "Payment recovery completed.",
+        recoveredHandoffId ? `Handoff ID: ${recoveredHandoffId}` : null,
+        recoveredConversationId ? `Conversation ID: ${recoveredConversationId}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      setReconcileMsg(summary || "Payment recovery completed.");
+      setReconcileErr(null);
+    } catch (e: any) {
+      setReconcileErr(e?.message || "Recovery failed");
+      setReconcileMsg(null);
+    } finally {
+      setReconcileLoading(false);
     }
   }
 
@@ -3488,6 +3546,87 @@ export default function InternalSettingsPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Manual onboarding card */}
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <h3 className="text-base font-semibold text-neutral-100">Payment recovery</h3>
+        <p className="mt-1 text-sm text-neutral-400">
+          Re-run project creation from an existing Paystack reference or PayPal order when payment succeeded but
+          conversation/handoff was not created.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-xs font-medium text-neutral-300">Provider</label>
+            <SearchableSelect
+              className="mt-1"
+              value={reconcileProvider}
+              options={[
+                { value: "paystack", label: "Paystack" },
+                { value: "paypal", label: "PayPal" },
+              ]}
+              onChange={(next) => setReconcileProvider((next as any) || "paystack")}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-neutral-300">Purpose (Paystack only)</label>
+            <SearchableSelect
+              className="mt-1"
+              value={reconcilePurpose}
+              options={[
+                { value: "sourcing", label: "sourcing" },
+                { value: "reorder", label: "reorder" },
+                { value: "business_plan", label: "business_plan" },
+              ]}
+              onChange={(next) => setReconcilePurpose((next as any) || "sourcing")}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs font-medium text-neutral-300">Payment reference</label>
+            <input
+              value={reconcileReference}
+              onChange={(e) => setReconcileReference(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="LS_... (Paystack) or PayPal order ID"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={triggerPaymentRecovery}
+            disabled={reconcileLoading || !reconcileReference.trim()}
+            className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white disabled:opacity-60"
+          >
+            {reconcileLoading ? "Recovering..." : "Recover payment flow"}
+          </button>
+          <button
+            onClick={() => {
+              setReconcileReference("");
+              setReconcilePurpose("sourcing");
+              setReconcileProvider("paystack");
+              setReconcileMsg(null);
+              setReconcileErr(null);
+            }}
+            className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+          >
+            Reset
+          </button>
+        </div>
+
+        {reconcileMsg ? (
+          <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+            {reconcileMsg}
+          </div>
+        ) : null}
+        {reconcileErr ? (
+          <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+            {reconcileErr}
+          </div>
+        ) : null}
       </div>
 
       {/* Manual onboarding card */}
