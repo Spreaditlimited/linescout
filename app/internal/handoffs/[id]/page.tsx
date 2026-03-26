@@ -87,6 +87,10 @@ type PaymentsResp =
         purpose: string;
         amount: number;
         currency: string;
+        amount_display?: number | null;
+        display_currency_code?: string | null;
+        fx_rate_used?: number | null;
+        conversion_status?: "ok" | "missing_rate" | "invalid_amount";
         created_at?: string | null;
         provider?: string | null;
         reference?: string | null;
@@ -95,6 +99,10 @@ type PaymentsResp =
         id: number;
         amount: number;
         currency: string;
+        amount_display?: number | null;
+        display_currency_code?: string | null;
+        fx_rate_used?: number | null;
+        conversion_status?: "ok" | "missing_rate" | "invalid_amount";
         purpose: string;
         note?: string | null;
         paid_at?: string | null;
@@ -492,8 +500,20 @@ export default function InternalHandoffDetailPage() {
                     <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
                       <div className="text-xs text-neutral-500">Commitment fee</div>
                       <div className="mt-1 text-sm text-neutral-100">
-                        {fmtMoney(payments.commitment_payment.amount, payments.commitment_payment.currency)}
+                        {fmtMoney(
+                          payments.commitment_payment.amount_display ?? payments.commitment_payment.amount,
+                          payments.commitment_payment.display_currency_code ||
+                            payments.financials?.display_currency_code ||
+                            payments.commitment_payment.currency
+                        )}
                       </div>
+                      {payments.commitment_payment.amount_display != null &&
+                      String(payments.commitment_payment.display_currency_code || "").toUpperCase() !==
+                        String(payments.commitment_payment.currency || "").toUpperCase() ? (
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          Original: {fmtMoney(payments.commitment_payment.amount, payments.commitment_payment.currency)}
+                        </div>
+                      ) : null}
                       <div className="mt-1 text-xs text-neutral-500">
                         {payments.commitment_payment.provider ? `${payments.commitment_payment.provider} • ` : ""}
                         {payments.commitment_payment.reference || "No reference"}
@@ -518,7 +538,20 @@ export default function InternalHandoffDetailPage() {
                             <tr key={p.id} className="border-t border-neutral-800">
                               <td className="px-3 py-2 text-neutral-200">{purposeLabel(p.purpose)}</td>
                               <td className="px-3 py-2 text-neutral-200">
-                                {fmtMoney(p.amount, p.currency)}
+                                {fmtMoney(
+                                  p.amount_display ?? p.amount,
+                                  p.display_currency_code || payments.financials?.display_currency_code || p.currency
+                                )}
+                                {p.amount_display != null &&
+                                String(p.display_currency_code || "").toUpperCase() !==
+                                  String(p.currency || "").toUpperCase() ? (
+                                  <div className="text-[11px] text-neutral-500">
+                                    Original: {fmtMoney(p.amount, p.currency)}
+                                  </div>
+                                ) : null}
+                                {p.conversion_status === "missing_rate" ? (
+                                  <div className="text-[11px] text-amber-300">Missing FX rate</div>
+                                ) : null}
                               </td>
                               <td className="px-3 py-2 text-neutral-300">{fmt(p.paid_at || p.created_at)}</td>
                               <td className="px-3 py-2 text-neutral-400">{p.note || "—"}</td>

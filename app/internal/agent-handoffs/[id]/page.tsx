@@ -134,20 +134,32 @@ type PaymentSummaryResponse =
         total_due: number;
         total_paid: number;
         balance: number;
+        display_currency_code?: string;
+        display_total_due?: number;
+        display_total_paid?: number;
+        display_balance?: number;
       };
       commitment_payment?: {
         id: number;
         purpose: string;
         amount: number;
         currency: string;
+        amount_display?: number | null;
+        display_currency_code?: string | null;
+        fx_rate_used?: number | null;
+        conversion_status?: "ok" | "missing_rate" | "invalid_amount";
         created_at?: string | null;
         provider?: string | null;
         reference?: string | null;
       } | null;
       payments: Array<{
         id: number;
-        amount: string;
+        amount: string | number;
         currency: string;
+        amount_display?: number | null;
+        display_currency_code?: string | null;
+        fx_rate_used?: number | null;
+        conversion_status?: "ok" | "missing_rate" | "invalid_amount";
         purpose: PaymentPurpose;
         note: string | null;
         paid_at: string;
@@ -160,12 +172,20 @@ type PaymentSummary = {
   total_due: number;
   total_paid: number;
   balance: number;
+  display_currency_code?: string;
+  display_total_due?: number;
+  display_total_paid?: number;
+  display_balance?: number;
 };
 type CommitmentPayment = {
   id: number;
   purpose: string;
   amount: number;
   currency: string;
+  amount_display?: number | null;
+  display_currency_code?: string | null;
+  fx_rate_used?: number | null;
+  conversion_status?: "ok" | "missing_rate" | "invalid_amount";
   created_at?: string | null;
   provider?: string | null;
   reference?: string | null;
@@ -178,6 +198,11 @@ type QuoteItem = {
   payment_purpose?: string | null;
   agent_note?: string | null;
   total_due_ngn?: number | null;
+  total_due_display?: number | null;
+  total_due_display_from_ngn?: number | null;
+  total_due_display_diff?: number | null;
+  total_due_display_status?: "component_fx" | "missing_fx";
+  display_currency_code?: string | null;
   created_at?: string | null;
   created_by?: number | null;
   created_by_name?: string | null;
@@ -185,8 +210,12 @@ type QuoteItem = {
 
 type PaymentRow = {
   id: number;
-  amount: string;
+  amount: string | number;
   currency: string;
+  amount_display?: number | null;
+  display_currency_code?: string | null;
+  fx_rate_used?: number | null;
+  conversion_status?: "ok" | "missing_rate" | "invalid_amount";
   purpose: PaymentPurpose;
   note: string | null;
   paid_at: string;
@@ -366,6 +395,10 @@ export default function HandoffDetailPage() {
         total_due: Number(data.financials.total_due || 0),
         total_paid: Number(data.financials.total_paid || 0),
         balance: Number(data.financials.balance || 0),
+        display_currency_code: String(data.financials.display_currency_code || data.financials.currency || "NGN"),
+        display_total_due: Number(data.financials.display_total_due ?? data.financials.total_due ?? 0),
+        display_total_paid: Number(data.financials.display_total_paid ?? data.financials.total_paid ?? 0),
+        display_balance: Number(data.financials.display_balance ?? data.financials.balance ?? 0),
       };
 
       return {
@@ -1004,8 +1037,13 @@ export default function HandoffDetailPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-emerald-200">
-                          {fmtMoney(Number(quote.total_due_ngn || 0), "NGN")}
+                          {quote.total_due_display == null
+                            ? "—"
+                            : fmtMoney(Number(quote.total_due_display), quote.display_currency_code || "NGN")}
                         </span>
+                        {quote.total_due_display_status === "missing_fx" ? (
+                          <span className="text-[11px] text-amber-300">Missing FX</span>
+                        ) : null}
                         <Link
                           href={`/internal/quotes/${quote.id}`}
                           className="rounded-lg border border-neutral-800 px-2 py-1 text-[11px] font-semibold text-neutral-200 hover:border-neutral-700"
@@ -1050,9 +1088,22 @@ export default function HandoffDetailPage() {
                   <div className="text-[11px] text-neutral-500">Commitment fee</div>
                   <div className="mt-1 text-sm text-neutral-200">
                     <span className="font-semibold">
-                      {fmtMoney(Number(commitmentPayment.amount || 0), commitmentPayment.currency || "NGN")}
+                      {fmtMoney(
+                        Number(commitmentPayment.amount_display ?? commitmentPayment.amount ?? 0),
+                        commitmentPayment.display_currency_code ||
+                          paySummary?.display_currency_code ||
+                          commitmentPayment.currency ||
+                          "NGN"
+                      )}
                     </span>
                   </div>
+                  {commitmentPayment.amount_display != null &&
+                  String(commitmentPayment.display_currency_code || "").toUpperCase() !==
+                    String(commitmentPayment.currency || "").toUpperCase() ? (
+                    <div className="mt-1 text-[11px] text-neutral-500">
+                      Original: {fmtMoney(Number(commitmentPayment.amount || 0), commitmentPayment.currency || "NGN")}
+                    </div>
+                  ) : null}
                   <div className="mt-1 text-[11px] text-neutral-500">
                     {commitmentPayment.provider ? `${commitmentPayment.provider} · ` : ""}
                     {commitmentPayment.reference || "No reference"}
@@ -1067,21 +1118,30 @@ export default function HandoffDetailPage() {
                   <div className="mt-1 text-sm text-neutral-200">
                     Due:{" "}
                     <span className="font-semibold">
-                      {fmtMoney(paySummary.total_due, paySummary.currency)}
+                      {fmtMoney(
+                        Number(paySummary.display_total_due ?? paySummary.total_due ?? 0),
+                        paySummary.display_currency_code || paySummary.currency
+                      )}
                     </span>{" "}
                     · Paid:{" "}
                     <span className="font-semibold">
-                      {fmtMoney(paySummary.total_paid, paySummary.currency)}
+                      {fmtMoney(
+                        Number(paySummary.display_total_paid ?? paySummary.total_paid ?? 0),
+                        paySummary.display_currency_code || paySummary.currency
+                      )}
                     </span>{" "}
                     · Balance:{" "}
                     <span
                       className={
-                        paySummary.balance <= 0
+                        Number(paySummary.display_balance ?? paySummary.balance) <= 0
                           ? "font-semibold text-emerald-200"
                           : "font-semibold text-amber-200"
                       }
                     >
-                      {fmtMoney(paySummary.balance, paySummary.currency)}
+                      {fmtMoney(
+                        Number(paySummary.display_balance ?? paySummary.balance ?? 0),
+                        paySummary.display_currency_code || paySummary.currency
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1107,7 +1167,20 @@ export default function HandoffDetailPage() {
                             {fmt(p.paid_at)}
                           </td>
                           <td className="px-3 py-3 text-neutral-200 whitespace-nowrap">
-                            {p.currency} {Number(String(p.amount || 0)).toLocaleString()}
+                            {fmtMoney(
+                              Number(p.amount_display ?? p.amount ?? 0),
+                              p.display_currency_code || paySummary?.display_currency_code || p.currency
+                            )}
+                            {p.amount_display != null &&
+                            String(p.display_currency_code || "").toUpperCase() !==
+                              String(p.currency || "").toUpperCase() ? (
+                              <div className="text-[11px] text-neutral-500">
+                                Original: {p.currency} {Number(String(p.amount || 0)).toLocaleString()}
+                              </div>
+                            ) : null}
+                            {p.conversion_status === "missing_rate" ? (
+                              <div className="text-[11px] text-amber-300">Missing FX rate</div>
+                            ) : null}
                           </td>
                           <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
                             {purposeLabel(p.purpose)}

@@ -10,6 +10,7 @@ import { selectPaymentProvider } from "@/lib/payment-provider";
 import { ensureQuotePaymentProviderTable, resolveQuotePaymentProvider } from "@/lib/quote-payment-provider";
 import { getQuoteAddonLines } from "@/lib/quote-addons";
 import { resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
+import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
 import QuoteClient from "./QuoteClient";
 
 export const dynamic = "force-dynamic";
@@ -232,6 +233,11 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     }
 
     const addonLines = await getQuoteAddonLines(conn, Number(quote.id || 0));
+    const commitmentPayment = await resolveActualCommitmentPayment(
+      conn,
+      Number(quote.handoff_id || 0),
+      Number(quote.commitment_due_ngn || 0)
+    );
 
     return (
       <Suspense fallback={null}>
@@ -254,7 +260,9 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           defaultShippingTypeId={quote.shipping_type_id}
           depositEnabled={!!quote.deposit_enabled}
           depositPercent={Number(quote.deposit_percent || 0)}
-          commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
+          commitmentDueNgn={Number(commitmentPayment.amountNgn || 0)}
+          commitmentPaidAmount={Number(commitmentPayment.amount || 0)}
+          commitmentPaidCurrency={String(commitmentPayment.currency || "NGN")}
           provider={provider}
           displayCurrencyCode={displayCurrencyCode}
           displayFxRate={displayFxRate}

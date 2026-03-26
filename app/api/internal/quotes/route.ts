@@ -266,6 +266,42 @@ function ensureItems(raw: any) {
   }));
 }
 
+function normalizeCurrency(code: any, fallback = "NGN") {
+  const c = String(code || "").trim().toUpperCase();
+  return c || fallback;
+}
+
+function buildFxLookup(rows: any[]) {
+  const map = new Map<string, number>();
+  for (const row of rows || []) {
+    const base = normalizeCurrency(row?.base_currency_code, "");
+    const quote = normalizeCurrency(row?.quote_currency_code, "");
+    const rate = Number(row?.rate || 0);
+    if (!base || !quote || !Number.isFinite(rate) || rate <= 0) continue;
+    const key = `${base}->${quote}`;
+    if (!map.has(key)) map.set(key, rate);
+  }
+  return map;
+}
+
+function resolveFxRate(lookup: Map<string, number>, from: string, to: string) {
+  const base = normalizeCurrency(from, "NGN");
+  const quote = normalizeCurrency(to, "NGN");
+  if (base === quote) return 1;
+
+  const direct = lookup.get(`${base}->${quote}`);
+  if (direct && direct > 0) return direct;
+
+  const inverse = lookup.get(`${quote}->${base}`);
+  if (inverse && inverse > 0) return 1 / inverse;
+
+  const viaNgnA = lookup.get(`${base}->NGN`) || 0;
+  const viaNgnB = lookup.get(`NGN->${quote}`) || 0;
+  if (viaNgnA > 0 && viaNgnB > 0) return viaNgnA * viaNgnB;
+
+  return 0;
+}
+
 async function hasQuoteNoteColumn(conn: any) {
   const [rows]: any = await conn.query(
     `SELECT 1
@@ -330,7 +366,60 @@ export async function GET(req: Request) {
       rows = list || [];
     }
 
-    return NextResponse.json({ ok: true, items: rows || [] });
+    const displayCurrencies = Array.from(
+      new Set(
+        (rows || [])
+          .map((r: any) => normalizeCurrency(r?.display_currency_code, "NGN"))
+          .filter(Boolean)
+      )
+    );
+    const fxNeeded = Array.from(new Set(["NGN", "RMB", "USD", ...displayCurrencies])).filter(Boolean);
+    const placeholders = fxNeeded.map(() => "?").join(", ");
+    const [fxRows]: any = await conn.query(
+      `SELECT base_currency_code, quote_currency_code, rate
+       FROM linescout_fx_rates
+       WHERE base_currency_code IN (${placeholders})
+          OR quote_currency_code IN (${placeholders})
+       ORDER BY effective_at DESC, id DESC`,
+      [...fxNeeded, ...fxNeeded]
+    );
+    const fxLookup = buildFxLookup(fxRows || []);
+
+    const enriched = (rows || []).map((q: any) => {
+      const displayCurrency = normalizeCurrency(q?.display_currency_code, "NGN");
+      const ngnToDisplay = resolveFxRate(fxLookup, "NGN", displayCurrency);
+      const rmbToDisplay = resolveFxRate(fxLookup, "RMB", displayCurrency);
+      const usdToDisplay = resolveFxRate(fxLookup, "USD", displayCurrency);
+
+      const productDisplay = Number(q?.total_product_rmb || 0) * (rmbToDisplay || 0);
+      const shippingDisplay = Number(q?.total_shipping_usd || 0) * (usdToDisplay || 0);
+      const markupDisplay = Number(q?.total_markup_ngn || 0) * (ngnToDisplay || 0);
+      const addonsDisplay = Number(q?.total_addons_ngn || 0) * (ngnToDisplay || 0);
+      const vatDisplay = Number(q?.total_vat_ngn || 0) * (ngnToDisplay || 0);
+
+      const componentTotalDisplay =
+        productDisplay + shippingDisplay + markupDisplay + addonsDisplay + vatDisplay;
+      const ngnConvertedTotalDisplay = Number(q?.total_due_ngn || 0) * (ngnToDisplay || 0);
+      const canComputeComponentTotal =
+        rmbToDisplay > 0 && usdToDisplay > 0 && ngnToDisplay > 0 && Number.isFinite(componentTotalDisplay);
+      const totalDueDisplay = canComputeComponentTotal ? componentTotalDisplay : null;
+      const totalDueDisplayDiff =
+        totalDueDisplay == null ? null : totalDueDisplay - ngnConvertedTotalDisplay;
+
+      return {
+        ...q,
+        display_currency_code: displayCurrency,
+        total_due_display: totalDueDisplay == null ? null : Number(totalDueDisplay.toFixed(2)),
+        total_due_display_from_ngn: Number(ngnConvertedTotalDisplay.toFixed(2)),
+        total_due_display_diff:
+          totalDueDisplay == null || totalDueDisplayDiff == null
+            ? null
+            : Number(totalDueDisplayDiff.toFixed(2)),
+        total_due_display_status: canComputeComponentTotal ? "component_fx" : "missing_fx",
+      };
+    });
+
+    return NextResponse.json({ ok: true, items: enriched });
   } finally {
     conn.release();
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,70 @@ function pickItems(raw: any) {
     }
   }
   return [];
+}
+
+function normalizeCurrency(code: any, fallback = "NGN") {
+  const c = String(code || "").trim().toUpperCase();
+  return c || fallback;
+}
+
+function buildFxLookup(rows: any[]) {
+  const map = new Map<string, number>();
+  for (const row of rows || []) {
+    const base = normalizeCurrency(row?.base_currency_code, "");
+    const quote = normalizeCurrency(row?.quote_currency_code, "");
+    const rate = Number(row?.rate || 0);
+    if (!base || !quote || !Number.isFinite(rate) || rate <= 0) continue;
+    const key = `${base}->${quote}`;
+    if (!map.has(key)) {
+      map.set(key, rate);
+    }
+  }
+  return map;
+}
+
+function resolveFxRate(lookup: Map<string, number>, from: string, to: string) {
+  const base = normalizeCurrency(from, "NGN");
+  const quote = normalizeCurrency(to, "NGN");
+  if (base === quote) return 1;
+
+  const direct = lookup.get(`${base}->${quote}`);
+  if (direct && direct > 0) return direct;
+
+  const inverse = lookup.get(`${quote}->${base}`);
+  if (inverse && inverse > 0) return 1 / inverse;
+
+  const viaNgnA = lookup.get(`${base}->NGN`) || 0;
+  const viaNgnB = lookup.get(`NGN->${quote}`) || 0;
+  if (viaNgnA > 0 && viaNgnB > 0) return viaNgnA * viaNgnB;
+
+  const viaNgnInvA = lookup.get(`NGN->${base}`) || 0;
+  const viaNgnInvB = lookup.get(`${quote}->NGN`) || 0;
+  if (viaNgnInvA > 0 && viaNgnInvB > 0) return (1 / viaNgnInvA) * (1 / viaNgnInvB);
+
+  return 0;
+}
+
+function convertToDisplay(
+  amount: number,
+  fromCurrency: string,
+  displayCurrency: string,
+  lookup: Map<string, number>
+) {
+  const from = normalizeCurrency(fromCurrency, "NGN");
+  const to = normalizeCurrency(displayCurrency, "NGN");
+  const value = Number(amount || 0);
+  if (!Number.isFinite(value)) {
+    return { amount: null as number | null, rate: 0, status: "invalid_amount" as const };
+  }
+  if (from === to) {
+    return { amount: Number(value.toFixed(2)), rate: 1, status: "ok" as const };
+  }
+  const rate = resolveFxRate(lookup, from, to);
+  if (!rate || rate <= 0) {
+    return { amount: null as number | null, rate: 0, status: "missing_rate" as const };
+  }
+  return { amount: Number((value * rate).toFixed(2)), rate, status: "ok" as const };
 }
 
 // Fire-and-forget: never block saving payments (admin notify)
@@ -196,6 +261,8 @@ export async function GET(req: Request) {
          q.total_shipping_ngn,
          q.total_markup_ngn,
          q.commitment_due_ngn,
+         q.total_addons_ngn,
+         q.total_vat_ngn,
          q.total_product_rmb,
          q.total_shipping_usd,
          q.display_currency_code,
@@ -222,70 +289,93 @@ export async function GET(req: Request) {
     const displayCurrencyCode =
       String(latestQuote?.display_currency_code || handoffDisplayCurrency || "NGN").trim().toUpperCase() || "NGN";
 
+    const allCurrencies = new Set<string>(["NGN", "RMB", "USD", displayCurrencyCode]);
+    for (const p of payRows || []) {
+      allCurrencies.add(normalizeCurrency(p?.currency, "NGN"));
+    }
+    if (commitmentPayment) {
+      allCurrencies.add(normalizeCurrency(commitmentPayment.currency, "NGN"));
+    }
+    const currencyList = Array.from(allCurrencies.values()).filter(Boolean);
+    const placeholders = currencyList.map(() => "?").join(", ");
+    const [allFxRows]: any = await conn.query(
+      `SELECT base_currency_code, quote_currency_code, rate
+       FROM linescout_fx_rates
+       WHERE base_currency_code IN (${placeholders})
+          OR quote_currency_code IN (${placeholders})
+       ORDER BY effective_at DESC, id DESC`,
+      [...currencyList, ...currencyList]
+    );
+    const fxLookup = buildFxLookup(allFxRows || []);
+
     let ngnToDisplay = 1;
     let rmbToDisplay = 0;
     let usdToDisplay = 0;
     let rmbToNgn = 0;
     if (displayCurrencyCode !== "NGN") {
-      const [fxRows]: any = await conn.query(
-        `SELECT base_currency_code, quote_currency_code, rate
-         FROM linescout_fx_rates
-         WHERE (base_currency_code = 'NGN' AND quote_currency_code = ?)
-            OR (base_currency_code = 'RMB' AND quote_currency_code = ?)
-            OR (base_currency_code = 'USD' AND quote_currency_code = ?)
-            OR (base_currency_code = 'RMB' AND quote_currency_code = 'NGN')
-         ORDER BY effective_at DESC, id DESC`,
-        [displayCurrencyCode, displayCurrencyCode, displayCurrencyCode]
-      );
-      const pick = (base: string, quote: string) => {
-        const row = fxRows.find(
-          (r: any) =>
-            String(r.base_currency_code || "").toUpperCase() === base &&
-            String(r.quote_currency_code || "").toUpperCase() === quote
-        );
-        const rate = Number(row?.rate || 0);
-        return Number.isFinite(rate) && rate > 0 ? rate : 0;
-      };
-      ngnToDisplay = pick("NGN", displayCurrencyCode);
-      rmbToDisplay = pick("RMB", displayCurrencyCode);
-      usdToDisplay = pick("USD", displayCurrencyCode);
-      rmbToNgn = pick("RMB", "NGN");
+      ngnToDisplay = resolveFxRate(fxLookup, "NGN", displayCurrencyCode);
+      rmbToDisplay = resolveFxRate(fxLookup, "RMB", displayCurrencyCode);
+      usdToDisplay = resolveFxRate(fxLookup, "USD", displayCurrencyCode);
+      rmbToNgn = resolveFxRate(fxLookup, "RMB", "NGN");
     } else {
       ngnToDisplay = 1;
       rmbToDisplay = 0;
       usdToDisplay = 0;
-      const [fxRows]: any = await conn.query(
-        `SELECT rate
-         FROM linescout_fx_rates
-         WHERE base_currency_code = 'RMB' AND quote_currency_code = 'NGN'
-         ORDER BY effective_at DESC, id DESC
-         LIMIT 1`
-      );
-      const rate = Number(fxRows?.[0]?.rate || 0);
-      rmbToNgn = Number.isFinite(rate) && rate > 0 ? rate : 0;
+      rmbToNgn = resolveFxRate(fxLookup, "RMB", "NGN");
     }
     let quoteSummary: any = null;
     if (latestQuote) {
+      const actualCommitment = await resolveActualCommitmentPayment(
+        conn,
+        handoffId,
+        Number(latestQuote.commitment_due_ngn || 0)
+      );
+      const commitmentDueNgn = Number(actualCommitment.amountNgn || 0);
+      const commitmentDisplay =
+        normalizeCurrency(actualCommitment.currency, "NGN") === displayCurrencyCode
+          ? Number(actualCommitment.amount || 0)
+          : commitmentDueNgn * ngnToDisplay;
+      const addonsNgn = Number(latestQuote.total_addons_ngn || 0);
+      const vatNgn = Number(latestQuote.total_vat_ngn || 0);
       const productDue = Math.max(
         0,
         Math.round(
           Number(latestQuote.total_product_ngn || 0) +
             Number(latestQuote.total_markup_ngn || 0) -
-            Number(latestQuote.commitment_due_ngn || 0)
+            commitmentDueNgn
         )
       );
       const shippingDue = Math.max(0, Math.round(Number(latestQuote.total_shipping_ngn || 0)));
 
-      const [quotePaidRows]: any = await conn.query(
-        `SELECT
-           COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS product_paid,
-           COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN amount ELSE 0 END), 0) AS shipping_paid
+      const [quotePaymentRows]: any = await conn.query(
+        `SELECT purpose, status, COALESCE(base_amount, amount) AS paid_amount, currency
          FROM linescout_quote_payments
-         WHERE quote_id = ?`,
+         WHERE quote_id = ?
+           AND status = 'paid'`,
         [latestQuote.id]
       );
-      const productPaid = Number(quotePaidRows?.[0]?.product_paid || 0);
-      const shippingPaid = Number(quotePaidRows?.[0]?.shipping_paid || 0);
+      let productPaid = 0;
+      let shippingPaid = 0;
+      let productPaidDisplay = 0;
+      let shippingPaidDisplay = 0;
+      for (const row of quotePaymentRows || []) {
+        const amount = Number(row?.paid_amount || 0);
+        const cur = normalizeCurrency(row?.currency, "NGN");
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+
+        const toNgn = resolveFxRate(fxLookup, cur, "NGN");
+        const asNgn = toNgn > 0 ? amount * toNgn : 0;
+        const asDisplay = convertToDisplay(amount, cur, displayCurrencyCode, fxLookup);
+        const disp = asDisplay.amount != null ? asDisplay.amount : 0;
+
+        if (String(row?.purpose || "") === "shipping_payment") {
+          shippingPaid += asNgn;
+          shippingPaidDisplay += disp;
+        } else {
+          productPaid += asNgn;
+          productPaidDisplay += disp;
+        }
+      }
 
       const items = pickItems(latestQuote.items_json);
       const firstItem = items?.[0] || null;
@@ -294,26 +384,33 @@ export async function GET(req: Request) {
         return Number.isFinite(q) ? sum + q : sum;
       }, 0);
 
-      let productWithMarkupDisplay = 0;
+      let productTotalDisplay = 0;
       let shippingDisplay = 0;
       let productDueDisplay = 0;
       let shippingDueDisplay = 0;
       if (displayCurrencyCode === "NGN") {
-        productWithMarkupDisplay = Number(latestQuote.total_product_ngn || 0) + Number(latestQuote.total_markup_ngn || 0);
+        productTotalDisplay =
+          Number(latestQuote.total_product_ngn || 0) +
+          Number(latestQuote.total_markup_ngn || 0) +
+          addonsNgn +
+          vatNgn;
         shippingDisplay = Number(latestQuote.total_shipping_ngn || 0);
-        productDueDisplay = productDue;
+        productDueDisplay = Math.max(0, productTotalDisplay - commitmentDisplay);
         shippingDueDisplay = shippingDue;
       } else if (rmbToDisplay > 0 && usdToDisplay > 0 && rmbToNgn > 0) {
-        const productWithMarkupRmb =
-          Number(latestQuote.total_product_rmb || 0) + Number(latestQuote.total_markup_ngn || 0) / rmbToNgn;
-        productWithMarkupDisplay = productWithMarkupRmb * rmbToDisplay;
+        const baseProductDisplay = Number(latestQuote.total_product_rmb || 0) * rmbToDisplay;
+        const markupDisplay = Number(latestQuote.total_markup_ngn || 0) * ngnToDisplay;
+        const addonsVatDisplay = (addonsNgn + vatNgn) * ngnToDisplay;
+        productTotalDisplay = baseProductDisplay + markupDisplay + addonsVatDisplay;
         shippingDisplay = Number(latestQuote.total_shipping_usd || 0) * usdToDisplay;
-        productDueDisplay = Math.max(0, productWithMarkupDisplay - Number(latestQuote.commitment_due_ngn || 0) * ngnToDisplay);
+        productDueDisplay = Math.max(0, productTotalDisplay - commitmentDisplay);
         shippingDueDisplay = shippingDisplay;
       }
 
-      const productPaidDisplay = displayCurrencyCode === "NGN" ? productPaid : productPaid * ngnToDisplay;
-      const shippingPaidDisplay = displayCurrencyCode === "NGN" ? shippingPaid : shippingPaid * ngnToDisplay;
+      productPaid = Number(productPaid.toFixed(2));
+      shippingPaid = Number(shippingPaid.toFixed(2));
+      productPaidDisplay = Number(productPaidDisplay.toFixed(2));
+      shippingPaidDisplay = Number(shippingPaidDisplay.toFixed(2));
 
       quoteSummary = {
         quote_id: Number(latestQuote.id),
@@ -322,6 +419,8 @@ export async function GET(req: Request) {
         total_quantity: totalQuantity,
         shipping_type: latestQuote.shipping_type_name ? String(latestQuote.shipping_type_name) : null,
         product_due: productDue,
+        product_total_display: productTotalDisplay,
+        commitment_discount_display: commitmentDisplay,
         product_paid: productPaid,
         product_balance: Math.max(0, productDue - productPaid),
         shipping_due: shippingDue,
@@ -339,10 +438,74 @@ export async function GET(req: Request) {
 
     const totalPaid = Number(sumRows?.[0]?.total_paid || 0);
     const totalDue = Number(finRows?.[0]?.total_due || 0);
-    const currency = finRows?.[0]?.currency || "NGN";
-    const displayTotalDue = displayCurrencyCode === "NGN" ? totalDue : totalDue * ngnToDisplay;
-    const displayTotalPaid = displayCurrencyCode === "NGN" ? totalPaid : totalPaid * ngnToDisplay;
-    const displayBalance = displayTotalDue - displayTotalPaid;
+    const currency = normalizeCurrency(finRows?.[0]?.currency, "NGN");
+
+    const dueDisplayConv = convertToDisplay(totalDue, currency, displayCurrencyCode, fxLookup);
+    const displayTotalDue =
+      dueDisplayConv.amount != null
+        ? dueDisplayConv.amount
+        : displayCurrencyCode === "NGN"
+        ? totalDue
+        : totalDue * (ngnToDisplay || 0);
+
+    let displayTotalPaid = 0;
+    const paymentsDisplay = (payRows || []).map((p: any) => {
+      const originalCurrency = normalizeCurrency(p?.currency, "NGN");
+      const originalAmount = Number(p?.amount || 0);
+      const converted = convertToDisplay(originalAmount, originalCurrency, displayCurrencyCode, fxLookup);
+      if (converted.amount != null) displayTotalPaid += converted.amount;
+      return {
+        ...p,
+        amount: originalAmount,
+        currency: originalCurrency,
+        display_currency_code: displayCurrencyCode,
+        amount_display: converted.amount,
+        fx_rate_used: converted.rate > 0 ? converted.rate : null,
+        conversion_status: converted.status,
+      };
+    });
+
+    if (commitmentPayment) {
+      const converted = convertToDisplay(
+        Number(commitmentPayment.amount || 0),
+        normalizeCurrency(commitmentPayment.currency, "NGN"),
+        displayCurrencyCode,
+        fxLookup
+      );
+      commitmentPayment = {
+        ...commitmentPayment,
+        display_currency_code: displayCurrencyCode,
+        amount_display: converted.amount,
+        fx_rate_used: converted.rate > 0 ? converted.rate : null,
+        conversion_status: converted.status,
+      };
+    }
+
+    let finalDisplayTotalDue = displayTotalDue;
+    let finalDisplayTotalPaid = displayTotalPaid;
+    let finalDisplayBalance = finalDisplayTotalDue - finalDisplayTotalPaid;
+    let displaySource: "handoff_financials" | "quote_summary" = "handoff_financials";
+
+    if (quoteSummary) {
+      const commitmentPaidDisplay = Number(commitmentPayment?.amount_display ?? 0);
+      const quoteDueDisplay =
+        Number(quoteSummary.product_total_display || 0) + Number(quoteSummary.shipping_due_display || 0);
+      const quotePaidDisplay =
+        Number(quoteSummary.product_paid_display || 0) +
+        Number(quoteSummary.shipping_paid_display || 0) +
+        commitmentPaidDisplay;
+      if (
+        Number.isFinite(quoteDueDisplay) &&
+        Number.isFinite(quotePaidDisplay) &&
+        quoteDueDisplay >= 0 &&
+        quotePaidDisplay >= 0
+      ) {
+        finalDisplayTotalDue = Number(quoteDueDisplay.toFixed(2));
+        finalDisplayTotalPaid = Number(quotePaidDisplay.toFixed(2));
+        finalDisplayBalance = Number(Math.max(0, finalDisplayTotalDue - finalDisplayTotalPaid).toFixed(2));
+        displaySource = "quote_summary";
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -352,13 +515,14 @@ export async function GET(req: Request) {
         total_paid: totalPaid,
         balance: totalDue - totalPaid,
         display_currency_code: displayCurrencyCode,
-        display_total_due: displayTotalDue,
-        display_total_paid: displayTotalPaid,
-        display_balance: displayBalance,
+        display_total_due: finalDisplayTotalDue,
+        display_total_paid: finalDisplayTotalPaid,
+        display_balance: finalDisplayBalance,
+        display_source: displaySource,
       },
       quote_summary: quoteSummary,
       commitment_payment: commitmentPayment,
-      payments: payRows || [],
+      payments: paymentsDisplay,
     });
   } catch (e) {
     console.error("handoff payments GET error", e);

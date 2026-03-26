@@ -45,6 +45,8 @@ type QuoteClientProps = {
   depositEnabled?: boolean;
   depositPercent?: number;
   commitmentDueNgn?: number;
+  commitmentPaidAmount?: number;
+  commitmentPaidCurrency?: string | null;
   provider?: "paystack" | "providus" | "paypal";
   displayCurrencyCode?: string | null;
   displayFxRate?: number | null;
@@ -205,6 +207,8 @@ export default function QuoteClient({
   depositEnabled = false,
   depositPercent = 0,
   commitmentDueNgn = 0,
+  commitmentPaidAmount,
+  commitmentPaidCurrency,
   provider = "paystack",
   displayCurrencyCode,
   displayFxRate,
@@ -579,6 +583,14 @@ export default function QuoteClient({
       : paymentOption === "shipping"
       ? shippingRemainingDisplay
       : productRemainingDisplay;
+  const commitmentDiscountDisplay = useMemo(() => {
+    const paidAmount = Number(commitmentPaidAmount || 0);
+    const paidCurrency = String(commitmentPaidCurrency || "").toUpperCase();
+    if (paidAmount > 0 && paidCurrency && paidCurrency === effectiveDisplayCurrency) {
+      return paidAmount;
+    }
+    return commitmentDueNgn * effectiveDisplayRate;
+  }, [commitmentPaidAmount, commitmentPaidCurrency, effectiveDisplayCurrency, commitmentDueNgn, effectiveDisplayRate]);
   const paypalChargePreview = useMemo(() => {
     if (!isPaypal) return null;
     const base = Number(totalDueDisplay || 0);
@@ -1240,7 +1252,7 @@ export default function QuoteClient({
                   </div>
                   {commitmentDueNgn > 0 ? (
                     <div className="mt-2 text-[11px] text-neutral-500">
-                      Commitment fee discount: {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}
+                      Commitment fee discount: {fmtCurrency(commitmentDiscountDisplay, effectiveDisplayCurrency)}
                     </div>
                   ) : null}
                 </div>
@@ -1344,7 +1356,7 @@ export default function QuoteClient({
                   ) : null}
                   <div className="mt-2 flex items-center justify-between">
                     <span>Commitment fee discount</span>
-                    <span>- {fmtCurrency(commitmentDueNgn * effectiveDisplayRate, effectiveDisplayCurrency)}</span>
+                    <span>- {fmtCurrency(commitmentDiscountDisplay, effectiveDisplayCurrency)}</span>
                   </div>
                   <div className="mt-2 flex items-center justify-between text-neutral-800">
                     <span>Amount due now</span>

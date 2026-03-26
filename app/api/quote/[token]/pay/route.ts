@@ -13,6 +13,7 @@ import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/
 import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults, resolveCountryCurrency } from "@/lib/country-config";
 import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
+import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -255,7 +256,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
     const items = pickItems(quote.items_json);
     const handoffId = Number(quote.handoff_id || 0);
-    const commitmentDue = Math.max(0, num(quote.commitment_due_ngn, 0));
+    const commitmentPayment = await resolveActualCommitmentPayment(
+      conn,
+      handoffId,
+      Math.max(0, num(quote.commitment_due_ngn, 0))
+    );
+    const commitmentDue = Math.max(0, num(commitmentPayment.amountNgn, 0));
     const handoffStatus = String(quote.handoff_status || "").toLowerCase();
     const depositEnabled = !!quote.deposit_enabled;
     const depositPercent = num(quote.deposit_percent, 0);

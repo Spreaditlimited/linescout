@@ -114,7 +114,62 @@ export async function POST(req: Request) {
       ]
     );
 
-    if (!matchRows?.length) {
+    let tx = matchRows?.[0] || null;
+    let settlementId = tx ? String(tx.settlement_id || "").trim() || null : null;
+    let sessionId = tx ? String(tx.session_id || "").trim() || null : null;
+    let paidAmount = tx ? num(row.amount, 0) || num(tx.transaction_amount, 0) || num(tx.settled_amount, 0) : 0;
+    let paidCurrency = tx ? String(tx.currency || row.currency || "NGN") : String(row.currency || "NGN");
+
+    if (!tx) {
+      // Fallback: reconcile from webhook-ingested Providus wallet credits for this user.
+      const [walletMatchRows]: any = await conn.query(
+        `SELECT
+           t.id,
+           COALESCE(NULLIF(TRIM(t.settlement_id), ''), NULLIF(TRIM(t.reference_id), '')) AS settlement_id,
+           t.amount,
+           t.currency,
+           t.created_at
+         FROM linescout_wallet_transactions t
+         JOIN linescout_wallets w ON w.id = t.wallet_id
+         WHERE w.owner_type = 'user'
+           AND w.owner_id = ?
+           AND t.provider = 'providus'
+           AND t.reference_type = 'providus_settlement'
+           AND t.type = 'credit'
+           AND ROUND(COALESCE(t.amount, 0), 2) = ROUND(?, 2)
+           AND (? IS NULL OR t.created_at >= DATE_SUB(?, INTERVAL 30 DAY))
+           AND COALESCE(NULLIF(TRIM(t.settlement_id), ''), NULLIF(TRIM(t.reference_id), '')) IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM linescout_quote_payments qp2
+             WHERE qp2.method = 'providus'
+               AND qp2.status = 'paid'
+               AND qp2.provider_ref = COALESCE(NULLIF(TRIM(t.settlement_id), ''), NULLIF(TRIM(t.reference_id), ''))
+           )
+         ORDER BY t.created_at DESC
+         LIMIT 2`,
+        [userId, quoteAmount, quoteCreatedAt, quoteCreatedAt]
+      );
+
+      if (walletMatchRows?.length === 1) {
+        const wm = walletMatchRows[0];
+        settlementId = String(wm.settlement_id || "").trim() || null;
+        sessionId = null;
+        paidAmount = num(row.amount, 0) || num(wm.amount, 0);
+        paidCurrency = String(wm.currency || row.currency || "NGN");
+        tx = { settlement_id: settlementId, session_id: null };
+      } else if (walletMatchRows?.length > 1) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Multiple matching Providus settlements found. Please contact support to reconcile manually.",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    if (!tx || !settlementId) {
       return NextResponse.json(
         {
           ok: false,
@@ -133,12 +188,6 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-
-    const tx = matchRows[0];
-    const paidAmount = num(row.amount, 0) || num(tx.transaction_amount, 0) || num(tx.settled_amount, 0);
-    const paidCurrency = String(tx.currency || row.currency || "NGN");
-    const settlementId = String(tx.settlement_id || "").trim() || null;
-    const sessionId = String(tx.session_id || "").trim() || null;
 
     await conn.beginTransaction();
     await conn.query(
