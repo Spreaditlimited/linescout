@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
+import { queryProvidusLiveStatus } from "@/lib/providus";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +10,12 @@ export const dynamic = "force-dynamic";
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function amountsMatch(expected: number, a?: number | null, b?: number | null, c?: number | null) {
+  const target = Number(expected || 0);
+  const vals = [a, b, c].filter((v) => Number.isFinite(Number(v))).map((v) => Number(v));
+  return vals.some((v) => Math.abs(v - target) < 0.01);
 }
 
 export async function POST(req: Request) {
@@ -59,66 +66,165 @@ export async function POST(req: Request) {
 
     const quoteAmount = num(row.amount, 0);
     const quoteCreatedAt = row.created_at || null;
-
-    const [matchRows]: any = await conn.query(
-      `SELECT
-         pt.id,
-         pt.settlement_id,
-         pt.session_id,
-         pt.account_number,
-         pt.transaction_amount,
-         pt.settled_amount,
-         pt.fee_amount,
-         pt.currency,
-         pt.tran_date_time,
-         pt.created_at
-       FROM linescout_provider_transactions pt
-       JOIN linescout_virtual_accounts va
-         ON va.provider = 'providus'
-        AND va.account_number = pt.account_number
-       WHERE pt.provider = 'providus'
-         AND va.owner_type = 'user'
-         AND va.owner_id = ?
-         AND (
-           ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2)
-           OR ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2)
-           OR ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2)
-         )
-         AND (? IS NULL OR pt.created_at >= DATE_SUB(?, INTERVAL 30 DAY))
-         AND NOT EXISTS (
-           SELECT 1
-           FROM linescout_quote_payments qp2
-           WHERE qp2.method = 'providus'
-             AND qp2.status = 'paid'
-             AND qp2.provider_ref = pt.settlement_id
-         )
-       ORDER BY
-         CASE
-           WHEN ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2) THEN 1
-           WHEN ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2) THEN 2
-           WHEN ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2) THEN 3
-           ELSE 9
-         END,
-         pt.created_at DESC
-       LIMIT 2`,
-      [
-        userId,
-        quoteAmount,
-        quoteAmount,
-        quoteAmount,
-        quoteCreatedAt,
-        quoteCreatedAt,
-        quoteAmount,
-        quoteAmount,
-        quoteAmount,
-      ]
+    const [acctRows]: any = await conn.query(
+      `SELECT account_number
+       FROM linescout_virtual_accounts
+       WHERE owner_type = 'user'
+         AND owner_id = ?
+         AND provider = 'providus'
+       LIMIT 1`,
+      [userId]
     );
+    const accountNumber = String(acctRows?.[0]?.account_number || "").trim();
 
-    let tx = matchRows?.[0] || null;
-    let settlementId = tx ? String(tx.settlement_id || "").trim() || null : null;
-    let sessionId = tx ? String(tx.session_id || "").trim() || null : null;
-    let paidAmount = tx ? num(row.amount, 0) || num(tx.transaction_amount, 0) || num(tx.settled_amount, 0) : 0;
-    let paidCurrency = tx ? String(tx.currency || row.currency || "NGN") : String(row.currency || "NGN");
+    let tx: any = null;
+    let settlementId: string | null = null;
+    let sessionId: string | null = null;
+    let paidAmount = 0;
+    let paidCurrency = String(row.currency || "NGN");
+    let livePendingMatch = false;
+    let matchRows: any[] = [];
+
+    if (accountNumber) {
+      const live = await queryProvidusLiveStatus({
+        accountNumber,
+        amount: quoteAmount,
+      });
+
+      if (live.ok) {
+        const liveMatches = (live.transactions || []).filter((t) => {
+          const acctOk = !t.accountNumber || String(t.accountNumber).trim() === accountNumber;
+          const amountOk = amountsMatch(
+            quoteAmount,
+            t.amount,
+            t.settledAmount,
+            (t.settledAmount ?? null) != null && (t.feeAmount ?? null) != null
+              ? Number(t.settledAmount) + Number(t.feeAmount)
+              : null
+          );
+          return acctOk && amountOk;
+        });
+
+        const settledLive = liveMatches.filter((t) => t.status === "settled");
+        const pendingLive = liveMatches.filter((t) => t.status === "pending");
+
+        if (settledLive.length > 1) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "Multiple matching Providus live settlements found. Please contact support to reconcile manually.",
+            },
+            { status: 409 }
+          );
+        }
+
+        if (settledLive.length === 1) {
+          const hit = settledLive[0];
+          settlementId = String(hit.settlementId || "").trim() || null;
+          sessionId = String(hit.sessionId || "").trim() || null;
+          paidAmount = quoteAmount || num(hit.amount, 0) || num(hit.settledAmount, 0);
+          paidCurrency = String(hit.currency || row.currency || "NGN");
+
+          if (settlementId) {
+            const [providerDup]: any = await conn.query(
+              `SELECT id
+               FROM linescout_provider_transactions
+               WHERE provider = 'providus'
+                 AND settlement_id = ?
+               LIMIT 1`,
+              [settlementId]
+            );
+
+            if (!providerDup?.length) {
+              await conn.query(
+                `INSERT INTO linescout_provider_transactions
+                  (provider, settlement_id, session_id, account_number, transaction_amount, settled_amount,
+                   fee_amount, vat_amount, currency, tran_remarks, source_account_number, source_account_name,
+                   source_bank_name, channel_id, tran_date_time, raw_json)
+                 VALUES
+                  ('providus', ?, ?, ?, ?, ?, ?, 0, ?, '', '', '', '', '', '', ?)`,
+                [
+                  settlementId,
+                  sessionId,
+                  accountNumber,
+                  num(hit.amount, 0),
+                  num(hit.settledAmount, 0),
+                  num(hit.feeAmount, 0),
+                  paidCurrency || "NGN",
+                  JSON.stringify(hit.raw || {}),
+                ]
+              );
+            }
+          }
+
+          tx = { settlement_id: settlementId, session_id: sessionId };
+        } else if (pendingLive.length) {
+          livePendingMatch = true;
+        }
+      }
+    }
+
+    if (!tx) {
+      const [foundMatchRows]: any = await conn.query(
+        `SELECT
+           pt.id,
+           pt.settlement_id,
+           pt.session_id,
+           pt.account_number,
+           pt.transaction_amount,
+           pt.settled_amount,
+           pt.fee_amount,
+           pt.currency,
+           pt.tran_date_time,
+           pt.created_at
+         FROM linescout_provider_transactions pt
+         JOIN linescout_virtual_accounts va
+           ON va.provider = 'providus'
+          AND va.account_number = pt.account_number
+         WHERE pt.provider = 'providus'
+           AND va.owner_type = 'user'
+           AND va.owner_id = ?
+           AND (
+             ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2)
+             OR ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2)
+             OR ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2)
+           )
+           AND (? IS NULL OR pt.created_at >= DATE_SUB(?, INTERVAL 30 DAY))
+           AND NOT EXISTS (
+             SELECT 1
+             FROM linescout_quote_payments qp2
+             WHERE qp2.method = 'providus'
+               AND qp2.status = 'paid'
+               AND qp2.provider_ref = pt.settlement_id
+           )
+         ORDER BY
+           CASE
+             WHEN ROUND(COALESCE(pt.transaction_amount, 0), 2) = ROUND(?, 2) THEN 1
+             WHEN ROUND(COALESCE(pt.settled_amount, 0) + COALESCE(pt.fee_amount, 0), 2) = ROUND(?, 2) THEN 2
+             WHEN ROUND(COALESCE(pt.settled_amount, 0), 2) = ROUND(?, 2) THEN 3
+             ELSE 9
+           END,
+           pt.created_at DESC
+         LIMIT 2`,
+        [
+          userId,
+          quoteAmount,
+          quoteAmount,
+          quoteAmount,
+          quoteCreatedAt,
+          quoteCreatedAt,
+          quoteAmount,
+          quoteAmount,
+          quoteAmount,
+        ]
+      );
+      matchRows = foundMatchRows || [];
+      tx = matchRows?.[0] || null;
+      settlementId = tx ? String(tx.settlement_id || "").trim() || null : null;
+      sessionId = tx ? String(tx.session_id || "").trim() || null : null;
+      paidAmount = tx ? num(row.amount, 0) || num(tx.transaction_amount, 0) || num(tx.settled_amount, 0) : 0;
+      paidCurrency = tx ? String(tx.currency || row.currency || "NGN") : String(row.currency || "NGN");
+    }
 
     if (!tx) {
       // Fallback: reconcile from webhook-ingested Providus wallet credits for this user.
@@ -170,10 +276,69 @@ export async function POST(req: Request) {
     }
 
     if (!tx || !settlementId) {
+      const [pendingDupRows]: any = await conn.query(
+        `SELECT COUNT(*) AS total
+         FROM linescout_quote_payments
+         WHERE quote_id = ?
+           AND user_id = ?
+           AND method = 'providus'
+           AND status = 'pending'
+           AND ROUND(COALESCE(amount, 0), 2) = ROUND(?, 2)`,
+        [Number(row.quote_id || 0), userId, quoteAmount]
+      );
+      const pendingDupCount = Number(pendingDupRows?.[0]?.total || 0);
+
+      let hasRecentProvidusTrace = false;
+      if (accountNumber) {
+        const [recentProviderRows]: any = await conn.query(
+          `SELECT id
+           FROM linescout_provider_transactions
+           WHERE provider = 'providus'
+             AND account_number = ?
+             AND (? IS NULL OR created_at >= DATE_SUB(?, INTERVAL 30 DAY))
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [accountNumber, quoteCreatedAt, quoteCreatedAt]
+        );
+        hasRecentProvidusTrace = Array.isArray(recentProviderRows) && recentProviderRows.length > 0;
+      }
+
+      if (pendingDupCount > 1) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Multiple pending Providus payment intents exist for this quote amount. Payment is likely still pending at bank settlement.",
+          },
+          { status: 409 }
+        );
+      }
+
+      if (livePendingMatch) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Providus live status shows this transfer is still pending settlement.",
+          },
+          { status: 409 }
+        );
+      }
+
+      if (hasRecentProvidusTrace) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Providus transaction trace found, but no settled match for this payment yet. Transaction appears pending at bank.",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         {
           ok: false,
-          error: "No matching Providus settlement found yet for this pending quote payment.",
+          error: "No settled Providus transaction found yet for this pending quote payment. Transaction may still be pending at bank.",
         },
         { status: 404 }
       );

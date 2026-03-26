@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getProvidusConfig, providusSignature } from "@/lib/providus";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,72 @@ function responsePayload(sessionId: string, responseCode: "00" | "01" | "02" | "
     responseMessage: message,
     responseCode,
   };
+}
+
+function eventKey(params: { settlementId: string; sessionId: string; accountNumber: string; body: any }) {
+  if (params.settlementId) return `providus:settlement:${params.settlementId}`;
+  if (params.sessionId && params.accountNumber) return `providus:session:${params.sessionId}:acct:${params.accountNumber}`;
+  const raw = JSON.stringify(params.body || {});
+  const digest = crypto.createHash("sha1").update(raw).digest("hex");
+  return `providus:raw:${digest}`;
+}
+
+async function ensureProvidusWebhookInboxTable(conn: any) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS linescout_providus_webhook_inbox (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      event_key VARCHAR(191) NOT NULL,
+      settlement_id VARCHAR(64) NULL,
+      session_id VARCHAR(64) NULL,
+      account_number VARCHAR(20) NULL,
+      payload_json JSON NULL,
+      signature_valid TINYINT(1) NOT NULL DEFAULT 0,
+      process_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      process_note VARCHAR(255) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uniq_event_key (event_key),
+      KEY idx_settlement (settlement_id),
+      KEY idx_status (process_status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function upsertProvidusWebhookInbox(
+  conn: any,
+  input: {
+    eventKey: string;
+    settlementId: string;
+    sessionId: string;
+    accountNumber: string;
+    body: any;
+    signatureValid: boolean;
+    processStatus?: string;
+    processNote?: string;
+  }
+) {
+  await conn.query(
+    `INSERT INTO linescout_providus_webhook_inbox
+      (event_key, settlement_id, session_id, account_number, payload_json, signature_valid, process_status, process_note)
+     VALUES (?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       payload_json = VALUES(payload_json),
+       signature_valid = VALUES(signature_valid),
+       process_status = COALESCE(VALUES(process_status), process_status),
+       process_note = COALESCE(VALUES(process_note), process_note),
+       updated_at = NOW()`,
+    [
+      input.eventKey,
+      input.settlementId,
+      input.sessionId,
+      input.accountNumber,
+      JSON.stringify(input.body || {}),
+      input.signatureValid ? 1 : 0,
+      input.processStatus || null,
+      input.processNote || null,
+    ]
+  );
 }
 
 async function sendEmail(opts: { to: string; subject: string; text: string; html: string }) {
@@ -56,6 +123,7 @@ export async function POST(req: Request) {
   const sessionId = String(body?.sessionId || "").trim();
   const settlementId = String(body?.settlementId || "").trim();
   const accountNumber = String(body?.accountNumber || "").trim();
+  const key = eventKey({ settlementId, sessionId, accountNumber, body });
 
   const headerSig = String(req.headers.get("x-auth-signature") || "").trim();
   const expectedSig = providusSignature(cfg.clientId, cfg.clientSecret);
@@ -63,12 +131,33 @@ export async function POST(req: Request) {
     return NextResponse.json(responsePayload(sessionId, "02", "rejected transaction"), { status: 200 });
   }
 
-  if (!settlementId || !accountNumber) {
-    return NextResponse.json(responsePayload(sessionId, "02", "rejected transaction"), { status: 200 });
-  }
-
   const conn = await db.getConnection();
   try {
+    await ensureProvidusWebhookInboxTable(conn);
+    await upsertProvidusWebhookInbox(conn, {
+      eventKey: key,
+      settlementId,
+      sessionId,
+      accountNumber,
+      body,
+      signatureValid: true,
+      processStatus: "pending",
+    });
+
+    if (!settlementId || !accountNumber) {
+      await upsertProvidusWebhookInbox(conn, {
+        eventKey: key,
+        settlementId,
+        sessionId,
+        accountNumber,
+        body,
+        signatureValid: true,
+        processStatus: "ignored",
+        processNote: "missing_settlement_or_account",
+      });
+      return NextResponse.json(responsePayload(sessionId, "00", "accepted"), { status: 200 });
+    }
+
     // Ensure account exists
     const [acctRows]: any = await conn.query(
       `SELECT id, owner_type, owner_id
@@ -79,7 +168,17 @@ export async function POST(req: Request) {
     );
 
     if (!acctRows?.length) {
-      return NextResponse.json(responsePayload(sessionId, "02", "rejected transaction"), { status: 200 });
+      await upsertProvidusWebhookInbox(conn, {
+        eventKey: key,
+        settlementId,
+        sessionId,
+        accountNumber,
+        body,
+        signatureValid: true,
+        processStatus: "ignored",
+        processNote: "account_not_found",
+      });
+      return NextResponse.json(responsePayload(sessionId, "00", "accepted"), { status: 200 });
     }
 
     // Duplicate check by settlement_id
@@ -90,7 +189,17 @@ export async function POST(req: Request) {
       [settlementId]
     );
     if (dupRows?.length) {
-      return NextResponse.json(responsePayload(sessionId, "01", "duplicate transaction"), { status: 200 });
+      await upsertProvidusWebhookInbox(conn, {
+        eventKey: key,
+        settlementId,
+        sessionId,
+        accountNumber,
+        body,
+        signatureValid: true,
+        processStatus: "processed",
+        processNote: "duplicate_settlement_id",
+      });
+      return NextResponse.json(responsePayload(sessionId, "00", "success"), { status: 200 });
     }
 
     const amount = Number(body?.transactionAmount || 0);
@@ -190,19 +299,21 @@ export async function POST(req: Request) {
              OR ABS(amount - ?) < 0.01
              OR ABS(amount - (? + ?)) < 0.01
            )
-         ORDER BY id ASC`,
+         ORDER BY created_at DESC, id DESC
+         LIMIT 1`,
         [acct.owner_id, amount, settledAmount, settledAmount, feeAmount]
       );
 
-      if (pendingRows?.length === 1) {
+      if (pendingRows?.length) {
         const qp = pendingRows[0];
         const quoteAmount = Number(qp.amount || 0) || creditAmount;
         await conn.query(
           `UPDATE linescout_quote_payments
            SET status = 'paid',
-               paid_at = NOW()
+               paid_at = NOW(),
+               provider_ref = COALESCE(?, provider_ref)
            WHERE id = ?`,
-          [qp.id]
+          [settlementId, qp.id]
         );
 
         const purpose = String(qp.purpose || "");
@@ -276,15 +387,36 @@ export async function POST(req: Request) {
     }
 
     await conn.commit();
+    await upsertProvidusWebhookInbox(conn, {
+      eventKey: key,
+      settlementId,
+      sessionId,
+      accountNumber,
+      body,
+      signatureValid: true,
+      processStatus: "processed",
+      processNote: "processed_ok",
+    });
 
     return NextResponse.json(responsePayload(sessionId, "00", "success"), { status: 200 });
   } catch (e: any) {
     try {
       await conn.rollback();
     } catch {}
-    return NextResponse.json(responsePayload(String(body?.sessionId || ""), "03", "System Failure, Retry"), {
-      status: 200,
-    });
+    try {
+      await ensureProvidusWebhookInboxTable(conn);
+      await upsertProvidusWebhookInbox(conn, {
+        eventKey: key,
+        settlementId,
+        sessionId,
+        accountNumber,
+        body,
+        signatureValid: true,
+        processStatus: "failed",
+        processNote: String(e?.message || "processing_failed").slice(0, 250),
+      });
+    } catch {}
+    return NextResponse.json(responsePayload(String(body?.sessionId || ""), "00", "accepted"), { status: 200 });
   } finally {
     conn.release();
   }
