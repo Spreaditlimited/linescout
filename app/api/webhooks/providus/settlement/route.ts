@@ -125,13 +125,43 @@ export async function POST(req: Request) {
   const accountNumber = String(body?.accountNumber || "").trim();
   const key = eventKey({ settlementId, sessionId, accountNumber, body });
 
+  const conn = await db.getConnection();
+  try {
+    await ensureProvidusWebhookInboxTable(conn);
+  } catch {}
+
   const headerSig = String(req.headers.get("x-auth-signature") || "").trim();
   const expectedSig = providusSignature(cfg.clientId, cfg.clientSecret);
+  try {
+    await upsertProvidusWebhookInbox(conn, {
+      eventKey: key,
+      settlementId,
+      sessionId,
+      accountNumber,
+      body,
+      signatureValid: !!headerSig && headerSig.toLowerCase() === expectedSig.toLowerCase(),
+      processStatus: "pending",
+      processNote: "received",
+    });
+  } catch {}
+
   if (!headerSig || headerSig.toLowerCase() !== expectedSig.toLowerCase()) {
+    try {
+      await upsertProvidusWebhookInbox(conn, {
+        eventKey: key,
+        settlementId,
+        sessionId,
+        accountNumber,
+        body,
+        signatureValid: false,
+        processStatus: "ignored",
+        processNote: "invalid_signature",
+      });
+    } catch {}
+    conn.release();
     return NextResponse.json(responsePayload(sessionId, "02", "rejected transaction"), { status: 200 });
   }
 
-  const conn = await db.getConnection();
   try {
     await ensureProvidusWebhookInboxTable(conn);
     await upsertProvidusWebhookInbox(conn, {
