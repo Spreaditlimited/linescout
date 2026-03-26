@@ -131,7 +131,9 @@ export async function POST(req: Request) {
   } catch {}
 
   const headerSig = String(req.headers.get("x-auth-signature") || "").trim();
-  const expectedSig = providusSignature(cfg.clientId, cfg.clientSecret);
+  const expectedSigPrimary = providusSignature(cfg.clientId, cfg.clientSecret);
+  const signatureOk =
+    !!headerSig && headerSig.toLowerCase() === expectedSigPrimary.toLowerCase();
   try {
     await upsertProvidusWebhookInbox(conn, {
       eventKey: key,
@@ -139,13 +141,13 @@ export async function POST(req: Request) {
       sessionId,
       accountNumber,
       body,
-      signatureValid: !!headerSig && headerSig.toLowerCase() === expectedSig.toLowerCase(),
+      signatureValid: signatureOk,
       processStatus: "pending",
       processNote: "received",
     });
   } catch {}
 
-  if (!headerSig || headerSig.toLowerCase() !== expectedSig.toLowerCase()) {
+  if (!signatureOk) {
     try {
       await upsertProvidusWebhookInbox(conn, {
         eventKey: key,

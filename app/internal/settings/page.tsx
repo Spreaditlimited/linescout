@@ -411,6 +411,11 @@ export default function InternalSettingsPage() {
   const [reconcileLoading, setReconcileLoading] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
   const [reconcileErr, setReconcileErr] = useState<string | null>(null);
+  const [providusRepushSettlementId, setProvidusRepushSettlementId] = useState("");
+  const [providusRepushSessionId, setProvidusRepushSessionId] = useState("");
+  const [providusRepushLoading, setProvidusRepushLoading] = useState(false);
+  const [providusRepushMsg, setProvidusRepushMsg] = useState<string | null>(null);
+  const [providusRepushErr, setProvidusRepushErr] = useState<string | null>(null);
 
   // Optional financials + initial payment
   const [totalDue, setTotalDue] = useState<string>("");
@@ -1783,6 +1788,43 @@ export default function InternalSettingsPage() {
       setReconcileMsg(null);
     } finally {
       setReconcileLoading(false);
+    }
+  }
+
+  async function triggerProvidusRepush() {
+    const settlement_id = providusRepushSettlementId.trim();
+    const session_id = providusRepushSessionId.trim();
+    if (!settlement_id && !session_id) {
+      setProvidusRepushErr("Provide settlement ID or session ID.");
+      setProvidusRepushMsg(null);
+      return;
+    }
+
+    setProvidusRepushLoading(true);
+    setProvidusRepushMsg(null);
+    setProvidusRepushErr(null);
+    try {
+      const res = await fetch("/api/internal/admin/providus/repush", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settlement_id, session_id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Providus repush failed");
+      }
+      const responseCode = String(data?.provider_response?.responseCode || "").trim();
+      const responseMessage = String(data?.provider_response?.responseMessage || "").trim();
+      setProvidusRepushMsg(
+        [responseCode ? `Providus response code: ${responseCode}.` : null, responseMessage || "Repush successful."]
+          .filter(Boolean)
+          .join(" ")
+      );
+    } catch (e: any) {
+      setProvidusRepushErr(e?.message || "Providus repush failed");
+      setProvidusRepushMsg(null);
+    } finally {
+      setProvidusRepushLoading(false);
     }
   }
 
@@ -3546,6 +3588,66 @@ export default function InternalSettingsPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+        <h3 className="text-base font-semibold text-neutral-100">Providus repush</h3>
+        <p className="mt-1 text-sm text-neutral-400">
+          Manually trigger Providus transaction notification re-push using settlement ID and/or session ID.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="text-xs font-medium text-neutral-300">Settlement ID</label>
+            <input
+              value={providusRepushSettlementId}
+              onChange={(e) => setProvidusRepushSettlementId(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="e.g. 202260326016731900002"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-neutral-300">Session ID</label>
+            <input
+              value={providusRepushSessionId}
+              onChange={(e) => setProvidusRepushSessionId(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="e.g. 000014260326163041240356617792"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={triggerProvidusRepush}
+            disabled={providusRepushLoading || (!providusRepushSettlementId.trim() && !providusRepushSessionId.trim())}
+            className="rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white disabled:opacity-60"
+          >
+            {providusRepushLoading ? "Sending..." : "Trigger re-push"}
+          </button>
+          <button
+            onClick={() => {
+              setProvidusRepushSettlementId("");
+              setProvidusRepushSessionId("");
+              setProvidusRepushMsg(null);
+              setProvidusRepushErr(null);
+            }}
+            className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+          >
+            Reset
+          </button>
+        </div>
+
+        {providusRepushMsg ? (
+          <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+            {providusRepushMsg}
+          </div>
+        ) : null}
+        {providusRepushErr ? (
+          <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+            {providusRepushErr}
+          </div>
+        ) : null}
       </div>
 
       {/* Manual onboarding card */}
