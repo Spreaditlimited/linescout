@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
-import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
+import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -325,11 +325,11 @@ export async function GET(req: Request) {
     }
     let quoteSummary: any = null;
     if (latestQuote) {
-      const actualCommitment = await resolveActualCommitmentPayment(
-        conn,
+      const actualCommitment = await resolveCommitmentPaymentForQuote(conn, {
         handoffId,
-        Number(latestQuote.commitment_due_ngn || 0)
-      );
+        quoteId: Number(latestQuote.id || 0),
+        fallbackNgn: Number(latestQuote.commitment_due_ngn || 0),
+      });
       const commitmentDueNgn = Number(actualCommitment.amountNgn || 0);
       const commitmentDisplay =
         normalizeCurrency(actualCommitment.currency, "NGN") === displayCurrencyCode

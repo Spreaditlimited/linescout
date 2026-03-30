@@ -55,6 +55,11 @@ type QuoteRow = {
   shipping_type_id?: number | null;
   shipping_rate_usd: number;
   shipping_rate_unit: "per_kg" | "per_cbm";
+  shipping_payment_enabled?: number | null;
+  shipping_actual_weight_kg?: number | null;
+  shipping_actual_cbm?: number | null;
+  shipping_actual_rate_usd?: number | null;
+  shipping_actual_rate_unit?: "per_kg" | "per_cbm" | null;
   markup_percent: number;
   agent_percent: number;
   agent_commitment_percent: number;
@@ -109,6 +114,11 @@ export default function QuoteEditPage() {
   const [shippingRateUsd, setShippingRateUsd] = useState("0");
   const [shippingRateUnit, setShippingRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [shippingTypeId, setShippingTypeId] = useState<number | null>(null);
+  const [shippingPaymentEnabled, setShippingPaymentEnabled] = useState(false);
+  const [shippingActualWeightKg, setShippingActualWeightKg] = useState("");
+  const [shippingActualCbm, setShippingActualCbm] = useState("");
+  const [shippingActualRateUsd, setShippingActualRateUsd] = useState("");
+  const [shippingActualRateUnit, setShippingActualRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [markupPercent, setMarkupPercent] = useState("20");
   const [agentPercent, setAgentPercent] = useState("5");
   const [agentCommitPercent, setAgentCommitPercent] = useState("40");
@@ -156,6 +166,25 @@ export default function QuoteEditPage() {
         setShippingRateUsd(String(q.shipping_rate_usd ?? 0));
         setShippingRateUnit(q.shipping_rate_unit || "per_kg");
         setShippingTypeId(q.shipping_type_id ?? null);
+        setShippingPaymentEnabled(Boolean(q.shipping_payment_enabled));
+        setShippingActualWeightKg(
+          Number.isFinite(Number(q.shipping_actual_weight_kg)) && Number(q.shipping_actual_weight_kg || 0) > 0
+            ? String(q.shipping_actual_weight_kg)
+            : ""
+        );
+        setShippingActualCbm(
+          Number.isFinite(Number(q.shipping_actual_cbm)) && Number(q.shipping_actual_cbm || 0) > 0
+            ? String(q.shipping_actual_cbm)
+            : ""
+        );
+        setShippingActualRateUsd(
+          Number.isFinite(Number(q.shipping_actual_rate_usd)) && Number(q.shipping_actual_rate_usd || 0) > 0
+            ? String(q.shipping_actual_rate_usd)
+            : ""
+        );
+        setShippingActualRateUnit(
+          q.shipping_actual_rate_unit === "per_cbm" ? "per_cbm" : q.shipping_actual_rate_unit === "per_kg" ? "per_kg" : q.shipping_rate_unit || "per_kg"
+        );
         setMarkupPercent(String(q.markup_percent ?? settings.markup_percent ?? 0));
         setAgentPercent(String(q.agent_percent ?? settings.agent_percent ?? 0));
         setAgentCommitPercent(String(q.agent_commitment_percent ?? settings.agent_commitment_percent ?? 0));
@@ -195,9 +224,16 @@ export default function QuoteEditPage() {
     const exRmb = Number(exchangeRmb || 0);
     const exUsd = Number(exchangeUsd || 0);
     const shipRate = Number(shippingRateUsd || 0);
-    const shipUnits = shippingRateUnit === "per_cbm" ? totalCbm : totalWeight;
+    const actualRate = Number(shippingActualRateUsd || 0);
+    const effectiveRate = actualRate > 0 ? actualRate : shipRate;
+    const effectiveUnit = shippingActualRateUnit === "per_cbm" ? "per_cbm" : "per_kg";
+    const actualWeight = Number(shippingActualWeightKg || 0);
+    const actualCbm = Number(shippingActualCbm || 0);
+    const effectiveWeight = actualWeight > 0 ? actualWeight : totalWeight;
+    const effectiveCbm = actualCbm > 0 ? actualCbm : totalCbm;
+    const shipUnits = effectiveUnit === "per_cbm" ? effectiveCbm : effectiveWeight;
     const baseProductNgn = totalProductRmb * exRmb;
-    const shippingUsd = shipUnits * shipRate;
+    const shippingUsd = shipUnits * effectiveRate;
     const shippingNgn = shippingUsd * exUsd;
     const markupPercentNum = Number(markupPercent || 0);
     const agentPercent = Math.min(10, Math.max(0, markupPercentNum));
@@ -212,6 +248,10 @@ export default function QuoteEditPage() {
       totalProductRmb,
       totalWeight,
       totalCbm,
+      shippingEffectiveWeight: effectiveWeight,
+      shippingEffectiveCbm: effectiveCbm,
+      shippingEffectiveRate: effectiveRate,
+      shippingEffectiveUnit: effectiveUnit,
       productNgn,
       shippingUsd,
       shippingNgn,
@@ -220,7 +260,20 @@ export default function QuoteEditPage() {
       vat,
       totalDue: productNgn + shippingNgn + markup + addons + vat,
     };
-  }, [items, exchangeRmb, exchangeUsd, shippingRateUsd, shippingRateUnit, markupPercent, totalAddonsNgn, totalVatNgn]);
+  }, [
+    items,
+    exchangeRmb,
+    exchangeUsd,
+    shippingRateUsd,
+    shippingRateUnit,
+    shippingActualWeightKg,
+    shippingActualCbm,
+    shippingActualRateUsd,
+    shippingActualRateUnit,
+    markupPercent,
+    totalAddonsNgn,
+    totalVatNgn,
+  ]);
 
   const availableShippingRates = useMemo(() => {
     if (!countryId) return shippingRates;
@@ -241,6 +294,11 @@ export default function QuoteEditPage() {
           exchange_rate_usd: Number(exchangeUsd),
           shipping_rate_usd: Number(shippingRateUsd),
           shipping_rate_unit: shippingRateUnit,
+          shipping_payment_enabled: shippingPaymentEnabled,
+          shipping_actual_weight_kg: shippingActualWeightKg.trim() ? Number(shippingActualWeightKg) : null,
+          shipping_actual_cbm: shippingActualCbm.trim() ? Number(shippingActualCbm) : null,
+          shipping_actual_rate_usd: shippingActualRateUsd.trim() ? Number(shippingActualRateUsd) : null,
+          shipping_actual_rate_unit: shippingActualRateUnit,
           shipping_type_id: shippingTypeId,
           markup_percent: Number(markupPercent),
           agent_percent: Number(agentPercent),
@@ -416,6 +474,50 @@ export default function QuoteEditPage() {
           <input value={shippingRateUsd} onChange={(e) => setShippingRateUsd(e.target.value)} className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600" placeholder="Shipping rate USD" />
           <input value={shippingRateUnit} onChange={(e) => setShippingRateUnit(e.target.value === "per_cbm" ? "per_cbm" : "per_kg")} className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600" placeholder="per_kg or per_cbm" />
         </div>
+        <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-950 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold text-neutral-200">Enable shipping payment</div>
+              <div className="text-[11px] text-neutral-500">
+                Admin-controlled. Customer can pay shipping only when this is enabled.
+              </div>
+            </div>
+            <button
+              onClick={() => setShippingPaymentEnabled((v) => !v)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                shippingPaymentEnabled ? "border-emerald-300 bg-emerald-300/10 text-emerald-200" : "border-neutral-700 text-neutral-300"
+              }`}
+            >
+              {shippingPaymentEnabled ? "On" : "Off"}
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <input
+              value={shippingActualWeightKg}
+              onChange={(e) => setShippingActualWeightKg(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="Actual weight KG"
+            />
+            <input
+              value={shippingActualCbm}
+              onChange={(e) => setShippingActualCbm(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="Actual CBM"
+            />
+            <input
+              value={shippingActualRateUsd}
+              onChange={(e) => setShippingActualRateUsd(e.target.value)}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="Actual shipping rate USD"
+            />
+            <input
+              value={shippingActualRateUnit}
+              onChange={(e) => setShippingActualRateUnit(e.target.value === "per_cbm" ? "per_cbm" : "per_kg")}
+              className="w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+              placeholder="Actual rate unit (per_kg/per_cbm)"
+            />
+          </div>
+        </div>
         <div className="mt-2 text-xs text-neutral-500">
           NGN equivalent: {fmtNaira(totals.shippingNgn)}
         </div>
@@ -473,6 +575,9 @@ export default function QuoteEditPage() {
         </div>
         <div className="text-xs text-neutral-400">Weight (KG): {totals.totalWeight.toFixed(2)}</div>
         <div className="text-xs text-neutral-400">CBM: {totals.totalCbm.toFixed(2)}</div>
+        <div className="text-xs text-neutral-400">
+          Shipping basis: {totals.shippingEffectiveUnit === "per_cbm" ? `${totals.shippingEffectiveCbm.toFixed(3)} CBM` : `${totals.shippingEffectiveWeight.toFixed(3)} KG`} × {fmtUsd(totals.shippingEffectiveRate)} / {totals.shippingEffectiveUnit}
+        </div>
         <div className="text-xs text-neutral-400">Service charge (NGN): {fmtNaira(totals.markup)}</div>
         {totals.addons > 0 ? (
           <div className="text-xs text-neutral-400">Additional costs (NGN): {fmtNaira(totals.addons)}</div>

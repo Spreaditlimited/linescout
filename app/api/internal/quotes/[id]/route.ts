@@ -10,6 +10,7 @@ import {
   backfillHandoffDefaults,
 } from "@/lib/country-config";
 import { ensureQuoteAddonTables, normalizeRouteType } from "@/lib/quote-addons";
+import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -148,7 +149,13 @@ function computeTotals(
   shippingUnit: string,
   agentPercent: number,
   lineScoutMarginPercent: number,
-  serviceChargePercent: number
+  serviceChargePercent: number,
+  shippingOverride?: {
+    weightKg?: number | null;
+    cbm?: number | null;
+    rateUsd?: number | null;
+    rateUnit?: string | null;
+  }
 ) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
@@ -170,8 +177,28 @@ function computeTotals(
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
   const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
-  const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
-  const totalShippingUsd = shippingUnits * shippingRateUsd;
+  const effectiveRateUsd =
+    Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
+      ? Number(shippingOverride?.rateUsd)
+      : shippingRateUsd;
+  const effectiveUnit =
+    String(shippingOverride?.rateUnit || "").toLowerCase() === "per_cbm"
+      ? "per_cbm"
+      : String(shippingOverride?.rateUnit || "").toLowerCase() === "per_kg"
+      ? "per_kg"
+      : shippingUnit === "per_cbm"
+      ? "per_cbm"
+      : "per_kg";
+  const effectiveWeightKg =
+    Number.isFinite(Number(shippingOverride?.weightKg)) && Number(shippingOverride?.weightKg) > 0
+      ? Number(shippingOverride?.weightKg)
+      : totalWeightKg;
+  const effectiveCbm =
+    Number.isFinite(Number(shippingOverride?.cbm)) && Number(shippingOverride?.cbm) > 0
+      ? Number(shippingOverride?.cbm)
+      : totalCbm;
+  const shippingUnits = effectiveUnit === "per_cbm" ? effectiveCbm : effectiveWeightKg;
+  const totalShippingUsd = shippingUnits * effectiveRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
   const safeAgentPercent = Math.max(0, agentPercent);
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
@@ -192,6 +219,10 @@ function computeTotals(
     baseProductNgn,
     totalWeightKg,
     totalCbm,
+    shippingEffectiveWeightKg: effectiveWeightKg,
+    shippingEffectiveCbm: effectiveCbm,
+    shippingEffectiveRateUsd: effectiveRateUsd,
+    shippingEffectiveRateUnit: effectiveUnit,
     totalShippingUsd,
     totalShippingNgn,
     totalMarkupNgn,
@@ -236,6 +267,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     await ensureCountryConfig(conn);
     await ensureQuoteAddonTables(conn);
+    await ensureQuoteShippingControlColumns(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
     await backfillHandoffDefaults(conn);
@@ -303,6 +335,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const deposit_percent = deposit_enabled ? deposit_percent_raw : 0;
   const payment_purpose = String(body?.payment_purpose || "full_product_payment");
   const currency = String(body?.currency || "NGN");
+  const shipping_payment_enabled = body?.shipping_payment_enabled === true || body?.shipping_payment_enabled === 1;
+  const shipping_actual_weight_kg_raw = num(body?.shipping_actual_weight_kg, 0);
+  const shipping_actual_cbm_raw = num(body?.shipping_actual_cbm, 0);
+  const shipping_actual_rate_usd_raw = num(body?.shipping_actual_rate_usd, 0);
+  const shipping_actual_rate_unit_raw = String(body?.shipping_actual_rate_unit || "").trim().toLowerCase();
+  const shipping_actual_rate_unit =
+    shipping_actual_rate_unit_raw === "per_cbm"
+      ? "per_cbm"
+      : shipping_actual_rate_unit_raw === "per_kg"
+      ? "per_kg"
+      : null;
+  const shipping_actual_weight_kg = shipping_actual_weight_kg_raw > 0 ? shipping_actual_weight_kg_raw : null;
+  const shipping_actual_cbm = shipping_actual_cbm_raw > 0 ? shipping_actual_cbm_raw : null;
+  const shipping_actual_rate_usd = shipping_actual_rate_usd_raw > 0 ? shipping_actual_rate_usd_raw : null;
   const includeAgentNote = Object.prototype.hasOwnProperty.call(body || {}, "agent_note");
   const agent_note = String(body?.agent_note || "").trim();
 
@@ -315,10 +361,32 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (deposit_enabled && (deposit_percent < 1 || deposit_percent > 100)) {
     return NextResponse.json({ ok: false, error: "Deposit percent must be between 1 and 100" }, { status: 400 });
   }
+  if (shipping_payment_enabled) {
+    if (!shipping_actual_rate_usd || shipping_actual_rate_usd <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "Provide actual shipping rate (USD) before enabling shipping payment." },
+        { status: 400 }
+      );
+    }
+    const unit = shipping_actual_rate_unit || shipping_rate_unit;
+    if (unit === "per_cbm" && (!shipping_actual_cbm || shipping_actual_cbm <= 0)) {
+      return NextResponse.json(
+        { ok: false, error: "Provide actual CBM before enabling shipping payment for per_cbm rate." },
+        { status: 400 }
+      );
+    }
+    if (unit !== "per_cbm" && (!shipping_actual_weight_kg || shipping_actual_weight_kg <= 0)) {
+      return NextResponse.json(
+        { ok: false, error: "Provide actual weight (KG) before enabling shipping payment for per_kg rate." },
+        { status: 400 }
+      );
+    }
+  }
 
   const conn = await db.getConnection();
   try {
     await ensureCountryConfig(conn);
+    await ensureQuoteShippingControlColumns(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
     await backfillHandoffDefaults(conn);
@@ -384,7 +452,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       shipping_rate_unit,
       agent_percent,
       lineScoutMarginPercent,
-      service_charge_percent
+      service_charge_percent,
+      {
+        weightKg: shipping_actual_weight_kg,
+        cbm: shipping_actual_cbm,
+        rateUsd: shipping_actual_rate_usd,
+        rateUnit: shipping_actual_rate_unit,
+      }
     );
     const [extraRows]: any = await conn.query(
       `SELECT total_addons_ngn, vat_rate_percent
@@ -409,6 +483,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       shipping_type_id,
       shipping_rate_usd,
       shipping_rate_unit,
+      shipping_payment_enabled ? 1 : 0,
+      shipping_actual_weight_kg,
+      shipping_actual_cbm,
+      shipping_actual_rate_usd,
+      shipping_actual_rate_unit,
       markup_percent,
       agent_percent,
       agent_commitment_percent,
@@ -442,6 +521,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
            shipping_type_id = ?,
            shipping_rate_usd = ?,
            shipping_rate_unit = ?,
+           shipping_payment_enabled = ?,
+           shipping_actual_weight_kg = ?,
+           shipping_actual_cbm = ?,
+           shipping_actual_rate_usd = ?,
+           shipping_actual_rate_unit = ?,
            markup_percent = ?,
            agent_percent = ?,
            agent_commitment_percent = ?,

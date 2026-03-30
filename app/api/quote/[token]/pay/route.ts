@@ -13,7 +13,8 @@ import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/
 import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults, resolveCountryCurrency } from "@/lib/country-config";
 import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
-import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
+import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
+import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,13 @@ function computeTotals(
   shippingUnit: string,
   agentPercent: number,
   lineScoutMarginPercent: number,
-  serviceChargePercent: number
+  serviceChargePercent: number,
+  shippingOverride?: {
+    weightKg?: number | null;
+    cbm?: number | null;
+    rateUsd?: number | null;
+    rateUnit?: string | null;
+  }
 ) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
@@ -53,8 +60,28 @@ function computeTotals(
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
   const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
-  const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
-  const totalShippingUsd = shippingUnits * shippingRateUsd;
+  const effectiveRateUsd =
+    Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
+      ? Number(shippingOverride?.rateUsd)
+      : shippingRateUsd;
+  const effectiveUnit =
+    String(shippingOverride?.rateUnit || "").toLowerCase() === "per_cbm"
+      ? "per_cbm"
+      : String(shippingOverride?.rateUnit || "").toLowerCase() === "per_kg"
+      ? "per_kg"
+      : shippingUnit === "per_cbm"
+      ? "per_cbm"
+      : "per_kg";
+  const effectiveWeightKg =
+    Number.isFinite(Number(shippingOverride?.weightKg)) && Number(shippingOverride?.weightKg) > 0
+      ? Number(shippingOverride?.weightKg)
+      : totalWeightKg;
+  const effectiveCbm =
+    Number.isFinite(Number(shippingOverride?.cbm)) && Number(shippingOverride?.cbm) > 0
+      ? Number(shippingOverride?.cbm)
+      : totalCbm;
+  const shippingUnits = effectiveUnit === "per_cbm" ? effectiveCbm : effectiveWeightKg;
+  const totalShippingUsd = shippingUnits * effectiveRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
   const safeAgentPercent = Math.max(0, agentPercent);
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
@@ -238,6 +265,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     await ensureQuotePaymentFeeColumns(conn);
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
+    await ensureQuoteShippingControlColumns(conn);
     const [rows]: any = await conn.query(
       `SELECT q.*, h.email, h.customer_name, h.status AS handoff_status, c.iso2 AS country_iso2
        FROM linescout_quotes q
@@ -256,13 +284,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const displayCurrencyCode = String(resolved?.display_currency_code || "NGN").toUpperCase();
     const items = pickItems(quote.items_json);
     const handoffId = Number(quote.handoff_id || 0);
-    const commitmentPayment = await resolveActualCommitmentPayment(
-      conn,
+    const commitmentPayment = await resolveCommitmentPaymentForQuote(conn, {
       handoffId,
-      Math.max(0, num(quote.commitment_due_ngn, 0))
-    );
+      quoteId: Number(quote.id || 0),
+      fallbackNgn: Math.max(0, num(quote.commitment_due_ngn, 0)),
+    });
     const commitmentDue = Math.max(0, num(commitmentPayment.amountNgn, 0));
-    const handoffStatus = String(quote.handoff_status || "").toLowerCase();
+    const shippingPaymentEnabled = !!quote.shipping_payment_enabled;
     const depositEnabled = !!quote.deposit_enabled;
     const depositPercent = num(quote.deposit_percent, 0);
 
@@ -316,7 +344,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       shippingRateUnit,
       agentPercent,
       lineScoutMarginPercent,
-      serviceChargePercent
+      serviceChargePercent,
+      {
+        weightKg: Number(quote.shipping_actual_weight_kg || 0),
+        cbm: Number(quote.shipping_actual_cbm || 0),
+        rateUsd: Number(quote.shipping_actual_rate_usd || 0),
+        rateUnit: String(quote.shipping_actual_rate_unit || ""),
+      }
     );
 
     let excludedAddonIds: number[] = [];
@@ -406,9 +440,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       }
       required = Math.max(0, depositAmount - productPaid);
     } else if (purpose === "shipping_payment") {
-      if (handoffStatus !== "shipped") {
+      if (!shippingPaymentEnabled) {
         return NextResponse.json(
-          { ok: false, error: "Shipping payment is available only after the project is shipped." },
+          { ok: false, error: "Shipping payment is not enabled yet. Please contact support." },
           { status: 400 }
         );
       }

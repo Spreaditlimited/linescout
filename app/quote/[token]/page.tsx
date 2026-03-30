@@ -10,7 +10,8 @@ import { selectPaymentProvider } from "@/lib/payment-provider";
 import { ensureQuotePaymentProviderTable, resolveQuotePaymentProvider } from "@/lib/quote-payment-provider";
 import { getQuoteAddonLines } from "@/lib/quote-addons";
 import { resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
-import { resolveActualCommitmentPayment } from "@/lib/commitment-fee";
+import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
+import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
 import QuoteClient from "./QuoteClient";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
   try {
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
+    await ensureQuoteShippingControlColumns(conn);
     const [rows]: any = await conn.query(
       `SELECT
          q.*,
@@ -233,11 +235,11 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     }
 
     const addonLines = await getQuoteAddonLines(conn, Number(quote.id || 0));
-    const commitmentPayment = await resolveActualCommitmentPayment(
-      conn,
-      Number(quote.handoff_id || 0),
-      Number(quote.commitment_due_ngn || 0)
-    );
+    const commitmentPayment = await resolveCommitmentPaymentForQuote(conn, {
+      handoffId: Number(quote.handoff_id || 0),
+      quoteId: Number(quote.id || 0),
+      fallbackNgn: Number(quote.commitment_due_ngn || 0),
+    });
 
     return (
       <Suspense fallback={null}>
@@ -263,6 +265,11 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           commitmentDueNgn={Number(commitmentPayment.amountNgn || 0)}
           commitmentPaidAmount={Number(commitmentPayment.amount || 0)}
           commitmentPaidCurrency={String(commitmentPayment.currency || "NGN")}
+          shippingPaymentEnabled={!!quote.shipping_payment_enabled}
+          shippingActualWeightKg={Number(quote.shipping_actual_weight_kg || 0)}
+          shippingActualCbm={Number(quote.shipping_actual_cbm || 0)}
+          shippingActualRateUsd={Number(quote.shipping_actual_rate_usd || 0)}
+          shippingActualRateUnit={String(quote.shipping_actual_rate_unit || "")}
           provider={provider}
           displayCurrencyCode={displayCurrencyCode}
           displayFxRate={displayFxRate}

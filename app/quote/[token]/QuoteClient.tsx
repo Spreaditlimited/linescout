@@ -47,6 +47,11 @@ type QuoteClientProps = {
   commitmentDueNgn?: number;
   commitmentPaidAmount?: number;
   commitmentPaidCurrency?: string | null;
+  shippingPaymentEnabled?: boolean;
+  shippingActualWeightKg?: number | null;
+  shippingActualCbm?: number | null;
+  shippingActualRateUsd?: number | null;
+  shippingActualRateUnit?: string | null;
   provider?: "paystack" | "providus" | "paypal";
   displayCurrencyCode?: string | null;
   displayFxRate?: number | null;
@@ -127,7 +132,13 @@ function computeTotals(
   shippingUnit: "per_kg" | "per_cbm",
   agentPercent: number,
   lineScoutMarginPercent: number,
-  serviceChargePercent: number
+  serviceChargePercent: number,
+  shippingOverride?: {
+    weightKg?: number | null;
+    cbm?: number | null;
+    rateUsd?: number | null;
+    rateUnit?: string | null;
+  }
 ) {
   let totalProductRmb = 0;
   let totalLocalTransportRmb = 0;
@@ -149,8 +160,28 @@ function computeTotals(
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
   const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
-  const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
-  const totalShippingUsd = shippingUnits * shippingRateUsd;
+  const effectiveRateUsd =
+    Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
+      ? Number(shippingOverride?.rateUsd)
+      : shippingRateUsd;
+  const effectiveUnit =
+    String(shippingOverride?.rateUnit || "").toLowerCase() === "per_cbm"
+      ? "per_cbm"
+      : String(shippingOverride?.rateUnit || "").toLowerCase() === "per_kg"
+      ? "per_kg"
+      : shippingUnit === "per_cbm"
+      ? "per_cbm"
+      : "per_kg";
+  const effectiveWeightKg =
+    Number.isFinite(Number(shippingOverride?.weightKg)) && Number(shippingOverride?.weightKg) > 0
+      ? Number(shippingOverride?.weightKg)
+      : totalWeightKg;
+  const effectiveCbm =
+    Number.isFinite(Number(shippingOverride?.cbm)) && Number(shippingOverride?.cbm) > 0
+      ? Number(shippingOverride?.cbm)
+      : totalCbm;
+  const shippingUnits = effectiveUnit === "per_cbm" ? effectiveCbm : effectiveWeightKg;
+  const totalShippingUsd = shippingUnits * effectiveRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
   const safeAgentPercent = Math.max(0, agentPercent);
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
@@ -174,6 +205,10 @@ function computeTotals(
     baseProductNgn,
     totalWeightKg,
     totalCbm,
+    shippingEffectiveWeightKg: effectiveWeightKg,
+    shippingEffectiveCbm: effectiveCbm,
+    shippingEffectiveRateUsd: effectiveRateUsd,
+    shippingEffectiveRateUnit: effectiveUnit,
     totalShippingUsd,
     totalShippingNgn,
     totalMarkupNgn,
@@ -209,6 +244,11 @@ export default function QuoteClient({
   commitmentDueNgn = 0,
   commitmentPaidAmount,
   commitmentPaidCurrency,
+  shippingPaymentEnabled = false,
+  shippingActualWeightKg,
+  shippingActualCbm,
+  shippingActualRateUsd,
+  shippingActualRateUnit,
   provider = "paystack",
   displayCurrencyCode,
   displayFxRate,
@@ -281,7 +321,6 @@ export default function QuoteClient({
     shipping_paid: 0,
   });
   const [payments, setPayments] = useState<QuotePayment[]>([]);
-  const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [addonSelection, setAddonSelection] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -320,11 +359,6 @@ export default function QuoteClient({
           shipping_paid: Number(json.totals?.shipping_paid || 0),
         });
         setPayments((json.payments || []) as QuotePayment[]);
-        setHandoffStatus(
-          typeof json.handoff_status === "string" && json.handoff_status.trim()
-            ? json.handoff_status.trim().toLowerCase()
-            : null
-        );
       }
     } catch {}
   };
@@ -434,9 +468,27 @@ export default function QuoteClient({
       unit,
       agentPercent,
       lineScoutMarginPercent,
-      serviceChargePercent
+      serviceChargePercent,
+      {
+        weightKg: shippingActualWeightKg,
+        cbm: shippingActualCbm,
+        rateUsd: shippingActualRateUsd,
+        rateUnit: shippingActualRateUnit,
+      }
     );
-  }, [items, exchangeRmb, exchangeUsd, agentPercent, lineScoutMarginPercent, serviceChargePercent, selectedRate]);
+  }, [
+    items,
+    exchangeRmb,
+    exchangeUsd,
+    agentPercent,
+    lineScoutMarginPercent,
+    serviceChargePercent,
+    selectedRate,
+    shippingActualWeightKg,
+    shippingActualCbm,
+    shippingActualRateUsd,
+    shippingActualRateUnit,
+  ]);
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
 
@@ -613,7 +665,7 @@ export default function QuoteClient({
     ? hasShippingRemaining
     : (effectiveDisplayCurrency === "NGN"
         ? productPaidTotalNgn >= productTargetNgn
-        : productPaidTotalDisplay >= productTargetDisplay) && handoffStatus === "shipped";
+        : productPaidTotalDisplay >= productTargetDisplay) && !!shippingPaymentEnabled;
   const canPayDeposit =
     !shippingOnly &&
     depositEnabled &&
@@ -1273,7 +1325,7 @@ export default function QuoteClient({
                   </div>
                   {!canPayShipping ? (
                     <div className="mt-2 text-[11px] text-neutral-500">
-                      Available after product is fully paid and the project is marked shipped.
+                      Shipping payment will open when admin enables it after confirming actual shipping details.
                     </div>
                   ) : null}
                 </div>
