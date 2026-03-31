@@ -465,7 +465,7 @@ export default function WalletPage() {
 
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-neutral-900">Recent transactions</h2>
-            <div className="mt-4 grid gap-3">
+            <div className="mt-4 grid max-h-96 gap-3 overflow-y-auto pr-1">
               {(data.transactions || []).length === 0 ? (
                 <p className="text-xs text-neutral-600">No transactions yet.</p>
               ) : (

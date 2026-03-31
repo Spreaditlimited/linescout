@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, Ship, Factory, Handshake, ArrowRight, Star, ChevronDown } from "lucide-react";
 import MarketingTopNav from "@/components/MarketingTopNav";
+import Footer from "@/components/Footer";
 import InlineEmailOtpForm from "@/components/marketing/InlineEmailOtpForm";
 
 export const metadata: Metadata = {
@@ -343,6 +344,7 @@ export default function ImportFromChinaPage() {
           </div>
         </section>
       </main>
+      <Footer variant="agent" />
     </div>
   );
 }
