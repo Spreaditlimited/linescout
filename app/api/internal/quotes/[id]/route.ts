@@ -11,6 +11,7 @@ import {
 } from "@/lib/country-config";
 import { ensureQuoteAddonTables, normalizeRouteType } from "@/lib/quote-addons";
 import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
+import { sendNoticeEmail } from "@/lib/notice-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -243,6 +244,12 @@ function ensureItems(raw: any) {
   }));
 }
 
+function firstNameFromFullName(nameRaw: any) {
+  const full = String(nameRaw || "").trim();
+  if (!full) return "Customer";
+  return full.split(/\s+/)[0] || "Customer";
+}
+
 async function hasQuoteNoteColumn(conn: any) {
   const [rows]: any = await conn.query(
     `SELECT 1
@@ -461,7 +468,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     );
     const [extraRows]: any = await conn.query(
-      `SELECT total_addons_ngn, vat_rate_percent
+      `SELECT total_addons_ngn, vat_rate_percent, shipping_payment_enabled, token, handoff_id
        FROM linescout_quotes
        WHERE id = ?
        LIMIT 1`,
@@ -469,6 +476,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     );
     const totalAddonsNgn = num(extraRows?.[0]?.total_addons_ngn, 0);
     const vatRate = num(extraRows?.[0]?.vat_rate_percent, 0);
+    const previousShippingEnabled = !!extraRows?.[0]?.shipping_payment_enabled;
+    const quoteToken = String(extraRows?.[0]?.token || "");
+    const handoffIdFromQuote = Number(extraRows?.[0]?.handoff_id || 0);
     const vatBase = totals.totalMarkupNgn + totalAddonsNgn;
     const vatNgn = Math.max(0, Number(((vatBase * vatRate) / 100).toFixed(2)));
     const totalDueNgn = totals.totalDueNgn + totalAddonsNgn + vatNgn;
@@ -553,13 +563,38 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     );
 
     const [handoffRows]: any = await conn.query(
-      `SELECT handoff_id
-       FROM linescout_quotes
-       WHERE id = ?
+      `SELECT q.handoff_id, h.email, h.customer_name
+       FROM linescout_quotes q
+       LEFT JOIN linescout_handoffs h ON h.id = q.handoff_id
+       WHERE q.id = ?
        LIMIT 1`,
       [quoteId]
     );
-    const handoffId = Number(handoffRows?.[0]?.handoff_id || 0);
+    const handoffId = Number(handoffRows?.[0]?.handoff_id || handoffIdFromQuote || 0);
+    const customerEmail = String(handoffRows?.[0]?.email || "").trim();
+    const customerName = String(handoffRows?.[0]?.customer_name || "").trim();
+
+    if (!previousShippingEnabled && shipping_payment_enabled && customerEmail && quoteToken && handoffId) {
+      const firstName = firstNameFromFullName(customerName);
+      try {
+        await sendNoticeEmail({
+          to: customerEmail,
+          subject: "Your Shipping Quote is Now Ready",
+          title: "Your Shipping Quote is Now Ready",
+          lines: [
+            `Hello ${firstName},`,
+            "",
+            `Your shipping quote with token ${quoteToken} and Project ID ${handoffId} is now ready for payment.`,
+            "",
+            "Sign in to your account on LineScout to view the quote and make payment.",
+            "",
+            "Feel free to reply to this email if you have any questions about this quote.",
+          ],
+        });
+      } catch {
+        // Do not fail quote update if email delivery fails.
+      }
+    }
 
     if (handoffId) {
       // Keep handoff financials in sync with latest estimated landing cost

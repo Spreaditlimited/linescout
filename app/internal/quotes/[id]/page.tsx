@@ -42,7 +42,7 @@ type QuoteItem = {
 type QuoteRow = {
   id: number;
   token: string;
-  items_json: string;
+  items_json: any;
   country_id?: number | null;
   country_name?: string | null;
   country_iso2?: string | null;
@@ -68,6 +68,23 @@ type QuoteRow = {
   total_vat_ngn?: number | null;
   vat_rate_percent?: number | null;
 };
+
+function parseQuoteItems(raw: any): QuoteItem[] {
+  if (Array.isArray(raw)) return raw as QuoteItem[];
+  if (raw && typeof raw === "object" && Array.isArray(raw.items)) {
+    return raw.items as QuoteItem[];
+  }
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw || "[]");
+      if (Array.isArray(parsed)) return parsed as QuoteItem[];
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.items)) {
+        return parsed.items as QuoteItem[];
+      }
+    } catch {}
+  }
+  return [];
+}
 
 type ShippingRate = {
   id: number;
@@ -154,12 +171,7 @@ export default function QuoteEditPage() {
         const rates = Array.isArray(configData.shipping_rates) ? (configData.shipping_rates as ShippingRate[]) : [];
 
         setShippingRates(rates);
-        try {
-          const parsed = JSON.parse(q.items_json || "[]");
-          setItems(Array.isArray(parsed) ? parsed : []);
-        } catch {
-          setItems([]);
-        }
+        setItems(parseQuoteItems(q.items_json));
 
         setExchangeRmb(String(q.exchange_rate_rmb ?? settings.exchange_rate_rmb ?? 0));
         setExchangeUsd(String(q.exchange_rate_usd ?? settings.exchange_rate_usd ?? 0));

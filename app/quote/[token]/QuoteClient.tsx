@@ -635,6 +635,10 @@ export default function QuoteClient({
       : paymentOption === "shipping"
       ? shippingRemainingDisplay
       : productRemainingDisplay;
+  const combinedOutstandingDisplay = Math.max(0, productRemainingDisplay + shippingRemainingDisplay);
+  const shippingBreakdownUnits =
+    totals.shippingEffectiveRateUnit === "per_cbm" ? totals.shippingEffectiveCbm : totals.shippingEffectiveWeightKg;
+  const shippingBreakdownUnitLabel = totals.shippingEffectiveRateUnit === "per_cbm" ? "CBM" : "KG";
   const commitmentDiscountDisplay = useMemo(() => {
     const paidAmount = Number(commitmentPaidAmount || 0);
     const paidCurrency = String(commitmentPaidCurrency || "").toUpperCase();
@@ -672,6 +676,29 @@ export default function QuoteClient({
     (effectiveDisplayCurrency === "NGN" ? depositRemainingNgn > 0 : depositRemainingDisplay > 0);
   const canPayProduct =
     !shippingOnly && (effectiveDisplayCurrency === "NGN" ? productRemainingNgn > 0 : productRemainingDisplay > 0);
+  const productOutstandingNow =
+    effectiveDisplayCurrency === "NGN" ? productRemainingNgn > 0 : productRemainingDisplay > 0;
+
+  useEffect(() => {
+    if (shippingOnly) return;
+    if (paymentOption === "deposit") return;
+    const productSettled =
+      effectiveDisplayCurrency === "NGN"
+        ? productRemainingNgn <= 0
+        : productRemainingDisplay <= 0;
+    if (shippingPaymentEnabled && hasShippingRemaining && canPayShipping && productSettled) {
+      setPaymentOption("shipping");
+    }
+  }, [
+    shippingOnly,
+    paymentOption,
+    shippingPaymentEnabled,
+    hasShippingRemaining,
+    canPayShipping,
+    effectiveDisplayCurrency,
+    productRemainingNgn,
+    productRemainingDisplay,
+  ]);
 
   const progress = {
     deposit: depositEnabled
@@ -711,6 +738,10 @@ export default function QuoteClient({
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
+        if (json?.error_code === "wallet_unavailable") {
+          setPayErr("Wallet temporarily unavailable\nWallet creation is not available now. Try again later.");
+          return;
+        }
         setPayErr(json?.error || `Payment failed (${res.status})`);
         return;
       }
@@ -757,12 +788,14 @@ export default function QuoteClient({
   const handlePayRemaining = () => {
     if (canPayDeposit) {
       setPaymentOption("deposit");
+      setPayMsg(`Checkout will charge ${fmtCurrency(depositRemainingDisplay, effectiveDisplayCurrency)} now.`);
     } else if (canPayProduct) {
       setPaymentOption("product");
+      setPayMsg(`Checkout will charge ${fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)} now.`);
     } else if (canPayShipping) {
       setPaymentOption("shipping");
+      setPayMsg(`Checkout will charge ${fmtCurrency(shippingRemainingDisplay, effectiveDisplayCurrency)} now.`);
     }
-    setPayMsg("Ready to pay the remaining balance.");
   };
 
   const downloadReceipt = async (payment: QuotePayment) => {
@@ -1063,7 +1096,10 @@ export default function QuoteClient({
             <div className="text-right">
               <div className="text-xs text-neutral-600">Total due</div>
               <div className="text-2xl font-semibold text-[var(--agent-blue)]">
-                {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
+                {fmtCurrency(
+                  shippingOnly ? shippingRemainingDisplay : combinedOutstandingDisplay,
+                  effectiveDisplayCurrency
+                )}
               </div>
             </div>
           </div>
@@ -1373,10 +1409,35 @@ export default function QuoteClient({
 
           {shippingOnly ? null : (
             <div className="mt-6 rounded-2xl border border-[rgba(45,52,97,0.14)] bg-white p-4">
-              <div className="text-xs text-neutral-500">Amount due ({effectiveDisplayCurrency})</div>
+              <div className="text-xs text-neutral-500">Amount payable now ({effectiveDisplayCurrency})</div>
               <div className="text-xl font-semibold text-[var(--agent-blue)]">
                 {fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)}
               </div>
+              {!shippingOnly ? (
+                <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
+                  <div className="flex items-center justify-between">
+                    <span>Outstanding product</span>
+                    <span>{fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span>Outstanding shipping</span>
+                    <span>{fmtCurrency(shippingRemainingDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-neutral-800">
+                    <span>Total outstanding</span>
+                    <span>{fmtCurrency(combinedOutstandingDisplay, effectiveDisplayCurrency)}</span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-neutral-500">
+                    Shipping basis: {shippingBreakdownUnits.toFixed(2)} {shippingBreakdownUnitLabel} ×{" "}
+                    {fmtUsd(totals.shippingEffectiveRateUsd)}
+                  </div>
+                  {productOutstandingNow && hasShippingRemaining ? (
+                    <div className="mt-2 text-[11px] text-neutral-500">
+                      Shipping checkout unlocks after product outstanding is cleared.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               {commitmentDueNgn > 0 ? (
                 <p className="mt-2 text-xs text-neutral-500">
                   Commitment fee is applied as an instant discount once product is fully paid.
@@ -1430,7 +1491,7 @@ export default function QuoteClient({
                     <span>{fmtCurrency(paypalChargePreview.fee, effectiveDisplayCurrency)}</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-neutral-800">
-                    <span>Total charged at checkout</span>
+                    <span>Total charged at checkout (payable now)</span>
                     <span>{fmtCurrency(paypalChargePreview.gross, effectiveDisplayCurrency)}</span>
                   </div>
                 </div>
@@ -1557,7 +1618,7 @@ export default function QuoteClient({
               </>
             )}
 
-            {payErr ? <div className="mt-3 text-xs text-red-600">{payErr}</div> : null}
+            {payErr ? <div className="mt-3 whitespace-pre-line text-xs text-red-600">{payErr}</div> : null}
             {payMsg ? <div className="mt-3 text-xs text-[var(--agent-blue)]">{payMsg}</div> : null}
 
             {isProvidus && providusDetails ? (
@@ -1615,7 +1676,9 @@ export default function QuoteClient({
               disabled={paying || totalDueNgn <= 0}
               className="btn btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm disabled:opacity-60"
             >
-              {paying ? "Processing..." : "Pay now"}
+              {paying
+                ? "Processing..."
+                : `Pay now (${fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)})`}
             </button>
           </div>
 

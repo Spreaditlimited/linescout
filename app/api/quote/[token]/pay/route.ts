@@ -418,16 +418,50 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const productTarget = Math.max(0, Math.round(productTotalWithAddons - commitmentDue));
 
     const [paidRows]: any = await conn.query(
-      `SELECT
-         COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS product_paid,
-         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS shipping_paid
+      `SELECT purpose, status, amount, base_amount, currency
        FROM linescout_quote_payments
        WHERE quote_id = ?`,
       [quote.id]
     );
 
-    const productPaid = num(paidRows?.[0]?.product_paid, 0);
-    const shippingPaid = num(paidRows?.[0]?.shipping_paid, 0);
+    let productPaid = 0;
+    let shippingPaid = 0;
+    for (const row of paidRows || []) {
+      if (String(row?.status || "") !== "paid") continue;
+      const purposeRaw = String(row?.purpose || "");
+      const currency = String(row?.currency || "NGN").trim().toUpperCase() || "NGN";
+      const amount = num(row?.amount, 0);
+      const baseAmount = num(row?.base_amount, 0);
+      let amountNgn = 0;
+      if (currency === "NGN") {
+        amountNgn = baseAmount > 0 ? baseAmount : amount;
+      } else if (amount > 0) {
+        const directFx = await getFxRate(conn, currency, "NGN");
+        const inverseFx = await getFxRate(conn, "NGN", currency);
+        const fxToNgn =
+          directFx && directFx > 0 ? directFx : inverseFx && inverseFx > 0 ? 1 / inverseFx : 0;
+        if (!fxToNgn || fxToNgn <= 0) {
+          return NextResponse.json(
+            { ok: false, error: `Missing FX rate for ${currency} to NGN (paid payment).` },
+            { status: 500 }
+          );
+        }
+        amountNgn = amount * fxToNgn;
+      }
+
+      if (purposeRaw === "shipping_payment") {
+        shippingPaid += amountNgn;
+      } else if (
+        purposeRaw === "deposit" ||
+        purposeRaw === "product_balance" ||
+        purposeRaw === "full_product_payment"
+      ) {
+        productPaid += amountNgn;
+      }
+    }
+
+    productPaid = Number(productPaid.toFixed(2));
+    shippingPaid = Number(shippingPaid.toFixed(2));
 
     let required = 0;
     if (purpose === "deposit") {
@@ -691,7 +725,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
       await ensureWallet(conn, ownerUserId);
       const accountName = String(quote.customer_name || payer.split("@")[0] || `User ${ownerUserId}`);
-      const account = await ensureProvidusAccount(conn, ownerUserId, accountName);
+      let account: { account_number: string; account_name: string };
+      try {
+        account = await ensureProvidusAccount(conn, ownerUserId, accountName);
+      } catch {
+        return NextResponse.json(
+          {
+            ok: false,
+            error_code: "wallet_unavailable",
+            error_title: "Wallet temporarily unavailable",
+            error: "Wallet creation is not available now. Try again later.",
+          },
+          { status: 503 }
+        );
+      }
 
       await conn.query(
         `INSERT INTO linescout_quote_payments
