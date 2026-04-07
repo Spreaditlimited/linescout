@@ -177,7 +177,8 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmb * exchangeRmb;
+  const localTransportNgn = totalLocalTransportRmb * exchangeRmb;
   const effectiveRateUsd =
     Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
       ? Number(shippingOverride?.rateUsd)
@@ -205,12 +206,12 @@ function computeTotals(
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
   const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftRmb = (totalProductRmb * safeAgentPercent) / 100;
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
-  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmb * hiddenUpliftPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
   const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
@@ -420,8 +421,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     for (const item of items) {
       const qty = num(item.quantity, 0);
       const unitPrice = num(item.unit_price_rmb, 0);
-      const localTransport = num(item.local_transport_rmb, 0);
-      baseProductNgn += (qty * unitPrice + localTransport) * exchange_rate_rmb;
+      baseProductNgn += qty * unitPrice * exchange_rate_rmb;
     }
 
     const [routeRows]: any = await conn.query(

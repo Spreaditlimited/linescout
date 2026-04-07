@@ -170,7 +170,8 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmb * exchangeRmb;
+  const localTransportNgn = totalLocalTransportRmb * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
@@ -178,14 +179,14 @@ function computeTotals(
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
   const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftRmb = (totalProductRmb * safeAgentPercent) / 100;
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
-  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmb * hiddenUpliftPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
   const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * safeServiceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmb * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {

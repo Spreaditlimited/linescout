@@ -59,7 +59,8 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmb * exchangeRmb;
+  const localTransportNgn = totalLocalTransportRmb * exchangeRmb;
   const effectiveRateUsd =
     Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
       ? Number(shippingOverride?.rateUsd)
@@ -89,7 +90,7 @@ function computeTotals(
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 

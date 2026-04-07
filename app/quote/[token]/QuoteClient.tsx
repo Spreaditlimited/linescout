@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
@@ -159,7 +159,8 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmb * exchangeRmb;
+  const localTransportNgn = totalLocalTransportRmb * exchangeRmb;
   const effectiveRateUsd =
     Number.isFinite(Number(shippingOverride?.rateUsd)) && Number(shippingOverride?.rateUsd) > 0
       ? Number(shippingOverride?.rateUsd)
@@ -187,14 +188,14 @@ function computeTotals(
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
   const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftRmb = (totalProductRmb * safeAgentPercent) / 100;
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
-  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmb * hiddenUpliftPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
   const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
-  const totalMarkupRmb = (totalProductRmbWithLocal * safeServiceChargePercent) / 100;
+  const totalMarkupRmb = (totalProductRmb * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
@@ -275,6 +276,7 @@ export default function QuoteClient({
     ? Number(serviceChargePercentProp)
     : lineScoutMarginPercent;
   const hiddenUpliftPercent = Math.max(0, lineScoutMarginPercent - serviceChargePercent);
+  const itemUpliftMultiplier = 1 + (agentPercent + hiddenUpliftPercent) / 100;
   const searchParams = useSearchParams();
   const showFxDebug = String(searchParams?.get("fxdebug") || "") === "1";
   const initialRateId = useMemo(() => {
@@ -489,6 +491,18 @@ export default function QuoteClient({
     shippingActualRateUsd,
     shippingActualRateUnit,
   ]);
+  const totalLocalTransportRmb = useMemo(() => {
+    if (!Array.isArray(items) || !items.length) return 0;
+    let sum = 0;
+    for (const item of items) {
+      sum += Number(item?.local_transport_rmb || 0);
+    }
+    return sum;
+  }, [items]);
+  const totalLocalTransportDisplay =
+    effectiveDisplayCurrency === "NGN"
+      ? totalLocalTransportRmb * exchangeRmb
+      : totalLocalTransportRmb * productFx;
 
   const unitLabel = selectedRate?.rate_unit === "per_cbm" ? "CBM" : "KG";
 
@@ -622,6 +636,7 @@ export default function QuoteClient({
   const productRemainingDisplay = Math.max(0, productTargetDisplay - productPaidTotalDisplay);
   const shippingTotalDisplay = totals.totalShippingUsd * shippingDisplayRate;
   const shippingRemainingDisplay = Math.max(0, shippingTotalDisplay - shippingPaidDisplay);
+  const localTransportDisplay = totalLocalTransportDisplay;
 
   const totalDueNgn = useMemo(() => {
     if (paymentOption === "deposit") return depositRemainingNgn;
@@ -939,6 +954,9 @@ export default function QuoteClient({
     const summaryRows: Array<[string, string]> = [];
     if (!shippingOnly) {
       summaryRows.push(["Product total", fmtCurrency(baseProductDisplay, effectiveDisplayCurrency)]);
+      if (localTransportDisplay > 0) {
+        summaryRows.push(["Domestic transportation (included)", fmtCurrency(localTransportDisplay, effectiveDisplayCurrency)]);
+      }
       if (serviceChargeDisplay > 0) {
         summaryRows.push(["Service charge", fmtCurrency(serviceChargeDisplay, effectiveDisplayCurrency)]);
       }
@@ -989,12 +1007,34 @@ export default function QuoteClient({
         const unitBase = Number(item.unit_price_rmb || 0);
         const unitWithAgent = unitBase * (1 + upliftPercent / 100);
         const lineTotal = unitWithAgent * qty;
+        const localTransport = Number(item.local_transport_rmb || 0);
+        const localTransportWithAgent = localTransport;
         const name = String(item.product_name || "Item").slice(0, 34);
         cursorY -= 14;
         page.drawText(name, { x: margin, y: cursorY, size: 8, font: fontRegular, color: textColor });
         page.drawText(String(qty), { x: margin + 260, y: cursorY, size: 8, font: fontRegular, color: textColor });
         page.drawText(unitWithAgent.toFixed(2), { x: margin + 310, y: cursorY, size: 8, font: fontRegular, color: textColor });
         page.drawText(lineTotal.toFixed(2), { x: margin + 400, y: cursorY, size: 8, font: fontRegular, color: textColor });
+        if (localTransportWithAgent > 0) {
+          ensureSpace(16);
+          cursorY -= 12;
+          page.drawText(`Domestic transport (${name})`, {
+            x: margin + 8,
+            y: cursorY,
+            size: 8,
+            font: fontRegular,
+            color: muted,
+          });
+          page.drawText("-", { x: margin + 260, y: cursorY, size: 8, font: fontRegular, color: muted });
+          page.drawText("-", { x: margin + 310, y: cursorY, size: 8, font: fontRegular, color: muted });
+          page.drawText(localTransportWithAgent.toFixed(2), {
+            x: margin + 400,
+            y: cursorY,
+            size: 8,
+            font: fontRegular,
+            color: textColor,
+          });
+        }
       }
     }
 
@@ -1155,16 +1195,30 @@ export default function QuoteClient({
                     {items.map((item: any, idx: number) => {
                       const qty = Number(item.quantity || 0);
                       const unitBase = Number(item.unit_price_rmb || 0);
-                      const uplift = 1 + (agentPercent + hiddenUpliftPercent) / 100;
+                      const uplift = itemUpliftMultiplier;
                       const unitWithAgent = unitBase * uplift;
                       const lineTotal = unitWithAgent * qty;
+                      const localTransport = Number(item.local_transport_rmb || 0);
+                      const localTransportWithUplift = localTransport;
                       return (
-                        <tr key={`${idx}`} className="border-t border-[rgba(45,52,97,0.14)]">
-                          <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
-                          <td className="px-4 py-3 text-neutral-600">{qty}</td>
-                          <td className="px-4 py-3 text-neutral-600">{unitWithAgent.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-neutral-800">{lineTotal.toFixed(2)}</td>
-                        </tr>
+                        <Fragment key={`${idx}`}>
+                          <tr className="border-t border-[rgba(45,52,97,0.14)]">
+                            <td className="px-4 py-3 text-neutral-800">{item.product_name}</td>
+                            <td className="px-4 py-3 text-neutral-600">{qty}</td>
+                            <td className="px-4 py-3 text-neutral-600">{unitWithAgent.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-neutral-800">{lineTotal.toFixed(2)}</td>
+                          </tr>
+                          {localTransportWithUplift > 0 ? (
+                            <tr className="border-t border-[rgba(45,52,97,0.08)] bg-[rgba(45,52,97,0.03)]">
+                              <td className="px-4 py-2 text-xs text-neutral-700">
+                                Domestic transportation ({item.product_name || "item"})
+                              </td>
+                              <td className="px-4 py-2 text-xs text-neutral-500">-</td>
+                              <td className="px-4 py-2 text-xs text-neutral-500">-</td>
+                              <td className="px-4 py-2 text-xs text-neutral-800">{localTransportWithUplift.toFixed(2)}</td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1443,12 +1497,20 @@ export default function QuoteClient({
                   Commitment fee is applied as an instant discount once product is fully paid.
                 </p>
               ) : null}
-              {paymentOption === "product" && commitmentDueNgn > 0 ? (
+              {paymentOption === "product" ? (
                 <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3 text-xs text-neutral-600">
                   <div className="flex items-center justify-between">
                     <span>Product total</span>
                     <span>{fmtCurrency(baseProductDisplay, effectiveDisplayCurrency)}</span>
                   </div>
+                  {totalLocalTransportRmb > 0 ? (
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>Domestic transportation (included)</span>
+                      <span>
+                        {fmtCurrency(totalLocalTransportDisplay, effectiveDisplayCurrency)}
+                      </span>
+                    </div>
+                  ) : null}
                   {serviceChargeDisplay > 0 ? (
                     <div className="mt-2 flex items-center justify-between">
                       <span>Service charge</span>
@@ -1467,10 +1529,12 @@ export default function QuoteClient({
                       <span>{fmtCurrency(totalVatDisplay, effectiveDisplayCurrency)}</span>
                     </div>
                   ) : null}
-                  <div className="mt-2 flex items-center justify-between">
-                    <span>Commitment fee discount</span>
-                    <span>- {fmtCurrency(commitmentDiscountDisplay, effectiveDisplayCurrency)}</span>
-                  </div>
+                  {commitmentDueNgn > 0 ? (
+                    <div className="mt-2 flex items-center justify-between">
+                      <span>Commitment fee discount</span>
+                      <span>- {fmtCurrency(commitmentDiscountDisplay, effectiveDisplayCurrency)}</span>
+                    </div>
+                  ) : null}
                   <div className="mt-2 flex items-center justify-between text-neutral-800">
                     <span>Amount due now</span>
                     <span>{fmtCurrency(productRemainingDisplay, effectiveDisplayCurrency)}</span>

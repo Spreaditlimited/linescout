@@ -223,7 +223,8 @@ function computeTotals(
   }
 
   const totalProductRmbWithLocal = totalProductRmb + totalLocalTransportRmb;
-  const baseProductNgn = totalProductRmbWithLocal * exchangeRmb;
+  const baseProductNgn = totalProductRmb * exchangeRmb;
+  const localTransportNgn = totalLocalTransportRmb * exchangeRmb;
   const shippingUnits = shippingUnit === "per_cbm" ? totalCbm : totalWeightKg;
   const totalShippingUsd = shippingUnits * shippingRateUsd;
   const totalShippingNgn = totalShippingUsd * exchangeUsd;
@@ -231,12 +232,12 @@ function computeTotals(
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
   const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
-  const agentUpliftRmb = (totalProductRmbWithLocal * safeAgentPercent) / 100;
+  const agentUpliftRmb = (totalProductRmb * safeAgentPercent) / 100;
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
-  const hiddenUpliftRmb = (totalProductRmbWithLocal * hiddenUpliftPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmb * hiddenUpliftPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
   const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
-  const totalProductNgnWithAgent = baseProductNgn + agentUpliftNgn + hiddenUpliftNgn;
+  const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
@@ -541,8 +542,7 @@ export async function POST(req: Request) {
     for (const item of items) {
       const qty = num(item.quantity, 0);
       const unitPrice = num(item.unit_price_rmb, 0);
-      const localTransport = num(item.local_transport_rmb, 0);
-      baseProductNgn += (qty * unitPrice + localTransport) * exchange_rate_rmb;
+      baseProductNgn += qty * unitPrice * exchange_rate_rmb;
     }
 
     const normalizedRoute = normalizeRouteType(routeType || "");
