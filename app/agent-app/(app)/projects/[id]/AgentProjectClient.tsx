@@ -549,8 +549,8 @@ function ProjectDetailInner() {
           {err}
         </div>
       ) : detail ? (
-        <div className="grid gap-6">
-          <section className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+        <div className="grid min-w-0 gap-6">
+          <section className="min-w-0 rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -665,14 +665,14 @@ function ProjectDetailInner() {
             </div>
 
             {detail.context ? (
-              <div className="mt-5 rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-4 text-sm text-neutral-600">
+              <div className="hide-scrollbar mt-5 w-full max-w-full max-h-56 overflow-auto rounded-2xl border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-4 text-sm text-neutral-600 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                 {detail.context}
               </div>
             ) : null}
           </section>
 
-          <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+          <section className="grid min-w-0 gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="min-w-0 rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <p className="text-sm font-semibold text-neutral-900">Milestones</p>
               <div className="mt-4 space-y-3">
                 {milestones.map((m) => (
@@ -863,7 +863,7 @@ function ProjectDetailInner() {
               ) : null}
             </div>
 
-            <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <div className="min-w-0 rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
               <p className="text-sm font-semibold text-neutral-900">Payments snapshot</p>
               {payments ? (
                 <div className="mt-4 space-y-3 text-sm text-neutral-600">

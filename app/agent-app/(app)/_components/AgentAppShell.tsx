@@ -223,7 +223,7 @@ export default function AgentAppShell({
                 </div>
               </div>
             ) : null}
-            <div className="px-4 pb-6 sm:px-6 sm:pb-8">{children}</div>
+            <div className="min-w-0 overflow-x-hidden px-4 pb-6 sm:px-6 sm:pb-8">{children}</div>
           </div>
         </div>
       </div>
