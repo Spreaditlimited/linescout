@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
+import { ensureQuotePaymentMethodSupportsManual } from "@/lib/quote-payment-fees";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,14 +23,6 @@ function db() {
   });
 }
 
-function toOptionalPositiveInt(v: any): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || Number.isNaN(n)) return null;
-  if (n <= 0) return null;
-  return Math.floor(n);
-}
-
 function pickItems(raw: any) {
   if (Array.isArray(raw)) return raw;
   if (raw && typeof raw === "object" && Array.isArray(raw.items)) return raw.items;
@@ -42,6 +35,16 @@ function pickItems(raw: any) {
     }
   }
   return [];
+}
+
+function parseJsonSafe(raw: any) {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
 }
 
 function normalizeCurrency(code: any, fallback = "NGN") {
@@ -106,6 +109,16 @@ function convertToDisplay(
     return { amount: null as number | null, rate: 0, status: "missing_rate" as const };
   }
   return { amount: Number((value * rate).toFixed(2)), rate, status: "ok" as const };
+}
+
+function toQuotePurpose(
+  handoffPurpose: string
+): "deposit" | "product_balance" | "full_product_payment" | "shipping_payment" {
+  const p = String(handoffPurpose || "").trim().toLowerCase();
+  if (p === "downpayment") return "deposit";
+  if (p === "shipping_payment") return "shipping_payment";
+  if (p === "additional_payment") return "product_balance";
+  return "full_product_payment";
 }
 
 // Fire-and-forget: never block saving payments (admin notify)
@@ -507,6 +520,39 @@ export async function GET(req: Request) {
       }
     }
 
+    let pendingQuotePayments: any[] = [];
+    if (latestQuote?.id) {
+      const [pendingRows]: any = await conn.query(
+        `SELECT id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, currency, provider_ref, processing_fee_meta_json, created_at
+         FROM linescout_quote_payments
+         WHERE quote_id = ?
+           AND status = 'pending'
+         ORDER BY id DESC`,
+        [Number(latestQuote.id)]
+      );
+      pendingQuotePayments = (pendingRows || [])
+        .map((r: any) => {
+          const meta = parseJsonSafe(r.processing_fee_meta_json) || {};
+          const directTransfer =
+            !!meta?.direct_bank_transfer || String(r.provider_ref || "").trim().toUpperCase().startsWith("DBT_");
+          return {
+            id: Number(r.id),
+            purpose: String(r.purpose || ""),
+            method: String(r.method || ""),
+            status: String(r.status || ""),
+            amount: Number(r.amount || 0),
+            base_amount: Number(r.base_amount || r.amount || 0),
+            currency: String(r.currency || "NGN"),
+            provider_ref: r.provider_ref || null,
+            created_at: r.created_at || null,
+            direct_bank_transfer: directTransfer,
+            bank_name: meta?.bank_name ? String(meta.bank_name) : null,
+            customer_confirmed_at: meta?.customer_confirmed_at || null,
+          };
+        })
+        .filter((r: any) => r.direct_bank_transfer);
+    }
+
     return NextResponse.json({
       ok: true,
       financials: {
@@ -522,6 +568,7 @@ export async function GET(req: Request) {
       },
       quote_summary: quoteSummary,
       commitment_payment: commitmentPayment,
+      pending_quote_payments: pendingQuotePayments,
       payments: paymentsDisplay,
     });
   } catch (e) {
@@ -546,7 +593,7 @@ export async function GET(req: Request) {
  *   currency?: "NGN",
  *   note?: string,
  *   paidAt?: ISO string,
- *   bank_id?: number | null   // NEW: optional bank selection (stored on linescout_handoffs.bank_id)
+ *   bank_name?: string
  * }
  */
 export async function POST(req: Request) {
@@ -555,14 +602,6 @@ export async function POST(req: Request) {
   // capture for notification (after commit)
   let notifyPayload: any = null;
   let statusEmailPayload: any = null;
-
-  function toOptionalPositiveInt(v: any): number | null {
-    if (v === null || v === undefined || v === "") return null;
-    const n = Number(v);
-    if (!Number.isFinite(n) || Number.isNaN(n)) return null;
-    if (n <= 0) return null;
-    return Math.floor(n);
-  }
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -574,12 +613,13 @@ export async function POST(req: Request) {
       currency = "NGN",
       note = "",
       paidAt,
-      bank_id, // NEW
+      bank_name,
     } = body;
 
     const hid = Number(handoffId);
     const amt = Number(amount);
-    const bankId = toOptionalPositiveInt(bank_id);
+    const paymentCurrency = normalizeCurrency(currency, "NGN");
+    const bankName = String(bank_name || "").trim();
 
     if (!hid || !amt || amt <= 0) {
       return NextResponse.json(
@@ -598,37 +638,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid payment purpose" }, { status: 400 });
     }
 
-    // Enforce bank selection for recorded payments
-    if (!bankId) {
-      return NextResponse.json({ ok: false, error: "bank_id is required" }, { status: 400 });
+    // Manual admin recording is tracked against quote payments in NGN only.
+    if (paymentCurrency !== "NGN") {
+      return NextResponse.json(
+        { ok: false, error: "Manual payment recording supports NGN only." },
+        { status: 400 }
+      );
+    }
+
+    if (!bankName) {
+      return NextResponse.json({ ok: false, error: "bank_name is required" }, { status: 400 });
     }
 
     conn = await db();
     await conn.beginTransaction();
 
-    // Validate bank exists + active
-    const [bankRows]: any = await conn.query(
-      `SELECT id, name, is_active
-       FROM linescout_banks
-       WHERE id = ?
-       LIMIT 1`,
-      [bankId]
-    );
-
-    if (!bankRows || bankRows.length === 0) {
-      await conn.rollback();
-      return NextResponse.json({ ok: false, error: "Invalid bank_id" }, { status: 400 });
-    }
-    if (!bankRows[0].is_active) {
-      await conn.rollback();
-      return NextResponse.json(
-        { ok: false, error: "Selected bank is inactive" },
-        { status: 400 }
-      );
-    }
-
-    // Persist the selected bank on the handoff (source of truth for the project)
-    await conn.query(`UPDATE linescout_handoffs SET bank_id = ? WHERE id = ?`, [bankId, hid]);
+    await ensureQuotePaymentMethodSupportsManual(conn);
 
     // set or update total due (only when provided)
     if (totalDue !== undefined) {
@@ -654,23 +679,116 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid paidAt" }, { status: 400 });
     }
 
-    // Insert payment (unchanged table)
+    // Resolve latest quote for this handoff. Quote payments are the single source of truth.
+    const [quoteRows]: any = await conn.query(
+      `SELECT
+         q.id,
+         q.shipping_type_id,
+         q.total_product_ngn,
+         q.total_markup_ngn,
+         q.commitment_due_ngn
+       FROM linescout_quotes q
+       WHERE q.handoff_id = ?
+       ORDER BY
+         CASE
+           WHEN EXISTS (
+             SELECT 1
+             FROM linescout_quote_payments p
+             WHERE p.quote_id = q.id
+           ) THEN 0
+           ELSE 1
+         END ASC,
+         q.id DESC
+       LIMIT 1`,
+      [hid]
+    );
+    const latestQuote = quoteRows?.[0] || null;
+    if (!latestQuote?.id) {
+      await conn.rollback();
+      return NextResponse.json(
+        { ok: false, error: "A quote is required before recording manual payments." },
+        { status: 400 }
+      );
+    }
+
+    const quotePurpose = toQuotePurpose(String(purpose || ""));
+    const noteText = String(note || "").trim();
+    const noteWithBank = noteText ? `${noteText} [Bank: ${bankName}]` : `Bank: ${bankName}`;
+
+    await conn.query(
+      `INSERT INTO linescout_quote_payments
+       (quote_id, handoff_id, user_id, purpose, method, status, amount, base_amount, currency, provider_ref, shipping_type_id, created_at, paid_at)
+       VALUES (?, ?, NULL, ?, 'manual', 'paid', ?, ?, ?, ?, ?, NOW(), ?)`,
+      [
+        Number(latestQuote.id),
+        hid,
+        quotePurpose,
+        amt,
+        amt,
+        paymentCurrency,
+        bankName,
+        latestQuote.shipping_type_id ? Number(latestQuote.shipping_type_id) : null,
+        paid_at,
+      ]
+    );
+
+    // Keep legacy handoff payment feed in sync for internal payment history screens.
     await conn.query(
       `INSERT INTO linescout_handoff_payments
        (handoff_id, amount, currency, purpose, note, paid_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [hid, amt, currency, purpose, note, paid_at]
+      [hid, amt, paymentCurrency, purpose, noteWithBank, paid_at]
     );
 
     // Get handoff details for notifications
     const [handoffRows]: any = await conn.query(
-      `SELECT id, token, customer_name, email, whatsapp_number, status, bank_id
+      `SELECT id, token, customer_name, email, whatsapp_number, status
        FROM linescout_handoffs
        WHERE id = ?
        LIMIT 1`,
       [hid]
     );
     const h = handoffRows?.[0] || null;
+    const previousStatus = String(h?.status || "").trim().toLowerCase();
+    let newStatus = previousStatus;
+
+    // Auto-sync status only for the standard milestone edge: manufacturer_found -> paid.
+    if (previousStatus === "manufacturer_found") {
+      const productDue = Math.max(
+        0,
+        Math.round(
+          Number(latestQuote.total_product_ngn || 0) +
+            Number(latestQuote.total_markup_ngn || 0) -
+            Number(latestQuote.commitment_due_ngn || 0)
+        )
+      );
+      const [productPayRows]: any = await conn.query(
+        `SELECT COALESCE(
+            SUM(
+              CASE
+                WHEN purpose IN ('deposit','product_balance','full_product_payment')
+                  AND status = 'paid'
+                THEN COALESCE(base_amount, amount)
+                ELSE 0
+              END
+            ),
+            0
+          ) AS paid
+         FROM linescout_quote_payments
+         WHERE quote_id = ?`,
+        [Number(latestQuote.id)]
+      );
+      const productPaid = Number(productPayRows?.[0]?.paid || 0);
+      if (productDue > 0 && productPaid >= productDue) {
+        await conn.query(
+          `UPDATE linescout_handoffs
+           SET status = 'paid', paid_at = COALESCE(paid_at, NOW())
+           WHERE id = ?`,
+          [hid]
+        );
+        newStatus = "paid";
+      }
+    }
 
     // Compute financial summary
     const [finRows]: any = await conn.query(
@@ -700,18 +818,18 @@ export async function POST(req: Request) {
         amount: amt,
         currency: currencyDb,
         purpose,
-        note: typeof note === "string" && note.trim() ? note.trim() : null,
+        note: noteWithBank || null,
         paid_at: paid_at.toISOString(),
-        bank_id: bankId,
-        bank_name: String(bankRows[0].name || ""),
+        bank_name: bankName,
+        method: "manual",
       },
     };
 
-    // Customer status email payload (payment as an update)
+    // Customer status email payload (payment update; includes milestone change when auto-synced)
     statusEmailPayload = {
       event: "handoff.status_changed",
-      previous_status: h?.status || null,
-      new_status: h?.status || null,
+      previous_status: previousStatus || null,
+      new_status: newStatus || null,
       handoff: {
         token: h?.token || null,
         customer_name: h?.customer_name || null,
@@ -722,11 +840,15 @@ export async function POST(req: Request) {
         payment_amount: amt,
         payment_currency: currencyDb,
         payment_purpose: purpose,
-        payment_method: "manual_record",
+        payment_method: "manual",
         payment_reference: null,
 
-        bank_id: bankId,
-        bank_name: String(bankRows[0].name || ""),
+        bank_name: bankName,
+        payment_channel: "manual",
+        payment_source_table: "linescout_quote_payments",
+        payment_source_method: "manual",
+        auto_status_transition:
+          previousStatus === "manufacturer_found" && newStatus === "paid" ? "manufacturer_found_to_paid" : null,
 
         total_paid: totalPaid,
         total_due: totalDueDb,

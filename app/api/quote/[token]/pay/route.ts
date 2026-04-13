@@ -257,6 +257,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
   const body = await req.json().catch(() => ({}));
   const purpose = String(body?.purpose || "full_product_payment").trim();
   const useWallet = body?.use_wallet === true;
+  const paymentChannel = String(body?.payment_channel || "default").trim().toLowerCase();
+  const directBankAccountId = Number(body?.direct_bank_account_id || 0);
+  const directBankName = String(body?.direct_bank_name || "").trim();
   const shippingTypeId = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
 
   const conn = await db.getConnection();
@@ -643,6 +646,125 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
         ? await selectPaymentProvider(conn, "user", ownerUserId)
         : { provider: "paystack" };
       provider = providerSelection.provider;
+    }
+
+    const directBankTransferRequested = paymentChannel === "direct_bank_transfer";
+    if (directBankTransferRequested) {
+      if (countryIso2 !== "NG") {
+        return NextResponse.json(
+          { ok: false, error: "Direct bank transfer is available for Nigeria payments only." },
+          { status: 400 }
+        );
+      }
+      if (provider !== "paystack" && provider !== "providus") {
+        return NextResponse.json(
+          { ok: false, error: "Direct bank transfer is only available with Paystack or Providus channels." },
+          { status: 400 }
+        );
+      }
+      if (!directBankAccountId) {
+        return NextResponse.json(
+          { ok: false, error: "Please select a bank for direct transfer." },
+          { status: 400 }
+        );
+      }
+
+      const [bankRows]: any = await conn.query(
+        `SELECT
+           a.id,
+           a.account_name,
+           a.account_number,
+           b.name AS bank_name
+         FROM linescout_bank_accounts a
+         JOIN linescout_banks b ON b.id = a.bank_id
+         WHERE a.id = ?
+           AND a.is_active = 1
+           AND b.is_active = 1
+         LIMIT 1`,
+        [directBankAccountId]
+      );
+      const bankRow = bankRows?.[0];
+      if (!bankRow?.id) {
+        return NextResponse.json(
+          { ok: false, error: "Selected bank account is no longer available." },
+          { status: 400 }
+        );
+      }
+
+      const bankName = String(bankRow.bank_name || directBankName || "").trim();
+      const accountName = String(bankRow.account_name || "").trim();
+      const accountNumber = String(bankRow.account_number || "").trim();
+
+      const [existingRows]: any = await conn.query(
+        `SELECT id
+         FROM linescout_quote_payments
+         WHERE quote_id = ?
+           AND purpose = ?
+           AND status = 'pending'
+           AND (
+             LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.direct_bank_transfer')), '')) = 'true'
+             OR UPPER(COALESCE(provider_ref, '')) LIKE 'DBT_%'
+           )
+         ORDER BY id DESC
+         LIMIT 1`,
+        [quote.id, purpose]
+      );
+      const existingPendingId = Number(existingRows?.[0]?.id || 0);
+      if (existingPendingId) {
+        return NextResponse.json({
+          ok: true,
+          provider,
+          payment_id: existingPendingId,
+          pending_verification: true,
+          wallet_applied: walletApplied,
+          remaining,
+          bank_name: bankName,
+          account_name: accountName,
+          account_number: accountNumber,
+          message: "A pending direct transfer already exists for this payment. Await admin verification.",
+        });
+      }
+
+      const providerRef = `DBT_${String(provider).toUpperCase()}_${Date.now()}`;
+      const [ins]: any = await conn.query(
+        `INSERT INTO linescout_quote_payments
+         (quote_id, handoff_id, user_id, purpose, method, status, amount, base_amount, processing_fee_amount, processing_fee_meta_json, currency, provider_ref, shipping_type_id, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, 'NGN', ?, ?, NOW())`,
+        [
+          quote.id,
+          handoffId || null,
+          ownerUserId,
+          purpose,
+          provider,
+          remaining,
+          remaining,
+          JSON.stringify({
+            channel: "direct_bank_transfer",
+            direct_bank_transfer: true,
+            bank_account_id: Number(bankRow.id),
+            bank_name: bankName,
+            account_name: accountName,
+            account_number: accountNumber,
+            provider_channel: provider,
+            customer_confirmed_at: new Date().toISOString(),
+          }),
+          providerRef,
+          shipType || null,
+        ]
+      );
+
+      return NextResponse.json({
+        ok: true,
+        provider,
+        payment_id: Number(ins?.insertId || 0),
+        pending_verification: true,
+        wallet_applied: walletApplied,
+        remaining,
+        bank_name: bankName,
+        account_name: accountName,
+        account_number: accountNumber,
+        message: "Payment submitted. Status: Pending verification.",
+      });
     }
 
     if (provider === "paypal") {

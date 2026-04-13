@@ -96,7 +96,16 @@ async function getProductPaymentStatus(conn: mysql.Connection, handoffId: number
     )
   );
   const [quotePayRows]: any = await conn.execute(
-    `SELECT COALESCE(SUM(CASE WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid' THEN amount ELSE 0 END), 0) AS paid
+    `SELECT COALESCE(
+        SUM(
+          CASE
+            WHEN purpose IN ('deposit','product_balance','full_product_payment') AND status = 'paid'
+            THEN COALESCE(base_amount, amount)
+            ELSE 0
+          END
+        ),
+        0
+      ) AS paid
      FROM linescout_quote_payments
      WHERE quote_id = ?`,
     [Number(latestQuote.id)]
@@ -345,10 +354,11 @@ export async function POST(req: Request) {
 
     if (target === "delivered") {
       const [shipPaidRows]: any = await conn.execute(
-        `SELECT COALESCE(SUM(amount),0) AS paid
-         FROM linescout_handoff_payments
+        `SELECT COALESCE(SUM(COALESCE(base_amount, amount)),0) AS paid
+         FROM linescout_quote_payments
          WHERE handoff_id = ?
-           AND purpose = 'shipping_payment'`,
+           AND purpose = 'shipping_payment'
+           AND status = 'paid'`,
         [id]
       );
       const shipPaid = Number(shipPaidRows?.[0]?.paid || 0);

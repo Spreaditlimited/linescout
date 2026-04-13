@@ -164,6 +164,19 @@ type PaymentSummaryResponse =
         note: string | null;
         paid_at: string;
       }>;
+      pending_quote_payments?: Array<{
+        id: number;
+        purpose: string;
+        method: string;
+        status: string;
+        amount: number;
+        base_amount: number;
+        currency: string;
+        provider_ref?: string | null;
+        created_at?: string | null;
+        bank_name?: string | null;
+        customer_confirmed_at?: string | null;
+      }>;
     }
   | { ok: false; error: string };
 
@@ -219,6 +232,20 @@ type PaymentRow = {
   purpose: PaymentPurpose;
   note: string | null;
   paid_at: string;
+};
+
+type PendingQuotePaymentRow = {
+  id: number;
+  purpose: string;
+  method: string;
+  status: string;
+  amount: number;
+  base_amount: number;
+  currency: string;
+  provider_ref?: string | null;
+  created_at?: string | null;
+  bank_name?: string | null;
+  customer_confirmed_at?: string | null;
 };
 
 function fmt(d?: string | null) {
@@ -279,10 +306,11 @@ function actionLabel(a: NextAction) {
   return a;
 }
 
-function purposeLabel(p: PaymentPurpose) {
-  if (p === "downpayment") return "Downpayment";
-  if (p === "full_payment") return "Full Payment";
+function purposeLabel(p: string) {
+  if (p === "downpayment" || p === "deposit") return "Downpayment";
+  if (p === "full_payment" || p === "full_product_payment") return "Full Payment";
   if (p === "shipping_payment") return "Shipping Payment";
+  if (p === "product_balance") return "Product Balance";
   return "Additional Payment";
 }
 
@@ -325,6 +353,7 @@ export default function HandoffDetailPage() {
 
   const [paySummary, setPaySummary] = useState<PaymentSummary | null>(null);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [pendingQuotePayments, setPendingQuotePayments] = useState<PendingQuotePaymentRow[]>([]);
   const [commitmentPayment, setCommitmentPayment] = useState<CommitmentPayment>(null);
 
   const [quotes, setQuotes] = useState<QuoteItem[]>([]);
@@ -340,6 +369,7 @@ export default function HandoffDetailPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payPurpose, setPayPurpose] = useState<PaymentPurpose>("downpayment");
+  const [payBankName, setPayBankName] = useState("");
   const [payNote, setPayNote] = useState("");
   const [totalDueInput, setTotalDueInput] = useState("");
   const [paymentConfirmOpen, setPaymentConfirmOpen] = useState(false);
@@ -378,9 +408,12 @@ export default function HandoffDetailPage() {
   async function loadPaymentsOnce(): Promise<{
     summary: PaymentSummary | null;
     payments: PaymentRow[];
+    pendingQuotePayments: PendingQuotePaymentRow[];
     commitment: CommitmentPayment;
   }> {
-    if (!Number.isFinite(id) || id <= 0) return { summary: null, payments: [], commitment: null };
+    if (!Number.isFinite(id) || id <= 0) {
+      return { summary: null, payments: [], pendingQuotePayments: [], commitment: null };
+    }
 
     try {
       const res = await fetch(`/api/linescout-handoffs/payments?handoffId=${id}`, {
@@ -388,7 +421,9 @@ export default function HandoffDetailPage() {
       });
 
       const data = (await res.json().catch(() => null)) as PaymentSummaryResponse | null;
-      if (!data || !("ok" in data) || !data.ok) return { summary: null, payments: [], commitment: null };
+      if (!data || !("ok" in data) || !data.ok) {
+        return { summary: null, payments: [], pendingQuotePayments: [], commitment: null };
+      }
 
       const summary: PaymentSummary = {
         currency: data.financials.currency,
@@ -404,10 +439,11 @@ export default function HandoffDetailPage() {
       return {
         summary,
         payments: (data.payments || []) as PaymentRow[],
+        pendingQuotePayments: (data.pending_quote_payments || []) as PendingQuotePaymentRow[],
         commitment: data.commitment_payment || null,
       };
     } catch {
-      return { summary: null, payments: [], commitment: null };
+      return { summary: null, payments: [], pendingQuotePayments: [], commitment: null };
     }
   }
 
@@ -438,9 +474,10 @@ export default function HandoffDetailPage() {
     setLoading(true);
 
     try {
-      const { summary, payments, commitment } = await loadPaymentsOnce();
+      const { summary, payments, pendingQuotePayments, commitment } = await loadPaymentsOnce();
       setPaySummary(summary);
       setPayments(payments);
+      setPendingQuotePayments(pendingQuotePayments);
       setCommitmentPayment(commitment);
 
       const h = await loadHandoffOnce(summary);
@@ -560,6 +597,7 @@ export default function HandoffDetailPage() {
     setPaymentOpen(true);
     setPayAmount("");
     setPayPurpose("downpayment");
+    setPayBankName("");
     setPayNote("");
     setTotalDueInput("");
     setPaymentConfirmOpen(false);
@@ -568,6 +606,7 @@ export default function HandoffDetailPage() {
   function closePayment() {
     setPaymentOpen(false);
     setPayAmount("");
+    setPayBankName("");
     setPayNote("");
     setTotalDueInput("");
     setPaymentConfirmOpen(false);
@@ -577,6 +616,10 @@ export default function HandoffDetailPage() {
     const amt = Number(String(payAmount).replace(/,/g, "").trim());
     if (!amt || amt <= 0) {
       setBanner({ type: "err", msg: "Enter a valid amount." });
+      return;
+    }
+    if (!payBankName.trim()) {
+      setBanner({ type: "err", msg: "Select or enter the receiving bank/channel." });
       return;
     }
 
@@ -601,6 +644,7 @@ export default function HandoffDetailPage() {
       amount: amt,
       purpose: payPurpose,
       currency: (paySummary?.currency || "NGN") as string,
+      bank_name: payBankName.trim(),
       note: payNote.trim(),
     };
 
@@ -685,6 +729,26 @@ export default function HandoffDetailPage() {
     const r = cancelReason.trim();
     await updateStatus("cancelled", { cancel_reason: r });
     setCancelConfirmOpen(false);
+  }
+
+  async function approvePendingQuotePayment(paymentId: number) {
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await fetch(`/api/internal/handoffs/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve_quote_payment", payment_id: paymentId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not approve payment.");
+      setBanner({ type: "ok", msg: "Payment approved." });
+      await refreshAll(false);
+    } catch (e: any) {
+      setBanner({ type: "err", msg: e?.message || "Could not approve payment." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (authed && !canHandoffs) {
@@ -1199,6 +1263,40 @@ export default function HandoffDetailPage() {
                 </table>
               </div>
 
+              {pendingQuotePayments.length ? (
+                <div className="mt-4 rounded-2xl border border-amber-700/40 bg-amber-500/5 p-3">
+                  <div className="text-xs font-semibold text-amber-200">Pending Verification</div>
+                  <div className="mt-2 space-y-2">
+                    {pendingQuotePayments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 text-xs text-neutral-300 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <div className="font-semibold text-neutral-100">
+                            {purposeLabel(p.purpose || "additional_payment")} · {p.method}
+                          </div>
+                          <div className="mt-1 text-neutral-400">
+                            {fmtMoney(Number(p.base_amount || p.amount || 0), p.currency || "NGN")}
+                            {p.bank_name ? ` · ${p.bank_name}` : ""}
+                            {p.customer_confirmed_at ? ` · customer confirmed ${fmt(p.customer_confirmed_at)}` : ""}
+                          </div>
+                          {p.created_at ? <div className="text-neutral-500">Created {fmt(p.created_at)}</div> : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => approvePendingQuotePayment(Number(p.id))}
+                          disabled={busy}
+                          className={`${btnPrimary} ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+                        >
+                          Approve
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-3">
                 <button onClick={openPayment} className={btnSecondary} disabled={busy}>
                   Record payment
@@ -1468,6 +1566,16 @@ export default function HandoffDetailPage() {
                         onChange={(next) => setPayPurpose(next as PaymentPurpose)}
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-neutral-400">Receiving bank / channel</label>
+                    <input
+                      value={payBankName}
+                      onChange={(e) => setPayBankName(e.target.value)}
+                      className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                      placeholder="e.g., Providus, Paystack transfer, Cash"
+                    />
                   </div>
 
                   <div>

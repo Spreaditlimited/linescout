@@ -71,6 +71,7 @@ type QuotePayment = {
   processing_fee_amount?: number;
   currency: string;
   provider_ref?: string | null;
+  meta?: any;
   created_at?: string | null;
   paid_at?: string | null;
 };
@@ -296,6 +297,11 @@ export default function QuoteClient({
   const [paying, setPaying] = useState(false);
   const [payErr, setPayErr] = useState<string | null>(null);
   const [payMsg, setPayMsg] = useState<string | null>(null);
+  const [useDirectBank, setUseDirectBank] = useState(false);
+  const [bankOptions, setBankOptions] = useState<
+    Array<{ id: number; bank_name: string; account_name: string; account_number: string; purpose?: string }>
+  >([]);
+  const [directBankAccountId, setDirectBankAccountId] = useState<number>(0);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [walletCurrency, setWalletCurrency] = useState<string | null>(null);
   const [walletAccount, setWalletAccount] = useState<{
@@ -414,6 +420,7 @@ export default function QuoteClient({
   const isProvidus = provider === "providus";
   const isPaystack = provider === "paystack";
   const isPaypal = provider === "paypal";
+  const isNigeriaPayment = isPaystack || isProvidus;
 
   useEffect(() => {
     if (!canUseWallet && useWallet) {
@@ -426,6 +433,46 @@ export default function QuoteClient({
       setUseWallet(false);
     }
   }, [isPaystack, useWallet]);
+
+  useEffect(() => {
+    if (!isNigeriaPayment && useDirectBank) {
+      setUseDirectBank(false);
+    }
+  }, [isNigeriaPayment, useDirectBank]);
+
+  useEffect(() => {
+    if (useDirectBank && useWallet) {
+      setUseWallet(false);
+    }
+  }, [useDirectBank, useWallet]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBanks() {
+      if (!isNigeriaPayment) return;
+      try {
+        const res = await fetch("/api/quote/banks", { cache: "no-store" });
+        const json = await res.json().catch(() => null);
+        if (!cancelled && res.ok && json?.ok && Array.isArray(json.items)) {
+          const items = json.items
+            .map((x: any) => ({
+              id: Number(x.id || 0),
+              bank_name: String(x.bank_name || "").trim(),
+              account_name: String(x.account_name || "").trim(),
+              account_number: String(x.account_number || "").trim(),
+              purpose: String(x.purpose || "").trim(),
+            }))
+            .filter((x: any) => x.id > 0 && x.bank_name && x.account_name && x.account_number);
+          setBankOptions(items);
+          if (!directBankAccountId && items.length) setDirectBankAccountId(items[0].id);
+        }
+      } catch {}
+    }
+    loadBanks();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNigeriaPayment, directBankAccountId]);
 
   useEffect(() => {
     if (!isProvidus && providusDetails) {
@@ -731,6 +778,10 @@ export default function QuoteClient({
       setPayErr("Nothing due for this payment.");
       return;
     }
+    if (useDirectBank && !directBankAccountId) {
+      setPayErr("Please choose a bank for direct transfer.");
+      return;
+    }
     setPaying(true);
     try {
       const excludedAddonIds = safeAddonLines
@@ -746,6 +797,8 @@ export default function QuoteClient({
         body: JSON.stringify({
           purpose: paymentOption === "deposit" ? "deposit" : paymentOption === "shipping" ? "shipping_payment" : "full_product_payment",
           use_wallet: useWallet,
+          payment_channel: useDirectBank ? "direct_bank_transfer" : "default",
+          direct_bank_account_id: useDirectBank ? directBankAccountId : undefined,
           shipping_type_id: selectedRate?.shipping_type_id || null,
           shipping_rate_id: selectedRate?.id || null,
           excluded_addon_ids: excludedAddonIds,
@@ -780,6 +833,11 @@ export default function QuoteClient({
         setPayMsg("Transfer to the account below to complete payment.");
         return;
       }
+      if (json.pending_verification) {
+        setPayMsg("Payment submitted. Status: Pending verification.");
+        await refreshPayments();
+        return;
+      }
       setPayMsg("Payment completed.");
       await refreshPayments();
     } catch (e: any) {
@@ -812,6 +870,32 @@ export default function QuoteClient({
       setPayMsg(`Checkout will charge ${fmtCurrency(shippingRemainingDisplay, effectiveDisplayCurrency)} now.`);
     }
   };
+
+  const isDirectBankPayment = (payment: QuotePayment) => {
+    const meta = payment.meta || {};
+    if (meta?.direct_bank_transfer) return true;
+    return String(payment.provider_ref || "").startsWith("DBT_");
+  };
+
+  const isPendingVerification = (payment: QuotePayment) => {
+    if (String(payment.status || "").toLowerCase() !== "pending") return false;
+    const meta = payment.meta || {};
+    return Boolean(meta?.customer_confirmed_at || isDirectBankPayment(payment));
+  };
+
+  const selectedDirectBank = useMemo(() => {
+    if (!useDirectBank || !directBankAccountId) return null;
+    return bankOptions.find((b) => b.id === directBankAccountId) || null;
+  }, [useDirectBank, directBankAccountId, bankOptions]);
+
+  const directBankPurpose = paymentOption === "deposit" ? "deposit" : paymentOption === "shipping" ? "shipping_payment" : "full_product_payment";
+  const hasPendingDirectTransfer = useMemo(() => {
+    return payments.some((p) => {
+      if (!isDirectBankPayment(p)) return false;
+      if (String(p.status || "").toLowerCase() !== "pending") return false;
+      return String(p.purpose || "") === directBankPurpose;
+    });
+  }, [payments, directBankPurpose]);
 
   const downloadReceipt = async (payment: QuotePayment) => {
     const paidAt = fmtDate(payment.paid_at || payment.created_at) || "—";
@@ -1585,9 +1669,12 @@ export default function QuoteClient({
                   {isPaystack ? (
                     <button
                       type="button"
-                      onClick={() => setUseWallet(false)}
+                      onClick={() => {
+                        setUseWallet(false);
+                        setUseDirectBank(false);
+                      }}
                       className={`rounded-2xl border px-4 py-3 text-left transition ${
-                        !useWallet
+                        !useWallet && !useDirectBank
                           ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
                           : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
                       }`}
@@ -1608,18 +1695,33 @@ export default function QuoteClient({
                   ) : null}
 
                   {isProvidus ? (
-                    <div className="rounded-2xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] px-4 py-3 text-left">
-                      <div className="text-sm font-semibold text-neutral-900">Bank transfer (Providus)</div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseDirectBank(false);
+                        setUseWallet(false);
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        !useDirectBank
+                          ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                          : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">Bank transfer (Providus)</div>
                       <div className="mt-1 text-xs text-neutral-600">
                         Click Pay now to generate a dedicated Providus account for this payment.
                       </div>
-                    </div>
+                    </button>
                   ) : null}
 
                   {isPaystack ? (
                     <button
                       type="button"
-                      onClick={() => canUseWallet && setUseWallet(true)}
+                      onClick={() => {
+                        if (!canUseWallet) return;
+                        setUseDirectBank(false);
+                        setUseWallet(true);
+                      }}
                       disabled={!canUseWallet}
                       className={`rounded-2xl border px-4 py-3 text-left transition ${
                         useWallet
@@ -1640,7 +1742,65 @@ export default function QuoteClient({
                       ) : null}
                     </button>
                   ) : null}
+
+                  {isNigeriaPayment ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseDirectBank(true);
+                        setUseWallet(false);
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        useDirectBank
+                          ? "border-[rgba(45,52,97,0.6)] bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                          : "border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] text-neutral-800"
+                      }`}
+                    >
+                      <div className="text-sm font-semibold">Direct bank transfer</div>
+                      <div className="mt-1 text-xs text-neutral-600">
+                        Pay to a selected bank and submit for admin verification.
+                      </div>
+                    </button>
+                  ) : null}
                 </div>
+
+                {useDirectBank ? (
+                  <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.04)] p-3">
+                    <div className="text-[11px] uppercase tracking-widest text-neutral-500">Select bank</div>
+                    <select
+                      value={String(directBankAccountId || "")}
+                      onChange={(e) => setDirectBankAccountId(Number(e.target.value || 0))}
+                      className="mt-2 w-full rounded-xl border border-[rgba(45,52,97,0.2)] bg-white px-3 py-2 text-sm text-neutral-800 outline-none focus:border-neutral-500"
+                    >
+                      <option value="">Choose bank</option>
+                      {bankOptions.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.bank_name}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedDirectBank ? (
+                      <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-white p-3 text-xs text-neutral-700">
+                        <div className="text-[11px] uppercase tracking-widest text-neutral-500">Bank details</div>
+                        <div className="mt-2 font-semibold text-neutral-900">{selectedDirectBank.bank_name}</div>
+                        <div className="mt-1">Account name: {selectedDirectBank.account_name}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span>Account number: {selectedDirectBank.account_number}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyText(selectedDirectBank.account_number)}
+                            className="rounded-full border border-[rgba(45,52,97,0.2)] px-3 py-1 text-[11px] font-semibold text-neutral-800 hover:border-neutral-500"
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="mt-2 text-xs text-neutral-600">
+                      After transfer, click “I have paid” below so admin can verify and approve.
+                    </div>
+                  </div>
+                ) : null}
 
                 {isPaystack && walletAuthMissing ? (
                   <div className="mt-3 rounded-xl border border-[rgba(45,52,97,0.14)] bg-[rgba(45,52,97,0.08)] px-3 py-2 text-xs text-neutral-600">
@@ -1737,11 +1897,15 @@ export default function QuoteClient({
             <button
               type="button"
               onClick={handlePay}
-              disabled={paying || totalDueNgn <= 0}
+              disabled={paying || totalDueNgn <= 0 || (useDirectBank && hasPendingDirectTransfer)}
               className="btn btn-primary mt-4 w-full rounded-xl px-4 py-3 text-sm disabled:opacity-60"
             >
               {paying
                 ? "Processing..."
+                : useDirectBank
+                ? hasPendingDirectTransfer
+                  ? "Pending verification submitted"
+                  : `I have paid (${fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)})`
                 : `Pay now (${fmtCurrency(totalDueDisplay, effectiveDisplayCurrency)})`}
             </button>
           </div>
@@ -1755,12 +1919,25 @@ export default function QuoteClient({
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-neutral-800">{formatPurpose(p.purpose)}</div>
                       <div className="text-xs text-neutral-600">
-                        {p.status === "paid" ? "Paid" : "Pending"}
+                        {p.status === "paid"
+                          ? "Paid"
+                          : isPendingVerification(p)
+                          ? "Pending verification"
+                          : "Pending"}
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-neutral-600">
                       {p.currency} {Number((p.base_amount ?? p.amount) || 0).toLocaleString()} · {p.method}
                     </div>
+                    {isDirectBankPayment(p) ? (
+                      <div className="mt-1 text-[11px] text-neutral-500">
+                        {(p.meta?.bank_name && `Bank: ${p.meta.bank_name}`) || "Direct bank transfer"}
+                        {p.meta?.account_number ? ` · Acct: ${p.meta.account_number}` : ""}
+                      </div>
+                    ) : null}
+                    {isPendingVerification(p) ? (
+                      <div className="mt-1 text-[11px] font-semibold text-amber-700">Pending verification</div>
+                    ) : null}
                     {Number(p.processing_fee_amount || 0) > 0 ? (
                       <div className="mt-1 text-[11px] text-neutral-500">
                         PayPal fee: {p.currency} {Number(p.processing_fee_amount || 0).toLocaleString()} ·
@@ -1771,7 +1948,11 @@ export default function QuoteClient({
                     <div className="mt-1 text-[11px] text-neutral-500">
                       {p.paid_at ? `Paid ${fmtDate(p.paid_at)}` : `Created ${fmtDate(p.created_at)}`}
                     </div>
-                    {p.status !== "paid" && p.method === "paystack" && p.provider_ref && isPaystack ? (
+                    {p.status !== "paid" &&
+                    p.method === "paystack" &&
+                    p.provider_ref &&
+                    isPaystack &&
+                    !isDirectBankPayment(p) ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
                         <span>Reference: {p.provider_ref}</span>
                         <button
@@ -1800,7 +1981,7 @@ export default function QuoteClient({
                         </button>
                       </div>
                     ) : null}
-                    {p.status !== "paid" && p.method === "paypal" && p.provider_ref ? (
+                    {p.status !== "paid" && p.method === "paypal" && p.provider_ref && !isDirectBankPayment(p) ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
                         <span>Order: {p.provider_ref}</span>
                         <button
@@ -1829,7 +2010,7 @@ export default function QuoteClient({
                         </button>
                       </div>
                     ) : null}
-                    {p.status !== "paid" && p.method === "providus" ? (
+                    {p.status !== "paid" && p.method === "providus" && !isDirectBankPayment(p) ? (
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
                         <span>Bank transfer (Providus)</span>
                         <button
@@ -1857,6 +2038,9 @@ export default function QuoteClient({
                           Verify payment
                         </button>
                       </div>
+                    ) : null}
+                    {p.status !== "paid" && isDirectBankPayment(p) ? (
+                      <div className="mt-2 text-[11px] text-neutral-600">Direct transfer submitted</div>
                     ) : null}
                     {p.status === "paid" ? (
                       <button

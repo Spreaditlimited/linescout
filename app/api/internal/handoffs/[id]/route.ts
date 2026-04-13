@@ -10,6 +10,8 @@ import {
   getNigeriaDefaults,
 } from "@/lib/country-config";
 import { buildNoticeEmail } from "@/lib/otp-email";
+import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +19,24 @@ export const dynamic = "force-dynamic";
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function parseJsonSafe(raw: any) {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
+function quotePurposeToHandoffPurpose(purpose: string) {
+  const p = String(purpose || "").trim().toLowerCase();
+  if (p === "deposit") return "downpayment";
+  if (p === "shipping_payment") return "shipping_payment";
+  if (p === "product_balance") return "additional_payment";
+  return "full_payment";
 }
 
 async function ensureReleaseAuditTable(conn: any) {
@@ -438,7 +458,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 /**
  * POST /api/internal/handoffs/:id
- * action=request_shipping_payment (admin only)
+ * action=request_shipping_payment|approve_quote_payment (admin only)
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireInternalSession();
@@ -449,7 +469,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const body = await req.json().catch(() => ({}));
   const action = String(body?.action || "").trim();
-  if (action !== "request_shipping_payment") {
+  if (action !== "request_shipping_payment" && action !== "approve_quote_payment") {
     return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
   }
 
@@ -461,6 +481,168 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const conn = await db.getConnection();
   try {
+    if (action === "approve_quote_payment") {
+      const paymentId = num(body?.payment_id, 0);
+      if (!paymentId) {
+        return NextResponse.json({ ok: false, error: "payment_id is required" }, { status: 400 });
+      }
+
+      const [rows]: any = await conn.query(
+        `SELECT
+           qp.id,
+           qp.quote_id,
+           qp.handoff_id,
+           qp.user_id,
+           qp.purpose,
+           qp.method,
+           qp.status,
+           qp.amount,
+           COALESCE(qp.base_amount, qp.amount) AS base_amount,
+           qp.currency,
+           qp.provider_ref,
+           qp.processing_fee_meta_json,
+           q.total_product_ngn,
+           q.total_markup_ngn,
+           q.commitment_due_ngn,
+           h.status AS handoff_status,
+           h.token AS handoff_token,
+           h.email AS customer_email,
+           h.customer_name AS customer_name
+         FROM linescout_quote_payments qp
+         JOIN linescout_quotes q ON q.id = qp.quote_id
+         JOIN linescout_handoffs h ON h.id = qp.handoff_id
+         WHERE qp.id = ?
+           AND qp.handoff_id = ?
+         LIMIT 1`,
+        [paymentId, handoffId]
+      );
+      const p = rows?.[0];
+      if (!p?.id) {
+        return NextResponse.json({ ok: false, error: "Payment not found for this handoff." }, { status: 404 });
+      }
+      if (String(p.status || "").toLowerCase() !== "pending") {
+        return NextResponse.json({ ok: false, error: "Only pending payments can be approved." }, { status: 400 });
+      }
+
+      const meta = parseJsonSafe(p.processing_fee_meta_json) || {};
+      const directTransfer =
+        !!meta?.direct_bank_transfer || String(p.provider_ref || "").trim().toUpperCase().startsWith("DBT_");
+      if (!directTransfer) {
+        return NextResponse.json(
+          { ok: false, error: "Only direct bank transfer payments can be approved here." },
+          { status: 400 }
+        );
+      }
+
+      await conn.query(
+        `UPDATE linescout_quote_payments
+         SET status = 'paid',
+             paid_at = NOW()
+         WHERE id = ?`,
+        [paymentId]
+      );
+
+      await ensureAffiliateTables(conn);
+
+      const amountNgn = Number(p.base_amount || p.amount || 0);
+      const handoffPurpose = quotePurposeToHandoffPurpose(String(p.purpose || ""));
+      const bankLabel = String(meta?.bank_name || p.provider_ref || p.method || "Direct bank transfer").trim();
+      await conn.query(
+        `INSERT INTO linescout_handoff_payments
+         (handoff_id, amount, currency, purpose, note, paid_at, created_at)
+         VALUES (?, ?, 'NGN', ?, ?, NOW(), NOW())`,
+        [handoffId, amountNgn, handoffPurpose, `Quote payment approved (${bankLabel})`]
+      );
+
+      if (paymentId && handoffId) {
+        await creditAgentCommissionForQuotePayment(conn, {
+          quotePaymentId: Number(paymentId),
+          quoteId: Number(p.quote_id),
+          handoffId: Number(handoffId),
+          purpose: String(p.purpose || ""),
+          amountNgn,
+          currency: "NGN",
+        }).catch(() => null);
+      }
+
+      if (paymentId && p.user_id) {
+        const affiliateType =
+          String(p.purpose || "") === "shipping_payment" ? "shipping_payment" : "project_payment";
+        await creditAffiliateEarning(conn, {
+          referred_user_id: Number(p.user_id),
+          transaction_type: affiliateType,
+          source_table: "linescout_quote_payments",
+          source_id: Number(paymentId),
+          base_amount: amountNgn,
+          currency: "NGN",
+        }).catch(() => null);
+      }
+
+      const [productPayRows]: any = await conn.query(
+        `SELECT COALESCE(
+            SUM(
+              CASE
+                WHEN purpose IN ('deposit','product_balance','full_product_payment')
+                 AND status = 'paid'
+                THEN COALESCE(base_amount, amount)
+                ELSE 0
+              END
+            ),
+            0
+          ) AS paid
+         FROM linescout_quote_payments
+         WHERE quote_id = ?`,
+        [Number(p.quote_id)]
+      );
+      const productPaid = Number(productPayRows?.[0]?.paid || 0);
+      const productDue = Math.max(
+        0,
+        Math.round(
+          Number(p.total_product_ngn || 0) +
+            Number(p.total_markup_ngn || 0) -
+            Number(p.commitment_due_ngn || 0)
+        )
+      );
+
+      const currentStatus = String(p.handoff_status || "").trim().toLowerCase();
+      let nextStatus = currentStatus;
+      if (currentStatus === "manufacturer_found" && productDue > 0 && productPaid >= productDue) {
+        await conn.query(
+          `UPDATE linescout_handoffs
+           SET status = 'paid', paid_at = COALESCE(paid_at, NOW())
+           WHERE id = ?`,
+          [handoffId]
+        );
+        nextStatus = "paid";
+      }
+
+      if (String(p.customer_email || "").includes("@")) {
+        const emailPack = buildNoticeEmail({
+          subject: `Payment confirmed – ${String(p.handoff_token || `Handoff #${handoffId}`)}`,
+          title: "Payment confirmed",
+          lines: [
+            `Amount: NGN ${Number(amountNgn || 0).toLocaleString()}`,
+            `Purpose: ${handoffPurpose.replace(/_/g, " ")}`,
+            nextStatus === "paid" && currentStatus !== "paid"
+              ? "Your project milestone has been updated to Paid."
+              : "Your payment has been confirmed and applied to your project.",
+          ],
+        });
+        await sendEmail({
+          to: String(p.customer_email),
+          subject: emailPack.subject,
+          text: emailPack.text,
+          html: emailPack.html,
+        }).catch(() => null);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        payment_id: Number(paymentId),
+        handoff_status: nextStatus,
+      });
+    }
+
     await ensureCountryConfig(conn);
     await ensureShippingRateCountryColumn(conn);
     const [handoffRows]: any = await conn.query(

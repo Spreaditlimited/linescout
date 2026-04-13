@@ -5,6 +5,16 @@ import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function parseJsonSafe(raw: any) {
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
   const safeToken = String(token || "").trim();
@@ -36,7 +46,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     );
 
     const [paymentRows]: any = await conn.query(
-      `SELECT id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, processing_fee_amount, currency, provider_ref, created_at, paid_at
+      `SELECT id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, processing_fee_amount, processing_fee_meta_json, currency, provider_ref, created_at, paid_at
        FROM linescout_quote_payments
        WHERE quote_id = ?
        ORDER BY id DESC
@@ -54,6 +64,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
         shipping_paid: Number(row.shipping_paid || 0),
       },
       payments: (paymentRows || []).map((p: any) => ({
+        ...(parseJsonSafe(p.processing_fee_meta_json) && {
+          meta: parseJsonSafe(p.processing_fee_meta_json),
+        }),
         id: Number(p.id),
         purpose: p.purpose,
         method: p.method,
