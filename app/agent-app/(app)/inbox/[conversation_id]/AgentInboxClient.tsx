@@ -134,9 +134,12 @@ function AgentChatThreadInner() {
   const [uploadState, setUploadState] = useState<"idle" | "compressing" | "uploading" | "ready" | "error">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<any | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pollRef = useRef<number | null>(null);
+  const initialScrollDoneRef = useRef(false);
+  const shouldStickToBottomRef = useRef(true);
 
   const canSendNow = useMemo(() => (!!input.trim() || !!selectedFile) && !sending, [input, selectedFile, sending]);
 
@@ -174,6 +177,13 @@ function AgentChatThreadInner() {
   }, [visibleCount, items.length]);
 
   useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
+  }, [input]);
+
+  useEffect(() => {
     const latest = lastIdRef.current;
     if (!conversationId || !latest || latest <= lastReadRef.current) return;
     lastReadRef.current = latest;
@@ -186,11 +196,21 @@ function AgentChatThreadInner() {
     }).catch(() => {});
   }, [conversationId, isQuick, lastId]);
 
-  function scrollToBottom() {
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
     requestAnimationFrame(() => {
       if (!scrollRef.current) return;
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior,
+      });
     });
+  }
+
+  function maybeScrollToBottom(behavior: ScrollBehavior = "smooth") {
+    const runInitial = !initialScrollDoneRef.current;
+    if (!runInitial && !shouldStickToBottomRef.current) return;
+    scrollToBottom(runInitial ? "auto" : behavior);
+    if (runInitial) initialScrollDoneRef.current = true;
   }
 
   async function fetchNew(after: number): Promise<{
@@ -296,6 +316,8 @@ function AgentChatThreadInner() {
     if (!conversationId) return;
 
     let cancelled = false;
+    initialScrollDoneRef.current = false;
+    shouldStickToBottomRef.current = true;
 
     (async () => {
       try {
@@ -316,7 +338,6 @@ function AgentChatThreadInner() {
 
         setItems(initial.rows);
         setLastId(initial.last);
-        setTimeout(scrollToBottom, 50);
       } catch (e: any) {
         if (!cancelled) setBootErr(e?.message || "Failed to load.");
       }
@@ -392,7 +413,7 @@ function AgentChatThreadInner() {
         });
 
         setLastId(last);
-        scrollToBottom();
+        maybeScrollToBottom();
       } catch {
         // silent
       }
@@ -404,6 +425,11 @@ function AgentChatThreadInner() {
       pollRef.current = null;
     };
   }, [conversationId, kind]);
+
+  useEffect(() => {
+    if (!items.length) return;
+    maybeScrollToBottom();
+  }, [items.length, conversationId]);
 
   async function compressImage(file: File): Promise<File> {
     if (!file.type.startsWith("image/")) return file;
@@ -650,8 +676,17 @@ function AgentChatThreadInner() {
           </div>
         ) : (
           <>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-              <div className="mx-auto w-full max-w-3xl space-y-3">
+            <div
+              ref={scrollRef}
+              onScroll={() => {
+                const el = scrollRef.current;
+                if (!el) return;
+                const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                shouldStickToBottomRef.current = distanceFromBottom <= 120;
+              }}
+              className="flex-1 overflow-y-auto px-4 py-4"
+            >
+              <div className="w-full space-y-3">
                 {[
                   ...(handoffContext && !isQuick
                     ? ([
@@ -676,7 +711,7 @@ function AgentChatThreadInner() {
                   if (isSystem) {
                     return (
                       <div key={`system-${idx}`} className="w-full">
-                        <div className="mx-auto w-full max-w-3xl rounded-2xl border border-[rgba(45,52,97,0.16)] bg-[rgba(45,52,97,0.06)] px-4 py-3 text-sm text-neutral-700">
+                        <div className="w-full rounded-2xl border border-[rgba(45,52,97,0.16)] bg-[rgba(45,52,97,0.06)] px-4 py-3 text-sm text-neutral-700">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#2D3461]">
                             Project context
                           </p>
@@ -922,35 +957,46 @@ function AgentChatThreadInner() {
               <form onSubmit={(e) => {
                 e.preventDefault();
                 send();
-              }} className="mx-auto flex w-full max-w-3xl items-center gap-2">
-                <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-[rgba(45,52,97,0.18)] focus-within:shadow-[0_0_0_4px_rgba(45,52,97,0.18)]">
-                  <label
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
-                    aria-label="Add image"
-                  >
-                    <ImagePlus className="h-4 w-4" />
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] || null;
-                        if (!file) return;
-                        setSelectedFile(file);
-                        setPreviewUrl(URL.createObjectURL(file));
-                        setUploadedFile(null);
-                        setUploadState("idle");
-                        setUploadError(null);
-                        void uploadImage(file);
-                      }}
-                      disabled={!canSend || sending || !!editingTarget}
-                    />
-                  </label>
+              }} className="flex w-full items-end gap-2">
+                <label
+                  aria-label="Add image"
+                  className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-[#2D3461] ${
+                    !canSend || sending || !!editingTarget
+                      ? "cursor-not-allowed border-neutral-200 text-neutral-400"
+                      : "cursor-pointer border-[rgba(45,52,97,0.2)] hover:bg-[rgba(45,52,97,0.08)]"
+                  }`}
+                >
+                  <ImagePlus className="h-5 w-5" />
                   <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      if (!file) return;
+                      setSelectedFile(file);
+                      setPreviewUrl(URL.createObjectURL(file));
+                      setUploadedFile(null);
+                      setUploadState("idle");
+                      setUploadError(null);
+                      void uploadImage(file);
+                    }}
+                    disabled={!canSend || sending || !!editingTarget}
+                  />
+                </label>
+                <div className="flex-1 rounded-2xl">
+                  <textarea
+                    ref={composerRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
+                    onInput={(e) => {
+                      const el = e.currentTarget;
+                      el.style.height = "0px";
+                      el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
+                    }}
                     placeholder={editingTarget ? "Edit your message" : "Type your message"}
-                    className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                    rows={1}
+                    className="h-12 min-h-12 max-h-24 w-full resize-none overflow-y-auto rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
                     disabled={!canSend || sending}
                   />
                 </div>

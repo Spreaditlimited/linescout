@@ -129,6 +129,7 @@ export default function MachineChatClient() {
   const [deleteTarget, setDeleteTarget] = useState<ConversationRow | null>(null);
   const [deleting, setDeleting] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const quickComposerRef = useRef<HTMLTextAreaElement | null>(null);
 
   async function submitRename() {
     if (!renameTarget || renaming) return;
@@ -426,6 +427,14 @@ export default function MachineChatClient() {
   const quickCustomer = String(chatMeta?.customer_name || "You");
   const quickAgent = String(chatMeta?.agent_name || "Specialist");
 
+  useEffect(() => {
+    if (!isQuick) return;
+    const el = quickComposerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }, [input, isQuick, activeId]);
+
   function goToMachineSourcingProject() {
     const qs = new URLSearchParams({
       route_type: "machine_sourcing",
@@ -698,16 +707,33 @@ export default function MachineChatClient() {
               if (isQuick) sendQuickMessage();
               else sendAiMessage();
             }}
-            className="sticky bottom-0 -mx-4 mt-4 flex items-center gap-2 border-t border-neutral-100 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0"
+            className="sticky bottom-0 -mx-4 mt-4 flex items-end gap-2 border-t border-neutral-100 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-t-0 sm:bg-transparent sm:px-0 sm:py-0"
           >
-            <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-[rgba(45,52,97,0.18)] focus-within:shadow-[0_0_0_4px_rgba(45,52,97,0.18)]">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message"
-                className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-4 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
-                disabled={sending || (isQuick && quickMeta?.ended)}
-              />
+            <div className="relative flex-1 rounded-2xl">
+              {isQuick ? (
+                <textarea
+                  ref={quickComposerRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = "0px";
+                    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+                  }}
+                  placeholder="Type your message"
+                  rows={1}
+                  className="min-h-12 max-h-24 w-full resize-none overflow-y-auto rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                  disabled={sending || !!quickMeta?.ended}
+                />
+              ) : (
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your message"
+                  className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-4 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                  disabled={sending}
+                />
+              )}
             </div>
             {isQuick && !input.trim().length && !selectedFile ? (
               <label className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(45,52,97,0.2)] text-[#2D3461]">

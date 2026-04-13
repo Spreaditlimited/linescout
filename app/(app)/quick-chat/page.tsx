@@ -74,6 +74,10 @@ export default function QuickChatPage() {
   const lastConsumedAgentMsgIdRef = useRef<number>(0);
   const agentBaselineInitializedRef = useRef(false);
   const consumingRef = useRef(false);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const initialScrollDoneRef = useRef(false);
+  const shouldStickToBottomRef = useRef(true);
 
   const remaining = useMemo(() => Math.max(limit - used, 0), [limit, used]);
   const expiresIn = useMemo(() => timeUntilSafe(expiresAt), [expiresAt]);
@@ -173,6 +177,33 @@ export default function QuickChatPage() {
   }, [conversationId, refresh, loadMessages]);
 
   useEffect(() => {
+    initialScrollDoneRef.current = false;
+    shouldStickToBottomRef.current = true;
+  }, [conversationId]);
+
+  useEffect(() => {
+    const el = messagesRef.current;
+    if (!el || !messages.length) return;
+    const runInitial = !initialScrollDoneRef.current;
+    if (!runInitial && !shouldStickToBottomRef.current) return;
+    requestAnimationFrame(() => {
+      if (!messagesRef.current) return;
+      messagesRef.current.scrollTo({
+        top: messagesRef.current.scrollHeight,
+        behavior: runInitial ? "auto" : "smooth",
+      });
+      initialScrollDoneRef.current = true;
+    });
+  }, [messages.length, conversationId]);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
+  }, [input]);
+
+  useEffect(() => {
     if (!messages.length) return;
     const latestAgent = [...messages].reverse().find((m) => m.sender_type === "agent");
     if (!latestAgent?.id) return;
@@ -212,7 +243,7 @@ export default function QuickChatPage() {
 
   return (
     <div className="px-6 py-10">
-      <div className="mx-auto max-w-3xl">
+      <div className="w-full">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.4em] text-neutral-400">LineScout</p>
@@ -243,7 +274,16 @@ export default function QuickChatPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 h-[420px] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4">
+          <div
+            ref={messagesRef}
+            onScroll={() => {
+              const el = messagesRef.current;
+              if (!el) return;
+              const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              shouldStickToBottomRef.current = distanceFromBottom <= 120;
+            }}
+            className="mt-4 h-[420px] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4"
+          >
             {loading ? (
               <p className="text-sm text-neutral-500">Loading chat…</p>
             ) : messages.length ? (
@@ -275,13 +315,20 @@ export default function QuickChatPage() {
             )}
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <input
+          <div className="mt-4 flex items-end gap-3">
+            <textarea
+              ref={composerRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "0px";
+                el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
+              }}
               placeholder={ended ? "Quick chat ended" : "Write a message"}
               disabled={ended}
-              className="flex-1 rounded-2xl border border-neutral-200 px-4 py-3 text-sm"
+              rows={1}
+              className="min-h-12 max-h-24 flex-1 resize-none overflow-y-auto rounded-2xl border border-neutral-200 px-4 py-3 text-sm"
             />
             <button
               type="button"

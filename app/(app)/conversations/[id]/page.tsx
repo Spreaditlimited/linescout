@@ -126,6 +126,7 @@ export default function ConversationThreadPage() {
   const [escalateError, setEscalateError] = useState<string | null>(null);
   const [escalateSuccess, setEscalateSuccess] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const lastReadRef = useRef<number>(0);
 
   const attachmentsByMessage = useMemo(() => data?.attachments_by_message_id || {}, [data]);
@@ -198,8 +199,15 @@ export default function ConversationThreadPage() {
 
   useEffect(() => {
     if (!messagesRef.current) return;
-    messagesRef.current.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "smooth" });
-  }, [data?.items?.length]);
+    messagesRef.current.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "auto" });
+  }, [conversationId, data?.items?.length]);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
+  }, [input]);
 
   const latestMessageId = data?.items?.length ? data.items[data.items.length - 1]?.id : 0;
 
@@ -733,44 +741,54 @@ export default function ConversationThreadPage() {
           </div>
         ) : null}
 
-        <form onSubmit={handleSend} className="mt-4 flex items-center gap-2">
-          <div className="relative flex-1 rounded-2xl ring-1 ring-transparent focus-within:ring-[rgba(45,52,97,0.18)] focus-within:shadow-[0_0_0_4px_rgba(45,52,97,0.18)]">
-            <label
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500"
-              aria-label="Add image"
-            >
-              <ImagePlus className="h-4 w-4" />
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null;
-                  if (!file) return;
-                  setSelectedFile(file);
-                  setPreviewUrl(URL.createObjectURL(file));
-                  setUploadedFile(null);
-                  setUploadState("idle");
-                  setUploadError(null);
-                  void uploadImage(file);
-                }}
-                disabled={locked || sending || !!editingTarget}
-              />
-            </label>
+        <form onSubmit={handleSend} className="mt-4 flex items-end gap-2">
+          <label
+            aria-label="Add image"
+            className={`inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-[#2D3461] ${
+              locked || sending || !!editingTarget
+                ? "cursor-not-allowed border-neutral-200 text-neutral-400"
+                : "cursor-pointer border-[rgba(45,52,97,0.2)] hover:bg-[rgba(45,52,97,0.08)]"
+            }`}
+          >
+            <ImagePlus className="h-5 w-5" />
             <input
-              type="text"
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                if (!file) return;
+                setSelectedFile(file);
+                setPreviewUrl(URL.createObjectURL(file));
+                setUploadedFile(null);
+                setUploadState("idle");
+                setUploadError(null);
+                void uploadImage(file);
+              }}
+              disabled={locked || sending || !!editingTarget}
+            />
+          </label>
+          <div className="flex-1 rounded-2xl">
+            <textarea
+              ref={composerRef}
               value={input}
               onChange={(e) => {
                 setInput(e.target.value);
+              }}
+              onInput={(e) => {
+                const el = e.currentTarget;
+                el.style.height = "0px";
+                el.style.height = `${Math.max(48, Math.min(el.scrollHeight, 96))}px`;
               }}
               placeholder={
                 locked
                   ? "Chat disabled for this project"
                   : editingTarget
-                    ? "Edit your message"
-                    : "Type your message"
+                  ? "Edit your message"
+                  : "Type your message"
               }
-              className="w-full rounded-2xl border border-neutral-200 bg-white py-4 pl-11 pr-4 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+              rows={1}
+              className="min-h-12 max-h-24 w-full resize-none overflow-y-auto rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 shadow-sm focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
               disabled={locked || sending}
             />
           </div>

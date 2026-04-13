@@ -190,6 +190,10 @@ function computeTotals(
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
+    baseProductRmb: totalProductRmb,
+    totalLocalTransportRmb,
+    agentUpliftRmb,
+    hiddenUpliftRmb,
     totalProductRmb: totalProductRmbWithAgent,
     totalProductRmbWithLocal,
     totalProductNgn: totalProductNgnWithAgent,
@@ -1321,6 +1325,18 @@ function QuoteBuilderInner() {
               <p className="text-sm font-semibold text-neutral-900">Quote summary</p>
               <div className="mt-4 space-y-3 text-sm text-neutral-600">
                 <div className="flex items-center justify-between">
+                  <span>Base product cost (RMB)</span>
+                  <span className="font-semibold text-neutral-900">{totals.baseProductRmb.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Local transport (RMB)</span>
+                  <span className="font-semibold text-neutral-900">{totals.totalLocalTransportRmb.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Agent Commission (RMB)</span>
+                  <span className="font-semibold text-neutral-900">{totals.agentUpliftRmb.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-[rgba(45,52,97,0.14)] pt-3">
                   <span>Product total (RMB)</span>
                   <span className="font-semibold text-neutral-900">{totals.totalProductRmb.toLocaleString()}</span>
                 </div>
@@ -1331,15 +1347,6 @@ function QuoteBuilderInner() {
                 <div className="flex items-center justify-between">
                   <span>Total CBM</span>
                   <span className="font-semibold text-neutral-900">{totals.totalCbm.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between border-t border-[rgba(45,52,97,0.14)] pt-3">
-                  <span>Estimated landing cost ({displayCurrency})</span>
-                  <span className="text-lg font-semibold text-[#2D3461]">
-                    {Math.round(landingCostDisplay).toLocaleString()}
-                  </span>
-                </div>
-                <div className="text-xs text-neutral-500">
-                  USD: {usdLineTotal > 0 ? usdLineTotal.toFixed(2) : "0.00"}
                 </div>
                 {missingFxRates.length ? (
                   <div className="text-xs text-red-600">
