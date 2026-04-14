@@ -109,7 +109,7 @@ function AgentChatThreadInner() {
 
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [items, setItems] = useState<Msg[]>([]);
-  const [visibleCount, setVisibleCount] = useState(30);
+  const [visibleCount, setVisibleCount] = useState(Number.MAX_SAFE_INTEGER);
   const [lastId, setLastId] = useState<number>(0);
   const lastIdRef = useRef<number>(0);
   const lastReadRef = useRef<number>(0);
@@ -148,33 +148,9 @@ function AgentChatThreadInner() {
   }, [lastId]);
 
   useEffect(() => {
-    setVisibleCount(Math.min(items.length, 30));
-  }, [items.length]);
-
-  useEffect(() => {
-    if (visibleCount >= items.length) return;
-
-    let cancelled = false;
-    const step = 20;
-
-    const schedule = () => {
-      const cb = () => {
-        if (cancelled) return;
-        setVisibleCount((prev) => Math.min(prev + step, items.length));
-      };
-
-      if (typeof (window as any).requestIdleCallback === "function") {
-        (window as any).requestIdleCallback(cb, { timeout: 1200 });
-      } else {
-        setTimeout(cb, 1200);
-      }
-    };
-
-    schedule();
-    return () => {
-      cancelled = true;
-    };
-  }, [visibleCount, items.length]);
+    if (!conversationId) return;
+    setVisibleCount(Number.MAX_SAFE_INTEGER);
+  }, [conversationId]);
 
   useEffect(() => {
     const el = composerRef.current;
@@ -211,6 +187,11 @@ function AgentChatThreadInner() {
     if (!runInitial && !shouldStickToBottomRef.current) return;
     scrollToBottom(runInitial ? "auto" : behavior);
     if (runInitial) initialScrollDoneRef.current = true;
+  }
+
+  function forceStickToBottom(behavior: ScrollBehavior = "smooth") {
+    shouldStickToBottomRef.current = true;
+    maybeScrollToBottom(behavior);
   }
 
   async function fetchNew(after: number): Promise<{
@@ -429,7 +410,7 @@ function AgentChatThreadInner() {
   useEffect(() => {
     if (!items.length) return;
     maybeScrollToBottom();
-  }, [items.length, conversationId]);
+  }, [items.length, visibleCount, conversationId]);
 
   async function compressImage(file: File): Promise<File> {
     if (!file.type.startsWith("image/")) return file;
@@ -514,7 +495,7 @@ function AgentChatThreadInner() {
         setAgentName(refreshed.agent_name);
         setAgentNameMap(refreshed.agent_name_map || {});
         setAttachmentsByMessageId(refreshed.attachments_by_message_id || {});
-        scrollToBottom();
+        forceStickToBottom("auto");
       } finally {
         setSending(false);
       }
@@ -539,7 +520,7 @@ function AgentChatThreadInner() {
     };
 
     setItems((prev) => [...prev, optimistic]);
-    scrollToBottom();
+    forceStickToBottom("auto");
 
     try {
       let attachmentPayload: any = null;
@@ -611,7 +592,7 @@ function AgentChatThreadInner() {
         setLastId(realId);
       }
 
-      scrollToBottom();
+      forceStickToBottom("auto");
     } catch {
       setItems((prev) =>
         prev.map((m) =>
@@ -700,7 +681,7 @@ function AgentChatThreadInner() {
                         },
                       ] as Msg[])
                     : []),
-                  ...items.slice(0, visibleCount),
+                  ...items.slice(Math.max(items.length - visibleCount, 0)),
                 ].map((m, idx) => {
                   const isSystem = m.sender_type === "system";
                   const isAgent = m.sender_type === "agent";
@@ -1082,6 +1063,7 @@ function AgentChatThreadInner() {
                   setAgentName(refreshed.agent_name);
                   setAgentNameMap(refreshed.agent_name_map || {});
                   setAttachmentsByMessageId(refreshed.attachments_by_message_id || {});
+                  forceStickToBottom("auto");
                 }}
                 className="btn btn-primary px-4 py-2 text-xs"
               >

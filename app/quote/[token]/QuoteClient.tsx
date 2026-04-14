@@ -421,6 +421,7 @@ export default function QuoteClient({
   const isPaystack = provider === "paystack";
   const isPaypal = provider === "paypal";
   const isNigeriaPayment = isPaystack || isProvidus;
+  const showNairaValueColumn = !shippingOnly && effectiveDisplayCurrency === "NGN";
 
   useEffect(() => {
     if (!canUseWallet && useWallet) {
@@ -1273,6 +1274,9 @@ export default function QuoteClient({
                       <th className="px-4 py-3 text-left">Qty</th>
                       <th className="px-4 py-3 text-left">Unit RMB</th>
                       <th className="px-4 py-3 text-left">Total RMB</th>
+                      {showNairaValueColumn ? (
+                        <th className="px-4 py-3 text-left">Naira Value</th>
+                      ) : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -1291,6 +1295,11 @@ export default function QuoteClient({
                             <td className="px-4 py-3 text-neutral-600">{qty}</td>
                             <td className="px-4 py-3 text-neutral-600">{unitWithAgent.toFixed(2)}</td>
                             <td className="px-4 py-3 text-neutral-800">{lineTotal.toFixed(2)}</td>
+                            {showNairaValueColumn ? (
+                              <td className="px-4 py-3 text-neutral-800">
+                                {fmtCurrency(lineTotal * exchangeRmb, "NGN")}
+                              </td>
+                            ) : null}
                           </tr>
                           {localTransportWithUplift > 0 ? (
                             <tr className="border-t border-[rgba(45,52,97,0.08)] bg-[rgba(45,52,97,0.03)]">
@@ -1300,6 +1309,11 @@ export default function QuoteClient({
                               <td className="px-4 py-2 text-xs text-neutral-500">-</td>
                               <td className="px-4 py-2 text-xs text-neutral-500">-</td>
                               <td className="px-4 py-2 text-xs text-neutral-800">{localTransportWithUplift.toFixed(2)}</td>
+                              {showNairaValueColumn ? (
+                                <td className="px-4 py-2 text-xs text-neutral-800">
+                                  {fmtCurrency(localTransportWithUplift * exchangeRmb, "NGN")}
+                                </td>
+                              ) : null}
                             </tr>
                           ) : null}
                         </Fragment>

@@ -128,6 +128,7 @@ export default function PaidChatThreadPage() {
   const [bootErr, setBootErr] = useState<string | null>(null);
 
   const [items, setItems] = useState<Msg[]>([]);
+  const [visibleCount, setVisibleCount] = useState(30);
   const [lastId, setLastId] = useState<number>(0);
   const lastIdRef = useRef<number>(0);
 
@@ -173,6 +174,36 @@ export default function PaidChatThreadPage() {
   useEffect(() => {
     lastIdRef.current = lastId;
   }, [lastId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    setVisibleCount(30);
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (visibleCount >= items.length) return;
+
+    let cancelled = false;
+    const step = 20;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, items.length));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, items.length]);
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -612,7 +643,7 @@ export default function PaidChatThreadPage() {
             style={{ WebkitOverflowScrolling: "touch" }}
           >
             <div className="mx-auto w-full max-w-3xl space-y-3">
-              {items.map((m) => {
+              {items.slice(Math.max(items.length - visibleCount, 0)).map((m) => {
                 const isAgent = m.sender_type === "agent";
                 const senderIdNum = Number(m.sender_id || 0);
                 const isAdminSender = isAgent && senderIdNum > 0 && adminSenderIds.includes(senderIdNum);

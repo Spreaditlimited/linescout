@@ -125,9 +125,13 @@ export default function ConversationThreadPage() {
   const [escalateSending, setEscalateSending] = useState(false);
   const [escalateError, setEscalateError] = useState<string | null>(null);
   const [escalateSuccess, setEscalateSuccess] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(30);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const lastReadRef = useRef<number>(0);
+  const initialScrollDoneRef = useRef(false);
+  const shouldStickToBottomRef = useRef(true);
+  const forceStickNextRenderRef = useRef(false);
 
   const attachmentsByMessage = useMemo(() => data?.attachments_by_message_id || {}, [data]);
   const agentNameMap = useMemo(() => data?.agent_name_map || {}, [data]);
@@ -139,6 +143,28 @@ export default function ConversationThreadPage() {
   const customerName = data?.meta?.customer_name || "You";
   const stageLabel = formatStageLabel(data?.meta?.handoff_status) || "In progress";
   const lockedReason = data?.meta?.cancel_reason || "";
+
+  function scrollToBottom(behavior: ScrollBehavior = "smooth") {
+    requestAnimationFrame(() => {
+      if (!messagesRef.current) return;
+      messagesRef.current.scrollTo({
+        top: messagesRef.current.scrollHeight,
+        behavior,
+      });
+    });
+  }
+
+  function maybeScrollToBottom(behavior: ScrollBehavior = "smooth") {
+    const runInitial = !initialScrollDoneRef.current;
+    if (!runInitial && !shouldStickToBottomRef.current) return;
+    scrollToBottom(runInitial ? "auto" : behavior);
+    if (runInitial) initialScrollDoneRef.current = true;
+  }
+
+  function forceStickToBottom(behavior: ScrollBehavior = "smooth") {
+    shouldStickToBottomRef.current = true;
+    maybeScrollToBottom(behavior);
+  }
 
   useEffect(() => {
     let active = true;
@@ -198,9 +224,46 @@ export default function ConversationThreadPage() {
   }, [conversationId, router]);
 
   useEffect(() => {
-    if (!messagesRef.current) return;
-    messagesRef.current.scrollTo({ top: messagesRef.current.scrollHeight, behavior: "auto" });
-  }, [conversationId, data?.items?.length]);
+    initialScrollDoneRef.current = false;
+    shouldStickToBottomRef.current = true;
+    setVisibleCount(30);
+  }, [conversationId]);
+
+  useEffect(() => {
+    const total = data?.items?.length || 0;
+    if (!total || visibleCount >= total) return;
+
+    let cancelled = false;
+    const step = 20;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, total));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, data?.items?.length]);
+
+  useEffect(() => {
+    if (!data?.items) return;
+    if (forceStickNextRenderRef.current) {
+      forceStickNextRenderRef.current = false;
+      forceStickToBottom("auto");
+      return;
+    }
+    maybeScrollToBottom("auto");
+  }, [conversationId, data?.items?.length, data?.last_id]);
 
   useEffect(() => {
     const el = composerRef.current;
@@ -241,10 +304,13 @@ export default function ConversationThreadPage() {
     };
   }, [conversationId]);
 
-  async function reloadMessages() {
+  async function reloadMessages(forceFocusBottom = false) {
     const refresh = await authFetch(`/api/mobile/paid-chat/messages?conversation_id=${conversationId}&limit=80`);
     const refreshJson = await refresh.json().catch(() => ({}));
-    if (refresh.ok) setData(refreshJson as MessagesResponse);
+    if (refresh.ok) {
+      forceStickNextRenderRef.current = forceFocusBottom;
+      setData(refreshJson as MessagesResponse);
+    }
   }
 
   async function compressImage(file: File): Promise<File> {
@@ -320,7 +386,7 @@ export default function ConversationThreadPage() {
       setInput("");
       setEditingTarget(null);
       setSending(false);
-      await reloadMessages();
+      await reloadMessages(true);
       return;
     }
 
@@ -364,7 +430,7 @@ export default function ConversationThreadPage() {
     setUploadError(null);
     setSending(false);
 
-    await reloadMessages();
+    await reloadMessages(true);
   }
 
   if (!conversationId) {
@@ -508,8 +574,17 @@ export default function ConversationThreadPage() {
             </>
           )}
         </div>
-        <div ref={messagesRef} className="hide-scrollbar flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1 sm:max-h-[50vh]">
-          {(data?.items || []).map((item) => {
+        <div
+          ref={messagesRef}
+          onScroll={() => {
+            const el = messagesRef.current;
+            if (!el) return;
+            const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+            shouldStickToBottomRef.current = distanceFromBottom <= 120;
+          }}
+          className="hide-scrollbar flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1 sm:max-h-[50vh]"
+        >
+          {(data?.items || []).slice(Math.max((data?.items || []).length - visibleCount, 0)).map((item) => {
             const isUser = item.sender_type === "user";
             const senderId = Number(item.sender_id || 0);
             const isAdminSender = item.sender_type === "agent" && senderId > 0 && adminSenderIdSet.has(senderId);
@@ -952,7 +1027,7 @@ export default function ConversationThreadPage() {
                     setMessage(json?.error || "Unable to delete message.");
                     return;
                   }
-                  await reloadMessages();
+                  await reloadMessages(true);
                 }}
                 className="btn btn-primary px-4 py-2 text-xs"
               >

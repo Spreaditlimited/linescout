@@ -65,6 +65,7 @@ export default function QuickChatPage() {
   const [used, setUsed] = useState(0);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
+  const [visibleCount, setVisibleCount] = useState(30);
   const [meta, setMeta] = useState<{ customer_name?: string | null; agent_name?: string | null } | null>(null);
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [input, setInput] = useState("");
@@ -81,6 +82,34 @@ export default function QuickChatPage() {
 
   const remaining = useMemo(() => Math.max(limit - used, 0), [limit, used]);
   const expiresIn = useMemo(() => timeUntilSafe(expiresAt), [expiresAt]);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    requestAnimationFrame(() => {
+      if (!messagesRef.current) return;
+      messagesRef.current.scrollTo({
+        top: messagesRef.current.scrollHeight,
+        behavior,
+      });
+    });
+  }, []);
+
+  const maybeScrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const runInitial = !initialScrollDoneRef.current;
+      if (!runInitial && !shouldStickToBottomRef.current) return;
+      scrollToBottom(runInitial ? "auto" : behavior);
+      if (runInitial) initialScrollDoneRef.current = true;
+    },
+    [scrollToBottom]
+  );
+
+  const forceStickToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      shouldStickToBottomRef.current = true;
+      maybeScrollToBottom(behavior);
+    },
+    [maybeScrollToBottom]
+  );
 
   const refresh = useCallback(async () => {
     const res = await authFetch("/api/mobile/limited-human/refresh", {
@@ -179,22 +208,38 @@ export default function QuickChatPage() {
   useEffect(() => {
     initialScrollDoneRef.current = false;
     shouldStickToBottomRef.current = true;
+    setVisibleCount(30);
   }, [conversationId]);
 
   useEffect(() => {
-    const el = messagesRef.current;
-    if (!el || !messages.length) return;
-    const runInitial = !initialScrollDoneRef.current;
-    if (!runInitial && !shouldStickToBottomRef.current) return;
-    requestAnimationFrame(() => {
-      if (!messagesRef.current) return;
-      messagesRef.current.scrollTo({
-        top: messagesRef.current.scrollHeight,
-        behavior: runInitial ? "auto" : "smooth",
-      });
-      initialScrollDoneRef.current = true;
-    });
-  }, [messages.length, conversationId]);
+    if (visibleCount >= messages.length) return;
+
+    let cancelled = false;
+    const step = 20;
+
+    const schedule = () => {
+      const cb = () => {
+        if (cancelled) return;
+        setVisibleCount((prev) => Math.min(prev + step, messages.length));
+      };
+
+      if (typeof (window as any).requestIdleCallback === "function") {
+        (window as any).requestIdleCallback(cb, { timeout: 1200 });
+      } else {
+        setTimeout(cb, 1200);
+      }
+    };
+
+    schedule();
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleCount, messages.length]);
+
+  useEffect(() => {
+    if (!messages.length) return;
+    maybeScrollToBottom("smooth");
+  }, [messages.length, conversationId, maybeScrollToBottom]);
 
   useEffect(() => {
     const el = composerRef.current;
@@ -227,6 +272,7 @@ export default function QuickChatPage() {
       ...prev,
       { id: optimisticId, sender_type: "user", message_text: text, created_at: new Date().toISOString() },
     ]);
+    forceStickToBottom("auto");
     const res = await authFetch("/api/mobile/limited-human/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -236,6 +282,7 @@ export default function QuickChatPage() {
     if (!res.ok || !json?.ok) {
       setError(json?.error || "Unable to send message.");
     } else {
+      shouldStickToBottomRef.current = true;
       await loadMessages();
     }
     setSending(false);
@@ -288,7 +335,7 @@ export default function QuickChatPage() {
               <p className="text-sm text-neutral-500">Loading chat…</p>
             ) : messages.length ? (
               <div className="space-y-3">
-                {messages.map((m) => {
+                {messages.slice(Math.max(messages.length - visibleCount, 0)).map((m) => {
                   const isUser = m.sender_type === "user";
                   const mappedName =
                     m.sender_type === "agent" && m.sender_name == null
