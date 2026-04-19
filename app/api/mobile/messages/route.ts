@@ -1,8 +1,9 @@
 // app/api/mobile/messages/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { sendNoticeEmail } from "@/lib/notice-email";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,8 +81,12 @@ async function sendExpoPush(tokens: string[], payload: { title: string; body: st
  */
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
+    const u = await requireAccountUser(req);
     const userId = Number(u.id);
+    const access = buildConversationAccessScope("c", {
+      accountId: Number(u.account_id),
+      userId,
+    });
 
     const url = new URL(req.url);
     const conversationId = Number(url.searchParams.get("conversation_id") || 0);
@@ -123,10 +128,10 @@ export async function GET(req: Request) {
           ) AS customer_name
         FROM linescout_conversations c
         LEFT JOIN users u ON u.id = c.user_id
-        WHERE c.id = ? AND c.user_id = ?
+        WHERE c.id = ? AND ${access.sql}
         LIMIT 1
         `,
-        [conversationId, userId]
+        [conversationId, ...access.params]
       );
       if (!rows?.length) {
         return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
@@ -361,8 +366,12 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
+    const u = await requireAccountUser(req);
     const userId = Number(u.id);
+    const access = buildConversationAccessScope("c", {
+      accountId: Number(u.account_id),
+      userId,
+    });
 
     const body = await req.json().catch(() => ({}));
     const conversationId = Number(body?.conversation_id || 0);
@@ -390,11 +399,11 @@ export async function POST(req: Request) {
           project_status,
           conversation_kind,
           assigned_agent_id
-        FROM linescout_conversations
-        WHERE id = ? AND user_id = ?
+        FROM linescout_conversations c
+        WHERE id = ? AND ${access.sql}
         LIMIT 1
         `,
-        [conversationId, userId]
+        [conversationId, ...access.params]
       );
 
       if (!crows?.length) {

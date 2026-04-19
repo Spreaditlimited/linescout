@@ -215,6 +215,9 @@ type QuoteItem = {
   total_due_display_from_ngn?: number | null;
   total_due_display_diff?: number | null;
   total_due_display_status?: "component_fx" | "missing_fx";
+  total_paid_ngn?: number | null;
+  total_paid_display?: number | null;
+  balance_display?: number | null;
   display_currency_code?: string | null;
   created_at?: string | null;
   created_by?: number | null;
@@ -223,6 +226,11 @@ type QuoteItem = {
 
 type PaymentRow = {
   id: number;
+  quote_id?: number | null;
+  quote_token?: string | null;
+  quote_payment_id?: number | null;
+  method?: string | null;
+  provider_ref?: string | null;
   amount: string | number;
   currency: string;
   amount_display?: number | null;
@@ -236,6 +244,8 @@ type PaymentRow = {
 
 type PendingQuotePaymentRow = {
   id: number;
+  quote_id?: number | null;
+  quote_token?: string | null;
   purpose: string;
   method: string;
   status: string;
@@ -367,6 +377,7 @@ export default function HandoffDetailPage() {
 
   // Payment modal state
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [payQuoteId, setPayQuoteId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payPurpose, setPayPurpose] = useState<PaymentPurpose>("downpayment");
   const [payBankName, setPayBankName] = useState("");
@@ -376,6 +387,7 @@ export default function HandoffDetailPage() {
 
   // Cancel confirm
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [clearUnpaidConfirmOpen, setClearUnpaidConfirmOpen] = useState(false);
   const [sendQuoteOpen, setSendQuoteOpen] = useState(false);
   const [sendQuoteLoading, setSendQuoteLoading] = useState(false);
   const [sendQuoteMsg, setSendQuoteMsg] = useState<string | null>(null);
@@ -595,6 +607,7 @@ export default function HandoffDetailPage() {
   function openPayment() {
     setBanner(null);
     setPaymentOpen(true);
+    setPayQuoteId(String(quotes?.[0]?.id || ""));
     setPayAmount("");
     setPayPurpose("downpayment");
     setPayBankName("");
@@ -605,6 +618,7 @@ export default function HandoffDetailPage() {
 
   function closePayment() {
     setPaymentOpen(false);
+    setPayQuoteId("");
     setPayAmount("");
     setPayBankName("");
     setPayNote("");
@@ -613,6 +627,10 @@ export default function HandoffDetailPage() {
   }
 
   async function submitPayment() {
+    if (!Number(payQuoteId || 0)) {
+      setBanner({ type: "err", msg: "Select the quote this payment belongs to." });
+      return;
+    }
     const amt = Number(String(payAmount).replace(/,/g, "").trim());
     if (!amt || amt <= 0) {
       setBanner({ type: "err", msg: "Enter a valid amount." });
@@ -641,6 +659,7 @@ export default function HandoffDetailPage() {
 
     const payload: any = {
       handoffId: id,
+      quoteId: Number(payQuoteId || 0) || undefined,
       amount: amt,
       purpose: payPurpose,
       currency: (paySummary?.currency || "NGN") as string,
@@ -746,6 +765,32 @@ export default function HandoffDetailPage() {
       await refreshAll(false);
     } catch (e: any) {
       setBanner({ type: "err", msg: e?.message || "Could not approve payment." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearUnpaidQuotes() {
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await fetch(`/api/internal/handoffs/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_unpaid_quotes" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not clear unpaid quotes.");
+      setBanner({
+        type: "ok",
+        msg: `Cleared ${Number(data.deleted_quotes || 0)} unpaid quote(s), ${Number(
+          data.deleted_quote_payments || 0
+        )} pending payment attempt(s), and ${Number(data.deleted_quote_addon_lines || 0)} addon line(s).`,
+      });
+      setClearUnpaidConfirmOpen(false);
+      await refreshAll(false);
+    } catch (e: any) {
+      setBanner({ type: "err", msg: e?.message || "Could not clear unpaid quotes." });
     } finally {
       setBusy(false);
     }
@@ -1061,12 +1106,24 @@ export default function HandoffDetailPage() {
             <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-semibold text-neutral-100">Quotes</div>
-                <Link
-                  href={"/internal/settings"}
-                  className="text-xs font-semibold text-neutral-400 hover:text-neutral-100"
-                >
-                  Manage settings
-                </Link>
+                <div className="flex items-center gap-2">
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setClearUnpaidConfirmOpen(true)}
+                      disabled={busy}
+                      className={`${btnSecondary} ${busy ? "opacity-60 cursor-not-allowed" : ""}`}
+                    >
+                      Clear unpaid quotes
+                    </button>
+                  ) : null}
+                  <Link
+                    href={"/internal/settings"}
+                    className="text-xs font-semibold text-neutral-400 hover:text-neutral-100"
+                  >
+                    Manage settings
+                  </Link>
+                </div>
               </div>
 
               {quotes.length ? (
@@ -1098,6 +1155,17 @@ export default function HandoffDetailPage() {
                         {quote.created_at ? (
                           <div className="text-neutral-500">{fmt(quote.created_at)}</div>
                         ) : null}
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          Paid:{" "}
+                          <span className="text-neutral-200">
+                            {fmtMoney(Number(quote.total_paid_display || 0), quote.display_currency_code || "NGN")}
+                          </span>
+                          {" · "}
+                          Balance:{" "}
+                          <span className="text-neutral-200">
+                            {fmtMoney(Number(quote.balance_display || 0), quote.display_currency_code || "NGN")}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-emerald-200">
@@ -1219,6 +1287,7 @@ export default function HandoffDetailPage() {
                     <tr>
                       <th className="px-3 py-2 text-left border-b border-neutral-800">Date</th>
                       <th className="px-3 py-2 text-left border-b border-neutral-800">Amount</th>
+                      <th className="px-3 py-2 text-left border-b border-neutral-800">Quote</th>
                       <th className="px-3 py-2 text-left border-b border-neutral-800">Purpose</th>
                       <th className="px-3 py-2 text-left border-b border-neutral-800">Note</th>
                     </tr>
@@ -1247,6 +1316,16 @@ export default function HandoffDetailPage() {
                             ) : null}
                           </td>
                           <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
+                            {p.quote_id ? (
+                              <>
+                                <div>#{p.quote_id}</div>
+                                {p.quote_token ? <div className="text-neutral-500">{p.quote_token}</div> : null}
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-xs text-neutral-300 whitespace-nowrap">
                             {purposeLabel(p.purpose)}
                           </td>
                           <td className="px-3 py-3 text-xs text-neutral-300">{p.note || "—"}</td>
@@ -1254,7 +1333,7 @@ export default function HandoffDetailPage() {
                       ))
                     ) : (
                       <tr className="border-t border-neutral-800">
-                        <td colSpan={4} className="px-3 py-4 text-sm text-neutral-500">
+                        <td colSpan={5} className="px-3 py-4 text-sm text-neutral-500">
                           No payments yet.
                         </td>
                       </tr>
@@ -1277,6 +1356,7 @@ export default function HandoffDetailPage() {
                             {purposeLabel(p.purpose || "additional_payment")} · {p.method}
                           </div>
                           <div className="mt-1 text-neutral-400">
+                            {p.quote_id ? `Quote #${p.quote_id} · ` : ""}
                             {fmtMoney(Number(p.base_amount || p.amount || 0), p.currency || "NGN")}
                             {p.bank_name ? ` · ${p.bank_name}` : ""}
                             {p.customer_confirmed_at ? ` · customer confirmed ${fmt(p.customer_confirmed_at)}` : ""}
@@ -1541,6 +1621,21 @@ export default function HandoffDetailPage() {
                   )}
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs text-neutral-400">Quote</label>
+                      <SearchableSelect
+                        className="mt-2"
+                        value={payQuoteId}
+                        options={[
+                          { value: "", label: "Select quote" },
+                          ...quotes.map((q) => ({
+                            value: String(q.id),
+                            label: `Quote #${q.id} (${q.token})`,
+                          })),
+                        ]}
+                        onChange={(next) => setPayQuoteId(next)}
+                      />
+                    </div>
                     <div>
                       <label className="text-xs text-neutral-400">Amount</label>
                       <input
@@ -1634,6 +1729,20 @@ export default function HandoffDetailPage() {
         danger
         onCancel={() => setCancelConfirmOpen(false)}
         onConfirm={confirmCancel}
+      />
+
+      <ConfirmModal
+        open={clearUnpaidConfirmOpen}
+        title="Clear unpaid quotes?"
+        description="This will delete quotes on this handoff that have no paid payment records, and remove their pending payment attempts."
+        confirmText={busy ? "Clearing..." : "Yes, clear unpaid"}
+        cancelText="Cancel"
+        danger
+        onCancel={() => {
+          if (busy) return;
+          setClearUnpaidConfirmOpen(false);
+        }}
+        onConfirm={clearUnpaidQuotes}
       />
 
       <ConfirmModal

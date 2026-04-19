@@ -17,6 +17,7 @@ const shortDate = new Intl.DateTimeFormat("en-US", {
 
 type ProjectRow = {
   conversation_id: number;
+  handoff_id?: number | null;
   conversation_status?: "active" | "cancelled" | string;
   stage: string | null;
   updated_at: string;
@@ -28,6 +29,7 @@ type QuoteSummary = {
 
 type SummaryRow = {
   conversation_id: number;
+  handoff_id?: number | null;
   stage: string;
   summary: string | null;
   quote_summary: QuoteSummary | null;
@@ -89,8 +91,11 @@ export default function DashboardPage() {
 
       const summariesRes = await Promise.all(
         rows.map(async (project) => {
+          const summaryQuery = project.handoff_id
+            ? `handoff_id=${project.handoff_id}`
+            : `conversation_id=${project.conversation_id}`;
           const res = await authFetch(
-            `/api/mobile/projects/summary?conversation_id=${project.conversation_id}`
+            `/api/mobile/projects/summary?${summaryQuery}`
           );
           if (!res.ok) return null;
           const json = await res.json().catch(() => null);
@@ -179,13 +184,13 @@ export default function DashboardPage() {
           <div className="mt-4 grid gap-3">
             {summaries.slice(0, 4).map((item) => (
               <Link
-                key={item.conversation_id}
-                href={`/projects/${item.conversation_id}`}
+                key={`${item.handoff_id || item.conversation_id}`}
+                href={`/projects/${item.handoff_id || item.conversation_id}`}
                 className="min-w-0 rounded-2xl border border-neutral-200 p-4 text-sm text-neutral-700 hover:border-[rgba(45,52,97,0.2)]"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 truncate font-semibold text-neutral-900">
-                    Project #{item.conversation_id}
+                    {item.handoff_id ? `Project #${item.handoff_id}` : "Project pending"}
                   </span>
                   <span className="shrink-0 rounded-full border border-[rgba(45,52,97,0.2)] bg-[rgba(45,52,97,0.08)] px-3 py-1 text-xs font-semibold text-[var(--agent-blue)]">
                     {item.stage}

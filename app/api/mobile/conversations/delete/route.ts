@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
-    const user = await requireUser(req);
+    const user = await requireAccountUser(req);
     const body = await req.json().catch(() => ({}));
 
     const conversationId = Number(body?.conversation_id || 0);
@@ -27,19 +28,23 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const access = buildConversationAccessScope("c", {
+        accountId: Number(user.account_id),
+        userId: Number(user.id),
+      });
       // 1) Confirm ownership + deletable type
       const [rows]: any = await conn.query(
         `
-        SELECT id
-        FROM linescout_conversations
-        WHERE id = ?
-          AND user_id = ?
-          AND chat_mode IN ('ai_only','limited_human')
-          AND payment_status = 'unpaid'
-          AND handoff_id IS NULL
+        SELECT c.id
+        FROM linescout_conversations c
+        WHERE c.id = ?
+          AND ${access.sql}
+          AND c.chat_mode IN ('ai_only','limited_human')
+          AND c.payment_status = 'unpaid'
+          AND c.handoff_id IS NULL
         LIMIT 1
         `,
-        [conversationId, user.id]
+        [conversationId, ...access.params]
       );
 
       if (!rows?.length) {
@@ -56,8 +61,8 @@ export async function POST(req: Request) {
 
       // 3) Delete the conversation
       const [del]: any = await conn.query(
-        `DELETE FROM linescout_conversations WHERE id = ? AND user_id = ? LIMIT 1`,
-        [conversationId, user.id]
+        `DELETE c FROM linescout_conversations c WHERE c.id = ? AND ${access.sql} LIMIT 1`,
+        [conversationId, ...access.params]
       );
 
       if (!del?.affectedRows) {

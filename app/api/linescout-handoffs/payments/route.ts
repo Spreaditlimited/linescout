@@ -197,16 +197,21 @@ export async function GET(req: Request) {
 
     const [payRows]: any = await conn.query(
       `SELECT
-         id,
-         amount,
-         currency,
-         purpose,
-         note,
-         paid_at,
-         created_at
-       FROM linescout_handoff_payments
-       WHERE handoff_id = ?
-       ORDER BY paid_at DESC, id DESC`,
+         qp.id AS quote_payment_id,
+         qp.quote_id,
+         q.token AS quote_token,
+         COALESCE(qp.base_amount, qp.amount) AS amount,
+         qp.currency,
+         qp.purpose,
+         qp.method,
+         qp.provider_ref,
+         qp.paid_at,
+         qp.created_at
+       FROM linescout_quote_payments qp
+       JOIN linescout_quotes q ON q.id = qp.quote_id
+       WHERE qp.handoff_id = ?
+         AND qp.status = 'paid'
+       ORDER BY COALESCE(qp.paid_at, qp.created_at) DESC, qp.id DESC`,
       [handoffId]
     );
 
@@ -467,10 +472,16 @@ export async function GET(req: Request) {
       const originalAmount = Number(p?.amount || 0);
       const converted = convertToDisplay(originalAmount, originalCurrency, displayCurrencyCode, fxLookup);
       if (converted.amount != null) displayTotalPaid += converted.amount;
+      const method = String(p?.method || "").trim();
+      const providerRef = String(p?.provider_ref || "").trim();
       return {
         ...p,
+        id: Number(p?.quote_payment_id || p?.id || 0),
+        quote_id: Number(p?.quote_id || 0) || null,
+        quote_token: String(p?.quote_token || "") || null,
         amount: originalAmount,
         currency: originalCurrency,
+        note: providerRef ? `${method || "payment"} (${providerRef})` : method || null,
         display_currency_code: displayCurrencyCode,
         amount_display: converted.amount,
         fx_rate_used: converted.rate > 0 ? converted.rate : null,
@@ -522,13 +533,24 @@ export async function GET(req: Request) {
 
     let pendingQuotePayments: any[] = [];
     if (latestQuote?.id) {
+      const [quoteTokenRows]: any = await conn.query(
+        `SELECT id, token
+         FROM linescout_quotes
+         WHERE handoff_id = ?`,
+        [handoffId]
+      );
+      const quoteTokenById = new Map<number, string>();
+      for (const row of quoteTokenRows || []) {
+        quoteTokenById.set(Number(row.id), String(row.token || ""));
+      }
+
       const [pendingRows]: any = await conn.query(
-        `SELECT id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, currency, provider_ref, processing_fee_meta_json, created_at
+        `SELECT id, quote_id, purpose, method, status, amount, COALESCE(base_amount, amount) AS base_amount, currency, provider_ref, processing_fee_meta_json, created_at
          FROM linescout_quote_payments
-         WHERE quote_id = ?
+         WHERE handoff_id = ?
            AND status = 'pending'
          ORDER BY id DESC`,
-        [Number(latestQuote.id)]
+        [handoffId]
       );
       pendingQuotePayments = (pendingRows || [])
         .map((r: any) => {
@@ -537,6 +559,8 @@ export async function GET(req: Request) {
             !!meta?.direct_bank_transfer || String(r.provider_ref || "").trim().toUpperCase().startsWith("DBT_");
           return {
             id: Number(r.id),
+            quote_id: Number(r.quote_id || 0) || null,
+            quote_token: quoteTokenById.get(Number(r.quote_id || 0)) || null,
             purpose: String(r.purpose || ""),
             method: String(r.method || ""),
             status: String(r.status || ""),
@@ -587,6 +611,7 @@ export async function GET(req: Request) {
  * Body:
  * {
  *   handoffId,
+ *   quoteId?: number, // required when handoff has multiple quotes
  *   amount,
  *   purpose: "downpayment" | "full_payment" | "shipping_payment" | "additional_payment",
  *   totalDue?: number,   // optional, set once or adjust
@@ -614,6 +639,7 @@ export async function POST(req: Request) {
       note = "",
       paidAt,
       bank_name,
+      quoteId,
     } = body;
 
     const hid = Number(handoffId);
@@ -679,34 +705,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid paidAt" }, { status: 400 });
     }
 
-    // Resolve latest quote for this handoff. Quote payments are the single source of truth.
+    // Resolve target quote for this handoff. Quote payments are the single source of truth.
     const [quoteRows]: any = await conn.query(
       `SELECT
          q.id,
+         q.token,
          q.shipping_type_id,
          q.total_product_ngn,
          q.total_markup_ngn,
          q.commitment_due_ngn
        FROM linescout_quotes q
        WHERE q.handoff_id = ?
-       ORDER BY
-         CASE
-           WHEN EXISTS (
-             SELECT 1
-             FROM linescout_quote_payments p
-             WHERE p.quote_id = q.id
-           ) THEN 0
-           ELSE 1
-         END ASC,
-         q.id DESC
-       LIMIT 1`,
+       ORDER BY q.id DESC`,
       [hid]
     );
-    const latestQuote = quoteRows?.[0] || null;
-    if (!latestQuote?.id) {
+    if (!quoteRows?.length) {
       await conn.rollback();
       return NextResponse.json(
         { ok: false, error: "A quote is required before recording manual payments." },
+        { status: 400 }
+      );
+    }
+    const requestedQuoteId = Number(quoteId || 0);
+    const latestQuote = requestedQuoteId
+      ? (quoteRows || []).find((q: any) => Number(q.id) === requestedQuoteId) || null
+      : quoteRows.length === 1
+      ? quoteRows[0]
+      : null;
+    if (!latestQuote?.id) {
+      await conn.rollback();
+      return NextResponse.json(
+        {
+          ok: false,
+          error: requestedQuoteId
+            ? "Selected quote does not belong to this handoff."
+            : "quoteId is required when multiple quotes exist on this handoff.",
+        },
         { status: 400 }
       );
     }

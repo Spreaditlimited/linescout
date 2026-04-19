@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +21,9 @@ function isValidRouteType(v: any): v is RouteType {
  */
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
+    const u = await requireAccountUser(req);
     const userId = Number(u.id);
+    const accountId = Number(u.account_id);
 
     const body = await req.json().catch(() => ({}));
     const routeType = body?.route_type;
@@ -35,12 +37,17 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const access = buildConversationAccessScope("c", {
+        accountId,
+        userId,
+      });
+
       const [existingRows]: any = await conn.query(
         `
         SELECT c.*
         FROM linescout_conversations c
         LEFT JOIN linescout_messages m ON m.conversation_id = c.id
-        WHERE c.user_id = ?
+        WHERE ${access.sql}
           AND c.route_type = ?
           AND c.chat_mode = 'ai_only'
           AND c.payment_status = 'unpaid'
@@ -51,7 +58,7 @@ export async function POST(req: Request) {
         ORDER BY c.updated_at DESC, c.id DESC
         LIMIT 1
         `,
-        [userId, routeType]
+        [...access.params, routeType]
       );
 
       if (existingRows?.length) {
@@ -66,6 +73,7 @@ export async function POST(req: Request) {
         `
         INSERT INTO linescout_conversations
           (
+            account_id,
             user_id,
             route_type,
             chat_mode,
@@ -80,6 +88,7 @@ export async function POST(req: Request) {
           (
             ?,
             ?,
+            ?,
             'ai_only',
             0,
             0,
@@ -89,7 +98,7 @@ export async function POST(req: Request) {
             NOW()
           )
         `,
-        [userId, routeType]
+        [accountId, userId, routeType]
       );
 
       const conversationId = Number(ins?.insertId || 0);
@@ -101,9 +110,13 @@ export async function POST(req: Request) {
         );
       }
 
+      const postInsertAccess = buildConversationAccessScope("c", {
+        accountId,
+        userId,
+      });
       const [rows]: any = await conn.query(
-        `SELECT * FROM linescout_conversations WHERE id = ? AND user_id = ? LIMIT 1`,
-        [conversationId, userId]
+        `SELECT * FROM linescout_conversations c WHERE c.id = ? AND ${postInsertAccess.sql} LIMIT 1`,
+        [conversationId, ...postInsertAccess.params]
       );
 
       return NextResponse.json({

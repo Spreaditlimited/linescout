@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { ensurePaidChatMessageColumns } from "@/lib/paid-chat";
+import {
+  buildConversationAccessScope,
+  buildProjectVisibilityScope,
+  ensureLinescoutProjectAccessInfraOnce,
+} from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +17,17 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
-    const u = await requireUser(req);
+    const u = await requireAccountUser(req);
     const userId = Number(u.id);
+    const access = buildConversationAccessScope("c", {
+      accountId: Number(u.account_id),
+      userId,
+    });
+    const visibility = buildProjectVisibilityScope("c", "pa", {
+      userId,
+      accountRole: String(u.account_role || "member"),
+    });
+    await ensureLinescoutProjectAccessInfraOnce();
 
     const body = await req.json().catch(() => ({}));
     const conversationId = Number(body?.conversation_id || 0);
@@ -37,10 +51,14 @@ export async function POST(req: Request) {
         SELECT c.id, c.user_id, c.chat_mode, c.payment_status, c.project_status, h.status AS handoff_status
         FROM linescout_conversations c
         LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
-        WHERE c.id = ? AND c.user_id = ?
+        LEFT JOIN linescout_project_account_access pa
+          ON pa.conversation_id = c.id
+         AND pa.account_id = ?
+        WHERE c.id = ? AND ${access.sql}
+          AND ${visibility.sql}
         LIMIT 1
         `,
-        [conversationId, userId]
+        [Number(u.account_id), conversationId, ...access.params, ...visibility.params]
       );
 
       if (!crows?.length) {

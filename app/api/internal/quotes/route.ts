@@ -345,9 +345,34 @@ export async function GET(req: Request) {
     let rows: any = [];
     if (handoffId) {
       const [list]: any = await conn.query(
-        `SELECT q.*, u.username AS created_by_name
+        `SELECT
+           q.*,
+           u.username AS created_by_name,
+           COALESCE(ps.total_paid_ngn, 0) AS total_paid_ngn,
+           COALESCE(ps.product_paid_ngn, 0) AS product_paid_ngn,
+           COALESCE(ps.shipping_paid_ngn, 0) AS shipping_paid_ngn
          FROM linescout_quotes q
          LEFT JOIN internal_users u ON u.id = q.created_by
+         LEFT JOIN (
+           SELECT
+             quote_id,
+             SUM(CASE WHEN status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END) AS total_paid_ngn,
+             SUM(
+               CASE
+                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(base_amount, amount)
+                 ELSE 0
+               END
+             ) AS shipping_paid_ngn,
+             SUM(
+               CASE
+                 WHEN status = 'paid' AND purpose IN ('deposit','product_balance','full_product_payment')
+                 THEN COALESCE(base_amount, amount)
+                 ELSE 0
+               END
+             ) AS product_paid_ngn
+           FROM linescout_quote_payments
+           GROUP BY quote_id
+         ) ps ON ps.quote_id = q.id
          WHERE q.handoff_id = ?
          ${auth.user.role === "admin" ? "" : "AND q.created_by = ?"}
          ORDER BY q.id DESC`,
@@ -356,9 +381,34 @@ export async function GET(req: Request) {
       rows = list || [];
     } else if (scope === "mine") {
       const [list]: any = await conn.query(
-        `SELECT q.*, u.username AS created_by_name
+        `SELECT
+           q.*,
+           u.username AS created_by_name,
+           COALESCE(ps.total_paid_ngn, 0) AS total_paid_ngn,
+           COALESCE(ps.product_paid_ngn, 0) AS product_paid_ngn,
+           COALESCE(ps.shipping_paid_ngn, 0) AS shipping_paid_ngn
          FROM linescout_quotes q
          LEFT JOIN internal_users u ON u.id = q.created_by
+         LEFT JOIN (
+           SELECT
+             quote_id,
+             SUM(CASE WHEN status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END) AS total_paid_ngn,
+             SUM(
+               CASE
+                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(base_amount, amount)
+                 ELSE 0
+               END
+             ) AS shipping_paid_ngn,
+             SUM(
+               CASE
+                 WHEN status = 'paid' AND purpose IN ('deposit','product_balance','full_product_payment')
+                 THEN COALESCE(base_amount, amount)
+                 ELSE 0
+               END
+             ) AS product_paid_ngn
+           FROM linescout_quote_payments
+           GROUP BY quote_id
+         ) ps ON ps.quote_id = q.id
          WHERE q.created_by = ?
          ORDER BY q.id DESC
          LIMIT 200`,
@@ -406,6 +456,10 @@ export async function GET(req: Request) {
       const totalDueDisplay = canComputeComponentTotal ? componentTotalDisplay : null;
       const totalDueDisplayDiff =
         totalDueDisplay == null ? null : totalDueDisplay - ngnConvertedTotalDisplay;
+      const totalPaidNgn = Number(q?.total_paid_ngn || 0);
+      const totalPaidDisplay = totalPaidNgn * (ngnToDisplay || 0);
+      const dueForBalance = totalDueDisplay == null ? ngnConvertedTotalDisplay : totalDueDisplay;
+      const balanceDisplay = Math.max(0, dueForBalance - totalPaidDisplay);
 
       return {
         ...q,
@@ -417,6 +471,8 @@ export async function GET(req: Request) {
             ? null
             : Number(totalDueDisplayDiff.toFixed(2)),
         total_due_display_status: canComputeComponentTotal ? "component_fx" : "missing_fx",
+        total_paid_display: Number(totalPaidDisplay.toFixed(2)),
+        balance_display: Number(balanceDisplay.toFixed(2)),
       };
     });
 

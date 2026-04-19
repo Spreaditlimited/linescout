@@ -30,6 +30,7 @@ type QuoteSummary = {
 
 type SummaryRow = {
   conversation_id: number;
+  handoff_id?: number | null;
   stage: string;
   summary: string | null;
   quote_summary: QuoteSummary | null;
@@ -83,9 +84,10 @@ export default function ActiveProjectPage() {
       }
       setProject(mostRecent);
 
-      const summaryRes = await authFetch(
-        `/api/mobile/projects/summary?conversation_id=${mostRecent.conversation_id}`
-      );
+      const summaryQuery = mostRecent.handoff_id
+        ? `handoff_id=${mostRecent.handoff_id}`
+        : `conversation_id=${mostRecent.conversation_id}`;
+      const summaryRes = await authFetch(`/api/mobile/projects/summary?${summaryQuery}`);
       const summaryJson = await summaryRes.json().catch(() => ({}));
       if (active) {
         setSummary(summaryRes.ok ? (summaryJson as SummaryRow) : null);
@@ -150,7 +152,7 @@ export default function ActiveProjectPage() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-                  Project #{project.conversation_id}
+                  {project.handoff_id ? `Project #${project.handoff_id}` : "Project pending"}
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-neutral-900">
                   {summary?.summary || "Project in progress"}
@@ -163,7 +165,7 @@ export default function ActiveProjectPage() {
                     {project.stage}
                   </span>
                 ) : null}
-                <Link href={`/projects/${project.conversation_id}`} className="btn btn-primary px-4 py-2 text-xs">
+                <Link href={`/projects/${project.handoff_id || project.conversation_id}`} className="btn btn-primary px-4 py-2 text-xs">
                   Open project
                 </Link>
               </div>
@@ -188,7 +190,7 @@ export default function ActiveProjectPage() {
               </div>
               <div className="rounded-2xl border border-neutral-200 bg-neutral-50/60 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
-                  Handoff
+                  Project ID
                 </p>
                 <p className="mt-2 text-sm font-semibold text-neutral-900">
                   {project.handoff_id ? `#${project.handoff_id}` : "Pending"}
@@ -203,7 +205,7 @@ export default function ActiveProjectPage() {
               Keep the project moving by reviewing updates and replying to your agent when needed.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <Link href={`/projects/${project.conversation_id}`} className="btn btn-primary px-4 py-2 text-xs">
+              <Link href={`/projects/${project.handoff_id || project.conversation_id}`} className="btn btn-primary px-4 py-2 text-xs">
                 Review updates
               </Link>
               <Link href="/projects" className="btn btn-outline px-4 py-2 text-xs">

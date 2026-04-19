@@ -1,8 +1,13 @@
 // app/api/mobile/projects/summary/route.ts
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureCountryConfig, ensureUserCountryColumns, syncUserCountryCurrency } from "@/lib/country-config";
+import {
+  buildConversationAccessScope,
+  buildProjectVisibilityScope,
+  ensureLinescoutProjectAccessInfraOnce,
+} from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +27,8 @@ function pickItems(raw: any) {
 }
 
 /**
- * GET /api/mobile/projects/summary?conversation_id=123
+ * GET /api/mobile/projects/summary?handoff_id=123
+ * GET /api/mobile/projects/summary?conversation_id=456
  * - Signed-in users only
  * - Returns a short, safe summary STRING for user confidence (not full transcript)
  *
@@ -39,14 +45,24 @@ function pickItems(raw: any) {
  */
 export async function GET(req: Request) {
   try {
-    const user = await requireUser(req);
+    const user = await requireAccountUser(req);
+    await ensureLinescoutProjectAccessInfraOnce();
+    const access = buildConversationAccessScope("c", {
+      accountId: Number(user.account_id),
+      userId: Number(user.id),
+    });
+    const visibilityScope = buildProjectVisibilityScope("c", "pa", {
+      userId: Number(user.id),
+      accountRole: String(user.account_role || "member"),
+    });
 
     const url = new URL(req.url);
+    const handoffId = Number(url.searchParams.get("handoff_id") || 0);
     const conversationId = Number(url.searchParams.get("conversation_id") || 0);
 
-    if (!conversationId) {
+    if (!handoffId && !conversationId) {
       return NextResponse.json(
-        { ok: false, error: "conversation_id is required" },
+        { ok: false, error: "handoff_id or conversation_id is required" },
         { status: 400 }
       );
     }
@@ -57,7 +73,7 @@ export async function GET(req: Request) {
       await ensureUserCountryColumns(conn);
       await syncUserCountryCurrency(conn, user.id);
 
-      // 1) Confirm ownership + paid project
+      // 1) Confirm access + visibility + paid project
       const [rows]: any = await conn.query(
         `
         SELECT
@@ -69,14 +85,24 @@ export async function GET(req: Request) {
           c.handoff_id,
           h.status AS handoff_status,
           h.token AS handoff_token,
-          h.context AS handoff_context
+          h.context AS handoff_context,
+          COALESCE(pa.visibility, 'owner_only') AS project_visibility
         FROM linescout_conversations c
         LEFT JOIN linescout_handoffs h ON h.id = c.handoff_id
-        WHERE c.id = ?
-          AND c.user_id = ?
+        LEFT JOIN linescout_project_account_access pa
+          ON pa.conversation_id = c.id
+         AND pa.account_id = ?
+        WHERE ${handoffId ? "c.handoff_id = ?" : "c.id = ?"}
+          AND ${access.sql}
+          AND ${visibilityScope.sql}
         LIMIT 1
         `,
-        [conversationId, user.id]
+        [
+          Number(user.account_id),
+          handoffId || conversationId,
+          ...access.params,
+          ...visibilityScope.params,
+        ]
       );
 
       const c = rows?.[0];
@@ -101,7 +127,7 @@ export async function GET(req: Request) {
         ORDER BY id ASC
         LIMIT 200
         `,
-        [conversationId]
+        [Number(c.id)]
       );
 
       const items = Array.isArray(msgs) ? msgs : [];
@@ -361,10 +387,13 @@ export async function GET(req: Request) {
 
       return NextResponse.json({
         ok: true,
-        conversation_id: conversationId,
+        conversation_id: Number(c.id),
+        handoff_id: Number(c.handoff_id || 0) || null,
         route_type: routeType,
         stage,
         summary: summaryText,
+        project_visibility: String(c.project_visibility || "owner_only"),
+        can_manage_project_visibility: String(user.account_role || "member") === "owner",
         handoff_context: c.handoff_context || null,
         quote_summary: quoteSummary,
         quote_summaries: quoteSummaries,

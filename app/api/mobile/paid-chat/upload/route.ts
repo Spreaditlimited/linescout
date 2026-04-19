@@ -1,8 +1,13 @@
 // app/api/mobile/paid-chat/upload/route.ts
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { v2 as cloudinary } from "cloudinary";
+import {
+  buildConversationAccessScope,
+  buildProjectVisibilityScope,
+  ensureLinescoutProjectAccessInfraOnce,
+} from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,7 +50,7 @@ export async function POST(req: Request) {
     requireEnv("CLOUDINARY_API_KEY");
     requireEnv("CLOUDINARY_API_SECRET");
 
-    const user = await requireUser(req);
+    const user = await requireAccountUser(req);
 
     const form = await req.formData();
 
@@ -79,15 +84,28 @@ export async function POST(req: Request) {
     // Security: confirm user owns this paid or quick-human conversation
     const conn = await db.getConnection();
     try {
+      await ensureLinescoutProjectAccessInfraOnce();
+      const access = buildConversationAccessScope("c", {
+        accountId: Number(user.account_id),
+        userId: Number(user.id),
+      });
+      const visibility = buildProjectVisibilityScope("c", "pa", {
+        userId: Number(user.id),
+        accountRole: String(user.account_role || "member"),
+      });
       const [rows]: any = await conn.query(
         `
         SELECT id, chat_mode, payment_status, conversation_kind, project_status
-        FROM linescout_conversations
-        WHERE id = ?
-          AND user_id = ?
+        FROM linescout_conversations c
+        LEFT JOIN linescout_project_account_access pa
+          ON pa.conversation_id = c.id
+         AND pa.account_id = ?
+        WHERE c.id = ?
+          AND ${access.sql}
+          AND ${visibility.sql}
         LIMIT 1
         `,
-        [conversationId, user.id]
+        [Number(user.account_id), conversationId, ...access.params, ...visibility.params]
       );
 
       if (!rows?.length) {

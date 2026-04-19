@@ -1,6 +1,7 @@
 // lib/auth.ts
 import { queryOne } from "./db";
 import type { RowDataPacket } from "mysql2/promise";
+import { getAccountContextForUser } from "./accounts";
 
 type UserRow = RowDataPacket & { id: number; email: string };
 
@@ -47,6 +48,18 @@ export async function requireUser(req: Request) {
 
   if (!user) throw new Error("Unauthorized");
   return { id: user.id, email: user.email };
+}
+
+export async function requireAccountUser(req: Request) {
+  const user = await requireUser(req);
+  const ctx = await getAccountContextForUser(Number(user.id));
+  if (!ctx?.accountId) throw new Error("Unauthorized");
+  return {
+    id: Number(user.id),
+    email: String(user.email || ""),
+    account_id: Number(ctx.accountId),
+    account_role: ctx.role,
+  };
 }
 
 /**

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const user = await requireUser(req);
+    const user = await requireAccountUser(req);
     const body = await req.json().catch(() => ({}));
 
     const conversationId = Number(body?.conversation_id || 0);
@@ -29,16 +30,20 @@ export async function POST(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const access = buildConversationAccessScope("c", {
+        accountId: Number(user.account_id),
+        userId: Number(user.id),
+      });
       const [res]: any = await conn.query(
         `
-        UPDATE linescout_conversations
-        SET title = ?
-        WHERE id = ?
-          AND user_id = ?
-          AND chat_mode IN ('ai_only','limited_human')
+        UPDATE linescout_conversations c
+        SET c.title = ?
+        WHERE c.id = ?
+          AND ${access.sql}
+          AND c.chat_mode IN ('ai_only','limited_human')
         LIMIT 1
         `,
-        [titleRaw, conversationId, user.id]
+        [titleRaw, conversationId, ...access.params]
       );
 
       if (!res?.affectedRows) {

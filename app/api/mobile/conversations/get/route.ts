@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,8 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
-    const userId = Number(u.id);
+    const u = await requireAccountUser(req);
 
     const url = new URL(req.url);
     const conversationId = Number(url.searchParams.get("conversation_id") || 0);
@@ -23,9 +23,14 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const access = buildConversationAccessScope("c", {
+        accountId: Number(u.account_id),
+        userId: Number(u.id),
+      });
+
       const [rows]: any = await conn.query(
-        `SELECT * FROM linescout_conversations WHERE id = ? AND user_id = ? LIMIT 1`,
-        [conversationId, userId]
+        `SELECT * FROM linescout_conversations c WHERE c.id = ? AND ${access.sql} LIMIT 1`,
+        [conversationId, ...access.params]
       );
 
       if (!rows?.length) {

@@ -1,7 +1,8 @@
 // app/api/mobile/conversations/list/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
+import { buildConversationAccessScope } from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,8 +37,7 @@ function defaultTitle(chat_mode: string, route_type: RouteType) {
  */
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
-    const userId = Number(u.id);
+    const u = await requireAccountUser(req);
 
     const url = new URL(req.url);
     const routeType = (url.searchParams.get("route_type") || "machine_sourcing") as RouteType;
@@ -48,6 +48,11 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
+      const access = buildConversationAccessScope("c", {
+        accountId: Number(u.account_id),
+        userId: Number(u.id),
+      });
+
       /**
        * Last non-empty message per conversation.
        * Avoids "No messages yet" when the latest message is empty (e.g., file-only).
@@ -96,7 +101,7 @@ export async function GET(req: Request) {
             c.created_at
           ) AS sort_at
         FROM linescout_conversations c
-        WHERE c.user_id = ?
+        WHERE ${access.sql}
           AND (
             (
               c.conversation_kind = 'quick_human'
@@ -116,7 +121,7 @@ export async function GET(req: Request) {
         ORDER BY sort_at DESC, c.id DESC
         LIMIT 80
         `,
-        [userId, routeType]
+        [...access.params, routeType]
       );
 
       const items = (rows || []).map((r: any) => {

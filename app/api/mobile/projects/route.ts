@@ -1,8 +1,13 @@
 // app/api/mobile/projects/route.ts
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
 import { queryRows } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
+import {
+  buildConversationAccessScope,
+  buildProjectVisibilityScope,
+  ensureLinescoutProjectAccessInfraOnce,
+} from "@/lib/accounts";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
 
@@ -21,7 +26,16 @@ type ConversationRow = RowDataPacket & {
 
 export async function GET(req: Request) {
   try {
-    const user = await requireUser(req);
+    const user = await requireAccountUser(req);
+    await ensureLinescoutProjectAccessInfraOnce();
+    const access = buildConversationAccessScope("c", {
+      accountId: Number(user.account_id),
+      userId: Number(user.id),
+    });
+    const visibility = buildProjectVisibilityScope("c", "pa", {
+      userId: Number(user.id),
+      accountRole: String(user.account_role || "member"),
+    });
 
     const rows = await queryRows<ConversationRow>(
       `
@@ -31,18 +45,23 @@ export async function GET(req: Request) {
         c.project_status,
         c.handoff_id,
         c.updated_at,
-        h.status AS handoff_status
+        h.status AS handoff_status,
+        COALESCE(pa.visibility, 'owner_only') AS team_visibility
       FROM linescout_conversations c
       LEFT JOIN linescout_handoffs h
         ON h.id = c.handoff_id
-      WHERE c.user_id = ?
+      LEFT JOIN linescout_project_account_access pa
+        ON pa.conversation_id = c.id
+       AND pa.account_id = ?
+      WHERE ${access.sql}
+        AND ${visibility.sql}
         AND c.handoff_id IS NOT NULL
         AND c.chat_mode = 'paid_human'
         AND c.payment_status = 'paid'
       ORDER BY c.updated_at DESC
       LIMIT 50
       `,
-      [user.id]
+      [Number(user.account_id), ...access.params, ...visibility.params]
     );
 
     const projects = (rows || []).map((r) => {
@@ -68,6 +87,7 @@ export async function GET(req: Request) {
         has_active_project: Boolean(handoffId),
 
         updated_at: r.updated_at,
+        team_visibility: String((r as any).team_visibility || "owner_only"),
       };
     });
 

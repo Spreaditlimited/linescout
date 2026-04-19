@@ -1,7 +1,12 @@
 // app/api/mobile/paid-chat/get/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireUser } from "@/lib/auth";
+import { requireAccountUser } from "@/lib/auth";
+import {
+  buildConversationAccessScope,
+  buildProjectVisibilityScope,
+  ensureLinescoutProjectAccessInfraOnce,
+} from "@/lib/accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,8 +20,17 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: Request) {
   try {
-    const u = await requireUser(req);
+    const u = await requireAccountUser(req);
     const userId = Number((u as any).id || 0);
+    const access = buildConversationAccessScope("c", {
+      accountId: Number((u as any).account_id || 0),
+      userId,
+    });
+    const visibility = buildProjectVisibilityScope("c", "pa", {
+      userId,
+      accountRole: String((u as any).account_role || "member"),
+    });
+    await ensureLinescoutProjectAccessInfraOnce();
 
     const url = new URL(req.url);
     const handoffId = Number(url.searchParams.get("handoff_id") || 0);
@@ -39,23 +53,31 @@ export async function GET(req: Request) {
           SELECT c.*
           FROM linescout_handoffs h
           JOIN linescout_conversations c ON c.id = h.conversation_id
+          LEFT JOIN linescout_project_account_access pa
+            ON pa.conversation_id = c.id
+           AND pa.account_id = ?
           WHERE h.id = ?
-            AND c.user_id = ?
+            AND ${access.sql}
+            AND ${visibility.sql}
           LIMIT 1
           `,
-          [handoffId, userId]
+          [Number((u as any).account_id || 0), handoffId, ...access.params, ...visibility.params]
         );
         row = rows?.[0] || null;
       } else {
         const [rows]: any = await conn.query(
           `
-          SELECT *
-          FROM linescout_conversations
-          WHERE id = ?
-            AND user_id = ?
+          SELECT c.*
+          FROM linescout_conversations c
+          LEFT JOIN linescout_project_account_access pa
+            ON pa.conversation_id = c.id
+           AND pa.account_id = ?
+          WHERE c.id = ?
+            AND ${access.sql}
+            AND ${visibility.sql}
           LIMIT 1
           `,
-          [conversationId, userId]
+          [Number((u as any).account_id || 0), conversationId, ...access.params, ...visibility.params]
         );
         row = rows?.[0] || null;
 

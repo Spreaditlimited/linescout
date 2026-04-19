@@ -59,14 +59,17 @@ export default function PaymentsPage() {
         return;
       }
 
-      const projects: Array<{ conversation_id: number }> = Array.isArray(projectsJson?.projects)
+      const projects: Array<{ conversation_id: number; handoff_id?: number | null }> = Array.isArray(projectsJson?.projects)
         ? projectsJson.projects
         : [];
 
       const summaries = await Promise.all(
         projects.map(async (project) => {
+          const summaryQuery = project.handoff_id
+            ? `handoff_id=${project.handoff_id}`
+            : `conversation_id=${project.conversation_id}`;
           const res = await authFetch(
-            `/api/mobile/projects/summary?conversation_id=${project.conversation_id}`
+            `/api/mobile/projects/summary?${summaryQuery}`
           );
           if (!res.ok) return null;
           const json = await res.json().catch(() => null);

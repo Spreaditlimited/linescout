@@ -458,7 +458,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
 /**
  * POST /api/internal/handoffs/:id
- * action=request_shipping_payment|approve_quote_payment (admin only)
+ * action=request_shipping_payment|approve_quote_payment|clear_unpaid_quotes (admin only)
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const auth = await requireInternalSession();
@@ -469,7 +469,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const body = await req.json().catch(() => ({}));
   const action = String(body?.action || "").trim();
-  if (action !== "request_shipping_payment" && action !== "approve_quote_payment") {
+  if (
+    action !== "request_shipping_payment" &&
+    action !== "approve_quote_payment" &&
+    action !== "clear_unpaid_quotes"
+  ) {
     return NextResponse.json({ ok: false, error: "Invalid action" }, { status: 400 });
   }
 
@@ -481,6 +485,66 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const conn = await db.getConnection();
   try {
+    if (action === "clear_unpaid_quotes") {
+      await conn.beginTransaction();
+      try {
+        const [quoteRows]: any = await conn.query(
+          `SELECT q.id
+           FROM linescout_quotes q
+           LEFT JOIN (
+             SELECT quote_id, SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paid_count
+             FROM linescout_quote_payments
+             GROUP BY quote_id
+           ) ps ON ps.quote_id = q.id
+           WHERE q.handoff_id = ?
+             AND COALESCE(ps.paid_count, 0) = 0`,
+          [handoffId]
+        );
+        const quoteIds = (quoteRows || []).map((r: any) => Number(r.id)).filter(Boolean);
+        if (!quoteIds.length) {
+          await conn.rollback();
+          return NextResponse.json({ ok: true, deleted_quotes: 0, deleted_quote_payments: 0 });
+        }
+
+        const placeholders = quoteIds.map(() => "?").join(",");
+        let deletedAddonLines = 0;
+        try {
+          const [delAddonLines]: any = await conn.query(
+            `DELETE FROM linescout_quote_addon_lines
+             WHERE quote_id IN (${placeholders})`,
+            quoteIds
+          );
+          deletedAddonLines = Number(delAddonLines?.affectedRows || 0);
+        } catch {
+          deletedAddonLines = 0;
+        }
+        const [delPayments]: any = await conn.query(
+          `DELETE FROM linescout_quote_payments
+           WHERE quote_id IN (${placeholders})
+             AND status <> 'paid'`,
+          quoteIds
+        );
+        const [delQuotes]: any = await conn.query(
+          `DELETE FROM linescout_quotes
+           WHERE id IN (${placeholders})`,
+          quoteIds
+        );
+
+        await conn.commit();
+        return NextResponse.json({
+          ok: true,
+          deleted_quotes: Number(delQuotes?.affectedRows || 0),
+          deleted_quote_addon_lines: deletedAddonLines,
+          deleted_quote_payments: Number(delPayments?.affectedRows || 0),
+        });
+      } catch (err) {
+        try {
+          await conn.rollback();
+        } catch {}
+        throw err;
+      }
+    }
+
     if (action === "approve_quote_payment") {
       const paymentId = num(body?.payment_id, 0);
       if (!paymentId) {

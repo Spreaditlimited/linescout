@@ -13,6 +13,7 @@ const money = new Intl.NumberFormat("en-NG", {
 
 type ProjectRow = {
   conversation_id: number;
+  handoff_id?: number | null;
 };
 
 type QuoteSummary = {
@@ -71,8 +72,11 @@ export default function QuotesPage() {
 
       const summaries = await Promise.all(
         projects.map(async (project) => {
+          const summaryQuery = project.handoff_id
+            ? `handoff_id=${project.handoff_id}`
+            : `conversation_id=${project.conversation_id}`;
           const res = await authFetch(
-            `/api/mobile/projects/summary?conversation_id=${project.conversation_id}`
+            `/api/mobile/projects/summary?${summaryQuery}`
           );
           if (!res.ok) return null;
           const json = await res.json().catch(() => null);

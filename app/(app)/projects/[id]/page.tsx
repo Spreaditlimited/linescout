@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import { ChevronDown } from "lucide-react";
 
 function formatMoney(value: number, currency?: string | null) {
   const code = String(currency || "NGN").toUpperCase();
@@ -61,9 +62,12 @@ type PaymentItem = {
 
 type SummaryResponse = {
   conversation_id: number;
+  handoff_id?: number | null;
   route_type?: string | null;
   stage: string;
   summary: string | null;
+  project_visibility?: "owner_only" | "team";
+  can_manage_project_visibility?: boolean;
   handoff_context?: string | null;
   quote_summary: QuoteSummary | null;
   payments: PaymentItem[];
@@ -72,7 +76,7 @@ type SummaryResponse = {
 export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const conversationId = Number(params?.id || 0);
+  const handoffIdFromRoute = Number(params?.id || 0);
 
   const [data, setData] = useState<SummaryResponse | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -85,6 +89,11 @@ export default function ProjectDetailPage() {
   const [briefExpanded, setBriefExpanded] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState<"paystack" | "paypal" | null>(null);
   const [providerLoading, setProviderLoading] = useState(false);
+  const [sharingValue, setSharingValue] = useState<"owner_only" | "team">("owner_only");
+  const [sharingOpen, setSharingOpen] = useState(false);
+  const [sharingBusy, setSharingBusy] = useState(false);
+  const [sharingMessage, setSharingMessage] = useState<string | null>(null);
+  const sharingRef = useRef<HTMLDivElement | null>(null);
 
   const hasPayments = useMemo(() => (data?.payments || []).length > 0, [data]);
   const handoffContext = String(data?.handoff_context || "").trim();
@@ -95,16 +104,32 @@ export default function ProjectDetailPage() {
     [data?.stage]
   );
   const routeType = String(data?.route_type || "").trim() || "machine_sourcing";
+  const canManageSharing = Boolean(data?.can_manage_project_visibility);
+  const conversationId = Number(data?.conversation_id || 0);
+  const sharingLabel = sharingValue === "team" ? "Shared with team" : "Private (owner only)";
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (sharingRef.current && !sharingRef.current.contains(target)) setSharingOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
 
   useEffect(() => {
     let active = true;
     async function load() {
-      if (!conversationId) return;
+      if (!handoffIdFromRoute) return;
       setStatus("loading");
       setMessage(null);
 
-      const res = await authFetch(`/api/mobile/projects/summary?conversation_id=${conversationId}`);
-      const json = await res.json().catch(() => ({}));
+      let res = await authFetch(`/api/mobile/projects/summary?handoff_id=${handoffIdFromRoute}`);
+      let json = await res.json().catch(() => ({}));
+      if (!res.ok && res.status === 404) {
+        res = await authFetch(`/api/mobile/projects/summary?conversation_id=${handoffIdFromRoute}`);
+        json = await res.json().catch(() => ({}));
+      }
 
       if (!res.ok) {
         if (res.status === 401) {
@@ -119,7 +144,9 @@ export default function ProjectDetailPage() {
       }
 
       if (active) {
-        setData(json as SummaryResponse);
+        const next = json as SummaryResponse;
+        setData(next);
+        setSharingValue(next.project_visibility === "team" ? "team" : "owner_only");
         setStatus("idle");
       }
     }
@@ -128,7 +155,7 @@ export default function ProjectDetailPage() {
     return () => {
       active = false;
     };
-  }, [conversationId, router]);
+  }, [handoffIdFromRoute, router]);
 
   useEffect(() => {
     let active = true;
@@ -154,7 +181,42 @@ export default function ProjectDetailPage() {
     };
   }, [routeType, router]);
 
-  if (!conversationId) {
+  async function saveProjectVisibility() {
+    if (!handoffIdFromRoute || !canManageSharing) return;
+    setSharingBusy(true);
+    setSharingMessage(null);
+    try {
+      const res = await authFetch("/api/mobile/projects/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          handoff_id: handoffIdFromRoute,
+          conversation_id: conversationId || undefined,
+          visibility: sharingValue,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setSharingMessage(json?.error || "Could not update visibility.");
+        return;
+      }
+      const nextVisibility = json.visibility === "team" ? "team" : "owner_only";
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              project_visibility: nextVisibility,
+            }
+          : prev
+      );
+      setSharingValue(nextVisibility);
+      setSharingMessage("Project visibility updated.");
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
+  if (!handoffIdFromRoute) {
     return (
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
         <div className="rounded-3xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600 shadow-sm">
@@ -169,12 +231,18 @@ export default function ProjectDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">Project</p>
-          <h1 className="mt-2 text-2xl font-semibold text-neutral-900">Project #{conversationId}</h1>
+          <h1 className="mt-2 text-2xl font-semibold text-neutral-900">
+            {data?.handoff_id ? `Project #${data.handoff_id}` : "Project pending"}
+          </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/conversations/${conversationId}`}
-            className="btn btn-primary px-4 py-2 text-xs"
+            href={conversationId ? `/conversations/${conversationId}` : "#"}
+            className="btn btn-primary px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            aria-disabled={!conversationId}
+            onClick={(e) => {
+              if (!conversationId) e.preventDefault();
+            }}
           >
             Open chat
           </Link>
@@ -225,6 +293,72 @@ export default function ProjectDetailPage() {
               {data.summary || "No summary yet. Your agent will update this once progress begins."}
             </p>
           </div>
+
+          {canManageSharing ? (
+            <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-neutral-900">Project access</h2>
+                  <p className="mt-1 text-sm text-neutral-600">
+                    Decide if invited teammates can see this project and open its paid chat.
+                  </p>
+                </div>
+                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-700">
+                  {data.project_visibility === "team" ? "Shared with team" : "Owner only"}
+                </span>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <div ref={sharingRef} className="relative w-full max-w-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSharingOpen((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-left text-sm font-semibold text-neutral-800 shadow-sm transition hover:border-[rgba(45,52,97,0.35)] focus:border-[rgba(45,52,97,0.45)] focus:outline-none focus:ring-2 focus:ring-[rgba(45,52,97,0.18)]"
+                  >
+                    <span>{sharingLabel}</span>
+                    <ChevronDown
+                      className={`h-4 w-4 text-neutral-400 transition ${sharingOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {sharingOpen ? (
+                    <div className="absolute z-10 mt-2 w-full rounded-2xl border border-neutral-200 bg-white p-2 shadow-xl">
+                      {[
+                        { value: "owner_only" as const, label: "Private (owner only)" },
+                        { value: "team" as const, label: "Shared with team" },
+                      ].map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setSharingValue(opt.value);
+                            setSharingOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition ${
+                            sharingValue === opt.value
+                              ? "bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]"
+                              : "text-neutral-700 hover:bg-neutral-50"
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {sharingValue === opt.value ? (
+                            <span className="text-[11px] font-semibold">Selected</span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={saveProjectVisibility}
+                  disabled={sharingBusy}
+                  className="btn btn-outline px-4 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sharingBusy ? "Saving..." : "Save access"}
+                </button>
+              </div>
+              {sharingMessage ? <p className="mt-3 text-xs text-neutral-600">{sharingMessage}</p> : null}
+            </div>
+          ) : null}
 
           {handoffContext ? (
             <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -422,7 +556,7 @@ export default function ProjectDetailPage() {
                   const qs = new URLSearchParams({
                     purpose: "reorder",
                     route_type: routeType,
-                    reorder_of_conversation_id: String(conversationId),
+                    reorder_of_conversation_id: String(conversationId || ""),
                     ...(reorderNote.trim() ? { reorder_user_note: reorderNote.trim() } : {}),
                   });
                   const checkout = paymentProvider === "paypal" ? "/paypal-checkout" : "/paystack-checkout";
