@@ -95,7 +95,7 @@ export async function POST(req: Request) {
       });
       const [rows]: any = await conn.query(
         `
-        SELECT id, chat_mode, payment_status, conversation_kind, project_status
+        SELECT c.id, c.chat_mode, c.payment_status, c.conversation_kind, c.project_status
         FROM linescout_conversations c
         LEFT JOIN linescout_project_account_access pa
           ON pa.conversation_id = c.id
