@@ -101,6 +101,24 @@ function timeUntilSafe(iso?: string | null) {
   return `${days}d`;
 }
 
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  const maxDim = 1600;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.7));
+  if (!blob) return file;
+  return new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" });
+}
+
 export default function MachineChatClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -371,9 +389,10 @@ export default function MachineChatClient() {
     try {
       let attachmentPayload: any = null;
       if (selectedFile) {
+        const fileToUpload = await compressImage(selectedFile);
         const form = new FormData();
         form.append("conversation_id", String(activeId));
-        form.append("file", selectedFile);
+        form.append("file", fileToUpload);
         const uploadRes = await authFetch("/api/mobile/paid-chat/upload", {
           method: "POST",
           body: form,

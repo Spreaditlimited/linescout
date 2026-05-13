@@ -316,16 +316,44 @@ export default function ConversationThreadPage() {
   async function compressImage(file: File): Promise<File> {
     if (!file.type.startsWith("image/")) return file;
     const maxDim = 1600;
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-    const width = Math.round(bitmap.width * scale);
-    const height = Math.round(bitmap.height * scale);
+    let width = 0;
+    let height = 0;
+    let draw: ((ctx: CanvasRenderingContext2D, w: number, h: number) => void) | null = null;
+    try {
+      if (typeof createImageBitmap === "function") {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+        width = Math.round(bitmap.width * scale);
+        height = Math.round(bitmap.height * scale);
+        draw = (ctx, w, h) => ctx.drawImage(bitmap, 0, 0, w, h);
+      }
+    } catch {}
+
+    if (!draw) {
+      const objectUrl = URL.createObjectURL(file);
+      try {
+        const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const el = new Image();
+          el.onload = () => resolve(el);
+          el.onerror = () => reject(new Error("Unsupported image format."));
+          el.src = objectUrl;
+        });
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        width = Math.round(img.naturalWidth * scale);
+        height = Math.round(img.naturalHeight * scale);
+        draw = (ctx, w, h) => ctx.drawImage(img, 0, 0, w, h);
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+
+    if (!draw || !width || !height) return file;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, width, height);
+    draw(ctx, width, height);
     const blob: Blob | null = await new Promise((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.7)
     );
@@ -400,7 +428,7 @@ export default function ConversationThreadPage() {
         const nextFile = await uploadImage(selectedFile);
         if (nextFile) attachmentPayload = { file: nextFile };
         if (!attachmentPayload) {
-          setMessage(uploadError || "Unable to upload image.");
+          setMessage(uploadError || "Unable to upload image. Please try another image.");
           setSending(false);
           return;
         }
@@ -828,7 +856,7 @@ export default function ConversationThreadPage() {
             <ImagePlus className="h-5 w-5" />
             <input
               type="file"
-              accept="image/png,image/jpeg"
+              accept="image/*"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;

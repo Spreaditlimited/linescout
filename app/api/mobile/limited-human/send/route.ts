@@ -73,8 +73,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "message_text too long" }, { status: 400 });
     }
     if (file.hasFile && file.bytes) {
-      const m = String(file.mime || "").toLowerCase();
-      const max = m === "application/pdf" ? 5 * 1024 * 1024 : 3 * 1024 * 1024;
+      // Keep server-side size checks aligned with upload route for consistent behavior.
+      const max = 10 * 1024 * 1024;
       if (file.bytes > max) {
         return NextResponse.json(
           { ok: false, error: `File too large. Max ${Math.floor(max / (1024 * 1024))}MB` },
