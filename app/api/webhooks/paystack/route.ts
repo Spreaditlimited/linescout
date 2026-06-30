@@ -128,7 +128,7 @@ export async function POST(req: Request) {
   const event = String(payload?.event || "").trim();
   const data = payload?.data || {};
 
-  if (event === "charge.success") {
+  if (event === "charge.success" || event.startsWith("subscription.")) {
     await forwardSureImportsPaystackWebhook(rawBody, signature);
   }
 
