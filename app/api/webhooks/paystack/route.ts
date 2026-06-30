@@ -25,6 +25,24 @@ async function triggerSourcingVerify(req: Request, reference: string, purpose: s
   }).catch(() => {});
 }
 
+async function forwardSureImportsPaystackWebhook(rawBody: string, signature: string) {
+  const url = (
+    process.env.SUREIMPORTS_PAYSTACK_WEBHOOK_URL ||
+    "https://www.sureimports.com/api/intelligence/paystack-webhook"
+  ).trim();
+
+  if (!rawBody || !signature || !url) return;
+
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-paystack-signature": signature,
+    },
+    body: rawBody,
+  }).catch(() => {});
+}
+
 function toNaira(amount: any) {
   const n = Number(amount);
   if (!Number.isFinite(n)) return null;
@@ -109,6 +127,10 @@ export async function POST(req: Request) {
 
   const event = String(payload?.event || "").trim();
   const data = payload?.data || {};
+
+  if (event === "charge.success") {
+    await forwardSureImportsPaystackWebhook(rawBody, signature);
+  }
 
   if (event === "transfer.success") {
     const transferCode = String(data?.transfer_code || "").trim();
