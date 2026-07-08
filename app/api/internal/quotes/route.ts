@@ -7,9 +7,6 @@ import {
   ensureCountryConfig,
   ensureQuoteCountryColumns,
   ensureHandoffCountryColumns,
-  backfillQuoteDefaults,
-  backfillHandoffDefaults,
-  getNigeriaDefaults,
   resolveCountryCurrency,
 } from "@/lib/country-config";
 import { buildQuoteAddonLines, ensureQuoteAddonTables, getVatRateForCountry, normalizeRouteType } from "@/lib/quote-addons";
@@ -272,6 +269,91 @@ function normalizeCurrency(code: any, fallback = "NGN") {
   return c || fallback;
 }
 
+async function resolveQuoteDestination(
+  conn: any,
+  handoffId: number,
+  user: { role: string },
+  requestedCountryId: number | null
+) {
+  const [userRows]: any = await conn.query(
+    `SELECT u.country_id, u.display_currency_code
+     FROM linescout_conversations c
+     JOIN users u ON u.id = c.user_id
+     WHERE c.handoff_id = ?
+     LIMIT 1`,
+    [handoffId]
+  );
+
+  const profileCountryId = Number(userRows?.[0]?.country_id || 0);
+  const profileDisplay = String(userRows?.[0]?.display_currency_code || "").trim();
+  const destinationCountryId = requestedCountryId || profileCountryId;
+
+  if (!destinationCountryId) {
+    throw new Error(
+      "Select a destination country before creating this quote."
+    );
+  }
+
+  const resolved = await resolveCountryCurrency(
+    conn,
+    destinationCountryId,
+    requestedCountryId ? null : profileDisplay || null
+  );
+  if (!resolved) {
+    throw new Error("Selected destination country is not configured.");
+  }
+  return resolved;
+}
+
+async function resolveQuoteShippingRate(
+  conn: any,
+  params: {
+    countryId: number;
+    shippingRateId: number | null;
+    shippingTypeId: number | null;
+    shippingRateUsd: number;
+    shippingRateUnit: string;
+  }
+) {
+  const queryById = params.shippingRateId
+    ? {
+        sql: `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit
+              FROM linescout_shipping_rates r
+              WHERE r.id = ?
+                AND r.country_id = ?
+                AND r.is_active = 1
+              LIMIT 1`,
+        values: [params.shippingRateId, params.countryId],
+      }
+    : null;
+  const queryByValues = {
+    sql: `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit
+          FROM linescout_shipping_rates r
+          WHERE r.country_id = ?
+            AND r.shipping_type_id = ?
+            AND r.rate_unit = ?
+            AND ABS(r.rate_value - ?) < 0.0001
+            AND r.is_active = 1
+          LIMIT 1`,
+    values: [params.countryId, params.shippingTypeId, params.shippingRateUnit, params.shippingRateUsd],
+  };
+
+  const [rows]: any = await conn.query((queryById || queryByValues).sql, (queryById || queryByValues).values);
+  if (!rows?.length && queryById) {
+    throw new Error("Selected shipping rate is not available for the destination country.");
+  }
+  if (!rows?.length) {
+    throw new Error("Select a valid shipping rate for the destination country.");
+  }
+  const row = rows[0];
+  return {
+    id: Number(row.id),
+    shipping_type_id: Number(row.shipping_type_id),
+    rate_value: num(row.rate_value, 0),
+    rate_unit: String(row.rate_unit || "per_kg"),
+  };
+}
+
 function buildFxLookup(rows: any[]) {
   const map = new Map<string, number>();
   for (const row of rows || []) {
@@ -334,8 +416,6 @@ export async function GET(req: Request) {
     await ensureQuoteAddonTables(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
-    await backfillHandoffDefaults(conn);
-    await backfillQuoteDefaults(conn);
 
     if (handoffId) {
       const allowed = await canAccessHandoff(conn, auth.user, handoffId);
@@ -500,6 +580,8 @@ export async function POST(req: Request) {
   const shipping_rate_usd = num(body?.shipping_rate_usd, 0);
   const shipping_rate_unit = String(body?.shipping_rate_unit || "per_kg");
   const shipping_type_id = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
+  const shipping_rate_id = body?.shipping_rate_id ? Number(body.shipping_rate_id) : null;
+  const requested_country_id = body?.country_id ? Number(body.country_id) : null;
   const markup_percent = num(body?.markup_percent, 0);
   const agent_percent = num(body?.agent_percent, 0);
   const agent_commitment_percent = num(body?.agent_commitment_percent, 0);
@@ -528,8 +610,6 @@ export async function POST(req: Request) {
     await ensureCountryConfig(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
-    await backfillHandoffDefaults(conn);
-    await backfillQuoteDefaults(conn);
 
     const allowed = await canCreateQuote(conn, auth.user, handoff_id);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
@@ -541,32 +621,23 @@ export async function POST(req: Request) {
       );
     }
 
-    const defaults = await getNigeriaDefaults(conn);
-    let country_id = defaults.country_id;
-    let display_currency_code = defaults.display_currency_code;
-    let settlement_currency_code = defaults.settlement_currency_code;
-
-    const [userRows]: any = await conn.query(
-      `SELECT u.country_id, u.display_currency_code
-       FROM linescout_conversations c
-       JOIN users u ON u.id = c.user_id
-       WHERE c.handoff_id = ?
-       LIMIT 1`,
-      [handoff_id]
-    );
-    if (userRows?.length) {
-      const u = userRows[0];
-      const userCountry = Number(u.country_id || 0);
-      const userDisplay = String(u.display_currency_code || "").trim();
-      if (userCountry) {
-        const resolved = await resolveCountryCurrency(conn, userCountry, userDisplay || null);
-        if (resolved) {
-          country_id = resolved.country_id;
-          display_currency_code = resolved.display_currency_code;
-          settlement_currency_code = resolved.settlement_currency_code;
-        }
-      }
+    let destination;
+    let selectedShippingRate;
+    try {
+      destination = await resolveQuoteDestination(conn, handoff_id, auth.user, requested_country_id);
+      selectedShippingRate = await resolveQuoteShippingRate(conn, {
+        countryId: destination.country_id,
+        shippingRateId: shipping_rate_id,
+        shippingTypeId: shipping_type_id,
+        shippingRateUsd: shipping_rate_usd,
+        shippingRateUnit: shipping_rate_unit,
+      });
+    } catch (e: any) {
+      return NextResponse.json({ ok: false, error: e?.message || "Invalid quote destination" }, { status: 400 });
     }
+    const country_id = destination.country_id;
+    const display_currency_code = destination.display_currency_code;
+    const settlement_currency_code = destination.settlement_currency_code;
 
     const [routeRows]: any = await conn.query(
       `SELECT route_type
@@ -625,8 +696,8 @@ export async function POST(req: Request) {
       items,
       exchange_rate_rmb,
       exchange_rate_usd,
-      shipping_rate_usd,
-      shipping_rate_unit,
+      selectedShippingRate.rate_value,
+      selectedShippingRate.rate_unit,
       agent_percent,
       lineScoutMarginPercent,
       service_charge_percent
@@ -646,7 +717,7 @@ export async function POST(req: Request) {
       ? `handoff_id, token, status, currency, payment_purpose,
         country_id, display_currency_code, settlement_currency_code,
         exchange_rate_rmb, exchange_rate_usd,
-        shipping_type_id, shipping_rate_usd, shipping_rate_unit,
+        shipping_type_id, shipping_rate_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
         service_charge_percent,
         deposit_enabled, deposit_percent, agent_note,
@@ -657,7 +728,7 @@ export async function POST(req: Request) {
       : `handoff_id, token, status, currency, payment_purpose,
         country_id, display_currency_code, settlement_currency_code,
         exchange_rate_rmb, exchange_rate_usd,
-        shipping_type_id, shipping_rate_usd, shipping_rate_unit,
+        shipping_type_id, shipping_rate_id, shipping_rate_usd, shipping_rate_unit,
         markup_percent, agent_percent, agent_commitment_percent, commitment_due_ngn,
         service_charge_percent,
         deposit_enabled, deposit_percent,
@@ -667,8 +738,8 @@ export async function POST(req: Request) {
         created_by, updated_by`;
 
     const insertValues = supportsAgentNote
-      ? `?, ?, 'draft', ${Array(32).fill("?").join(", ")}`
-      : `?, ?, 'draft', ${Array(31).fill("?").join(", ")}`;
+      ? `?, ?, 'draft', ${Array(33).fill("?").join(", ")}`
+      : `?, ?, 'draft', ${Array(32).fill("?").join(", ")}`;
     const insertParams = supportsAgentNote
       ? [
           handoff_id,
@@ -680,9 +751,10 @@ export async function POST(req: Request) {
           settlement_currency_code,
           exchange_rate_rmb,
           exchange_rate_usd,
-          shipping_type_id,
-          shipping_rate_usd,
-          shipping_rate_unit,
+          selectedShippingRate.shipping_type_id,
+          selectedShippingRate.id,
+          selectedShippingRate.rate_value,
+          selectedShippingRate.rate_unit,
         markup_percent,
         agent_percent,
         agent_commitment_percent,
@@ -716,9 +788,10 @@ export async function POST(req: Request) {
           settlement_currency_code,
           exchange_rate_rmb,
           exchange_rate_usd,
-          shipping_type_id,
-          shipping_rate_usd,
-          shipping_rate_unit,
+          selectedShippingRate.shipping_type_id,
+          selectedShippingRate.id,
+          selectedShippingRate.rate_value,
+          selectedShippingRate.rate_unit,
         markup_percent,
         agent_percent,
         agent_commitment_percent,

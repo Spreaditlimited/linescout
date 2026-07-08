@@ -40,6 +40,7 @@ type QuoteRecord = {
   shipping_rate_usd?: number;
   shipping_rate_unit?: string;
   shipping_type_id?: number | null;
+  shipping_rate_id?: number | null;
   markup_percent?: number;
   agent_percent?: number;
   agent_commitment_percent?: number;
@@ -245,6 +246,7 @@ function QuoteBuilderInner() {
   const [displayCurrencyCode, setDisplayCurrencyCode] = useState<string | null>(null);
   const [fxRates, setFxRates] = useState<FxRate[]>([]);
   const [serviceChargeBands, setServiceChargeBands] = useState<ServiceChargeBands>({});
+  const destinationEditedRef = useRef(false);
   const suppressAutoSelectRef = useRef(false);
   const viewingSavedQuoteRef = useRef(false);
   const draftRef = useRef<{
@@ -257,6 +259,8 @@ function QuoteBuilderInner() {
     shippingRateUnit: "per_kg" | "per_cbm";
     shippingTypeId: number | null;
     shippingRateId: number | null;
+    activeCountryId: number | null;
+    displayCurrencyCode: string | null;
     markupPercent: number;
     agentPercent: number;
     agentCommitmentPercent: number;
@@ -445,12 +449,6 @@ function QuoteBuilderInner() {
     return shippingRates.filter((rate) => Number(rate.country_id || 0) === activeCountryId);
   }, [shippingRates, activeCountryId]);
 
-  const defaultCountryId = useMemo(() => {
-    if (!countries.length) return null;
-    const nigeria = countries.find((c) => String(c.iso2 || "").toUpperCase() === "NG");
-    return Number(nigeria?.id || countries[0]?.id || 0) || null;
-  }, [countries]);
-
   const selectedRate = useMemo(() => {
     if (!availableShippingRates.length) return null;
     return (
@@ -497,11 +495,6 @@ function QuoteBuilderInner() {
     const fxUsdNgn = findRate("USD", "NGN");
     if (fxRmbNgn > 0) setExchangeRmb(fxRmbNgn);
     if (fxUsdNgn > 0) setExchangeUsd(fxUsdNgn);
-    if (!activeCountryId && Array.isArray(json.countries) && json.countries.length) {
-      const nigeria = json.countries.find((c: any) => String(c.iso2 || "").toUpperCase() === "NG");
-      setActiveCountryId(Number(nigeria?.id || json.countries[0]?.id || 0) || null);
-    }
-
     if (json.settings) {
       setMarkupPercent(num(json.settings.markup_percent, 0));
       setAgentPercent(num(json.settings.agent_percent, 0));
@@ -534,7 +527,7 @@ function QuoteBuilderInner() {
         commitmentDueNgn: num(json.settings.commitment_due_ngn, 0),
       });
     }
-  }, [activeCountryId, error]);
+  }, []);
 
   const loadApproval = useCallback(async () => {
     try {
@@ -545,13 +538,13 @@ function QuoteBuilderInner() {
       setApprovedToClaim(approved);
       if (!approved) {
         setError("You need to be approved to use this feature.");
-      } else if (error === "You need to be approved to use this feature.") {
-        setError(null);
+      } else {
+        setError((prev) => (prev === "You need to be approved to use this feature." ? null : prev));
       }
     } catch {
       // ignore
     }
-  }, [activeHandoffId]);
+  }, []);
 
   const selectQuote = useCallback((quote: QuoteRecord) => {
     if (!quote) return;
@@ -560,13 +553,15 @@ function QuoteBuilderInner() {
     }
     setItems(ensureItems(quote.items_json));
     const quoteCountry = quote.country_id ? Number(quote.country_id) : null;
-    setActiveCountryId(activeCountryId || quoteCountry || defaultCountryId);
+    destinationEditedRef.current = false;
+    setActiveCountryId(quoteCountry || null);
     setDisplayCurrencyCode(String(displayCurrencyCode || quote.display_currency_code || ""));
     setExchangeRmb((prev) => num(quote.exchange_rate_rmb, prev));
     setExchangeUsd((prev) => num(quote.exchange_rate_usd, prev));
     setShippingRateUsd((prev) => num(quote.shipping_rate_usd, prev));
     if (quote.shipping_rate_unit === "per_cbm") setShippingRateUnit("per_cbm");
     setShippingTypeId(quote.shipping_type_id ?? null);
+    setShippingRateId(quote.shipping_rate_id ?? null);
     setMarkupPercent((prev) => num(quote.markup_percent, prev));
     setAgentPercent((prev) => num(quote.agent_percent, prev));
     setAgentCommitmentPercent((prev) => num(quote.agent_commitment_percent, prev));
@@ -578,7 +573,7 @@ function QuoteBuilderInner() {
     setLatestQuoteToken(quote.token || null);
     setLatestQuoteId(quote.id || null);
     viewingSavedQuoteRef.current = true;
-  }, [activeCountryId, activeHandoffId, defaultCountryId, displayCurrencyCode, queryReadOnly]);
+  }, [activeHandoffId, displayCurrencyCode, queryReadOnly]);
 
   const loadQuotes = useCallback(async (hid?: number, scope?: "mine") => {
     setQuotesLoading(true);
@@ -596,7 +591,7 @@ function QuoteBuilderInner() {
       }
       const list = Array.isArray(json.items) ? (json.items as QuoteRecord[]) : [];
       setQuotes(list);
-      if (!suppressAutoSelectRef.current && !restoreDraftRef.current && latestQuoteId) {
+      if (!suppressAutoSelectRef.current && !restoreDraftRef.current && !destinationEditedRef.current && latestQuoteId) {
         const current = list.find((q) => q.id === latestQuoteId);
         if (current) {
           selectQuote(current);
@@ -648,11 +643,8 @@ function QuoteBuilderInner() {
       });
       const json = await res.json().catch(() => null);
       const item = json?.item || null;
-      const preferred =
-        Number(item?.user_country_id || 0) ||
-        Number(item?.country_id || 0) ||
-        0;
-      if (preferred) {
+      const preferred = Number(item?.user_country_id || 0);
+      if (preferred && !destinationEditedRef.current) {
         setActiveCountryId(preferred);
       }
       const resolvedCurrency =
@@ -736,6 +728,8 @@ function QuoteBuilderInner() {
     setShippingRateUnit(draft.shippingRateUnit);
     setShippingTypeId(draft.shippingTypeId);
     setShippingRateId(draft.shippingRateId);
+    setActiveCountryId(draft.activeCountryId);
+    setDisplayCurrencyCode(draft.displayCurrencyCode);
     setMarkupPercent(draft.markupPercent);
     setAgentPercent(draft.agentPercent);
     setAgentCommitmentPercent(draft.agentCommitmentPercent);
@@ -777,11 +771,17 @@ function QuoteBuilderInner() {
     draftRef.current = null;
     restoreDraftRef.current = false;
     viewingSavedQuoteRef.current = false;
+    destinationEditedRef.current = false;
     setActiveCountryId(null);
   }, [defaultSettings]);
 
   useEffect(() => {
-    if (!availableShippingRates.length) return;
+    if (!availableShippingRates.length) {
+      setShippingRateId(null);
+      setShippingRateUsd(0);
+      setShippingTypeId(null);
+      return;
+    }
     if (!shippingRateId) {
       setShippingRateId(availableShippingRates[0].id);
       return;
@@ -863,6 +863,8 @@ function QuoteBuilderInner() {
         shipping_rate_usd: shippingRateUsd,
         shipping_rate_unit: shippingRateUnit,
         shipping_type_id: shippingTypeId,
+        shipping_rate_id: shippingRateId,
+        country_id: activeCountryId,
         markup_percent: markupPercent,
         agent_percent: agentPercent,
         agent_commitment_percent: agentCommitmentPercent,
@@ -997,6 +999,8 @@ function QuoteBuilderInner() {
                           shippingRateUnit,
                           shippingTypeId,
                           shippingRateId,
+                          activeCountryId,
+                          displayCurrencyCode,
                           markupPercent,
                           agentPercent,
                           agentCommitmentPercent,
@@ -1063,6 +1067,8 @@ function QuoteBuilderInner() {
                               shippingRateUnit,
                               shippingTypeId,
                               shippingRateId,
+                              activeCountryId,
+                              displayCurrencyCode,
                               markupPercent,
                               agentPercent,
                               agentCommitmentPercent,
@@ -1279,13 +1285,19 @@ function QuoteBuilderInner() {
                 <PremiumSelect
                   label="Destination"
                   value={String(activeCountryId || "")}
-                  onChange={() => {}}
+                  onChange={(value) => {
+                    destinationEditedRef.current = true;
+                    setActiveCountryId(Number(value) || null);
+                    setShippingRateId(null);
+                    setShippingRateUsd(0);
+                    setShippingTypeId(null);
+                  }}
                   options={countries.map((country) => ({
                     value: String(country.id),
                     label: country.name,
                   }))}
                   placeholder="Select destination"
-                  disabled={true}
+                  disabled={isReadOnly}
                 />
               </div>
               <div className="mt-4">
@@ -1546,8 +1558,8 @@ function QuoteBuilderInner() {
                           setActiveHandoffId(proj.handoff_id);
                           setActiveConversationId(proj.conversation_id || null);
                           setActiveRouteType(String(proj.route_type || ""));
-                          const preferredCountry =
-                            proj.user_country_id || proj.handoff_country_id || null;
+                          const preferredCountry = proj.user_country_id || null;
+                          destinationEditedRef.current = false;
                           if (preferredCountry) {
                             setActiveCountryId(preferredCountry);
                           }

@@ -6,10 +6,9 @@ import {
   ensureCountryConfig,
   ensureQuoteCountryColumns,
   ensureHandoffCountryColumns,
-  backfillQuoteDefaults,
-  backfillHandoffDefaults,
+  resolveCountryCurrency,
 } from "@/lib/country-config";
-import { ensureQuoteAddonTables, normalizeRouteType } from "@/lib/quote-addons";
+import { buildQuoteAddonLines, ensureQuoteAddonTables, getVatRateForCountry, normalizeRouteType } from "@/lib/quote-addons";
 import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
 import { sendNoticeEmail } from "@/lib/notice-email";
 
@@ -251,6 +250,94 @@ function firstNameFromFullName(nameRaw: any) {
   return full.split(/\s+/)[0] || "Customer";
 }
 
+async function resolveQuoteDestination(
+  conn: any,
+  quoteId: number,
+  user: { role: string },
+  requestedCountryId: number | null
+) {
+  const [rows]: any = await conn.query(
+    `SELECT q.country_id AS quote_country_id,
+            u.country_id AS user_country_id,
+            u.display_currency_code AS user_display_currency_code
+     FROM linescout_quotes q
+     LEFT JOIN linescout_conversations c ON c.handoff_id = q.handoff_id
+     LEFT JOIN users u ON u.id = c.user_id
+     WHERE q.id = ?
+     LIMIT 1`,
+    [quoteId]
+  );
+  const row = rows?.[0] || {};
+  const profileCountryId = Number(row.user_country_id || 0);
+  const profileDisplay = String(row.user_display_currency_code || "").trim();
+  const destinationCountryId = requestedCountryId || profileCountryId;
+
+  if (!destinationCountryId) {
+    throw new Error(
+      "Select a destination country before saving this quote."
+    );
+  }
+
+  const resolved = await resolveCountryCurrency(
+    conn,
+    destinationCountryId,
+    requestedCountryId ? null : profileDisplay || null
+  );
+  if (!resolved) {
+    throw new Error("Selected destination country is not configured.");
+  }
+  return resolved;
+}
+
+async function resolveQuoteShippingRate(
+  conn: any,
+  params: {
+    countryId: number;
+    shippingRateId: number | null;
+    shippingTypeId: number | null;
+    shippingRateUsd: number;
+    shippingRateUnit: string;
+  }
+) {
+  const queryById = params.shippingRateId
+    ? {
+        sql: `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit
+              FROM linescout_shipping_rates r
+              WHERE r.id = ?
+                AND r.country_id = ?
+                AND r.is_active = 1
+              LIMIT 1`,
+        values: [params.shippingRateId, params.countryId],
+      }
+    : null;
+  const queryByValues = {
+    sql: `SELECT r.id, r.shipping_type_id, r.rate_value, r.rate_unit
+          FROM linescout_shipping_rates r
+          WHERE r.country_id = ?
+            AND r.shipping_type_id = ?
+            AND r.rate_unit = ?
+            AND ABS(r.rate_value - ?) < 0.0001
+            AND r.is_active = 1
+          LIMIT 1`,
+    values: [params.countryId, params.shippingTypeId, params.shippingRateUnit, params.shippingRateUsd],
+  };
+
+  const [rows]: any = await conn.query((queryById || queryByValues).sql, (queryById || queryByValues).values);
+  if (!rows?.length && queryById) {
+    throw new Error("Selected shipping rate is not available for the destination country.");
+  }
+  if (!rows?.length) {
+    throw new Error("Select a valid shipping rate for the destination country.");
+  }
+  const row = rows[0];
+  return {
+    id: Number(row.id),
+    shipping_type_id: Number(row.shipping_type_id),
+    rate_value: num(row.rate_value, 0),
+    rate_unit: String(row.rate_unit || "per_kg"),
+  };
+}
+
 async function hasQuoteNoteColumn(conn: any) {
   const [rows]: any = await conn.query(
     `SELECT 1
@@ -278,8 +365,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     await ensureQuoteShippingControlColumns(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
-    await backfillHandoffDefaults(conn);
-    await backfillQuoteDefaults(conn);
 
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
@@ -334,6 +419,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const shipping_rate_usd = num(body?.shipping_rate_usd, 0);
   const shipping_rate_unit = String(body?.shipping_rate_unit || "per_kg");
   const shipping_type_id = body?.shipping_type_id ? Number(body.shipping_type_id) : null;
+  const shipping_rate_id = body?.shipping_rate_id ? Number(body.shipping_rate_id) : null;
+  const requested_country_id = body?.country_id ? Number(body.country_id) : null;
   const markup_percent = num(body?.markup_percent, 0);
   const agent_percent = num(body?.agent_percent, 0);
   const agent_commitment_percent = num(body?.agent_commitment_percent, 0);
@@ -397,11 +484,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     await ensureQuoteShippingControlColumns(conn);
     await ensureHandoffCountryColumns(conn);
     await ensureQuoteCountryColumns(conn);
-    await backfillHandoffDefaults(conn);
-    await backfillQuoteDefaults(conn);
 
     const allowed = await canAccessQuote(conn, auth.user, quoteId);
     if (!allowed) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+    let destination;
+    let selectedShippingRate;
+    try {
+      destination = await resolveQuoteDestination(conn, quoteId, auth.user, requested_country_id);
+      selectedShippingRate = await resolveQuoteShippingRate(conn, {
+        countryId: destination.country_id,
+        shippingRateId: shipping_rate_id,
+        shippingTypeId: shipping_type_id,
+        shippingRateUsd: shipping_rate_usd,
+        shippingRateUnit: shipping_rate_unit,
+      });
+    } catch (e: any) {
+      return NextResponse.json({ ok: false, error: e?.message || "Invalid quote destination" }, { status: 400 });
+    }
     const exchange_rate_rmb = (await getFxRate(conn, "RMB", "NGN")) || 0;
     const exchange_rate_usd = (await getFxRate(conn, "USD", "NGN")) || 0;
     if (!exchange_rate_rmb || !exchange_rate_usd) {
@@ -426,7 +525,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const [routeRows]: any = await conn.query(
       `SELECT c.route_type
-              , q.display_currency_code
        FROM linescout_quotes q
        JOIN linescout_conversations c ON c.handoff_id = q.handoff_id
        WHERE q.id = ?
@@ -436,7 +534,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     );
     const routeType = normalizeRouteType(routeRows?.[0]?.route_type || "");
     const isNgnQuote =
-      String(routeRows?.[0]?.display_currency_code || "").trim().toUpperCase() === "NGN";
+      String(destination.display_currency_code || "").trim().toUpperCase() === "NGN";
     const bandConfig = bands?.[routeType] || null;
     const bandCurrency = String(bandConfig?.currency || "GBP").trim().toUpperCase() || "GBP";
     let amountForBand = baseProductNgn;
@@ -455,8 +553,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       items,
       exchange_rate_rmb,
       exchange_rate_usd,
-      shipping_rate_usd,
-      shipping_rate_unit,
+      selectedShippingRate.rate_value,
+      selectedShippingRate.rate_unit,
       agent_percent,
       lineScoutMarginPercent,
       service_charge_percent,
@@ -468,31 +566,39 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       }
     );
     const [extraRows]: any = await conn.query(
-      `SELECT total_addons_ngn, vat_rate_percent, shipping_payment_enabled, token, handoff_id
+      `SELECT shipping_payment_enabled, token, handoff_id
        FROM linescout_quotes
        WHERE id = ?
        LIMIT 1`,
       [quoteId]
     );
-    const totalAddonsNgn = num(extraRows?.[0]?.total_addons_ngn, 0);
-    const vatRate = num(extraRows?.[0]?.vat_rate_percent, 0);
+    const addons = await buildQuoteAddonLines(conn, {
+      route_type: routeType,
+      currency_code: destination.display_currency_code,
+      country_id: destination.country_id,
+    });
+    const vatRate = await getVatRateForCountry(conn, destination.country_id);
     const previousShippingEnabled = !!extraRows?.[0]?.shipping_payment_enabled;
     const quoteToken = String(extraRows?.[0]?.token || "");
     const handoffIdFromQuote = Number(extraRows?.[0]?.handoff_id || 0);
-    const vatBase = totals.totalMarkupNgn + totalAddonsNgn;
+    const vatBase = totals.totalMarkupNgn + addons.total_ngn;
     const vatNgn = Math.max(0, Number(((vatBase * vatRate) / 100).toFixed(2)));
-    const totalDueNgn = totals.totalDueNgn + totalAddonsNgn + vatNgn;
+    const totalDueNgn = totals.totalDueNgn + addons.total_ngn + vatNgn;
     const supportsAgentNote = await hasQuoteNoteColumn(conn);
     const updateAgentNote = supportsAgentNote && includeAgentNote;
     const setNoteSql = updateAgentNote ? "agent_note = ?," : "";
     const params = [
       currency,
       payment_purpose,
+      destination.country_id,
+      destination.display_currency_code,
+      destination.settlement_currency_code,
       exchange_rate_rmb,
       exchange_rate_usd,
-      shipping_type_id,
-      shipping_rate_usd,
-      shipping_rate_unit,
+      selectedShippingRate.shipping_type_id,
+      selectedShippingRate.id,
+      selectedShippingRate.rate_value,
+      selectedShippingRate.rate_unit,
       shipping_payment_enabled ? 1 : 0,
       shipping_actual_weight_kg,
       shipping_actual_cbm,
@@ -514,7 +620,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       totals.totalShippingUsd,
       totals.totalShippingNgn,
       totals.totalMarkupNgn,
-      totalAddonsNgn,
+      addons.total_ngn,
       vatRate,
       vatNgn,
       totalDueNgn,
@@ -526,9 +632,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       `UPDATE linescout_quotes
        SET currency = ?,
            payment_purpose = ?,
+           country_id = ?,
+           display_currency_code = ?,
+           settlement_currency_code = ?,
            exchange_rate_rmb = ?,
            exchange_rate_usd = ?,
            shipping_type_id = ?,
+           shipping_rate_id = ?,
            shipping_rate_usd = ?,
            shipping_rate_unit = ?,
            shipping_payment_enabled = ?,
@@ -561,6 +671,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
        WHERE id = ?`,
       params
     );
+
+    await conn.query(`DELETE FROM linescout_quote_addon_lines WHERE quote_id = ?`, [quoteId]);
+    if (addons.lines.length) {
+      const values = addons.lines.map(() => "(?, ?, ?, ?, ?, NOW())").join(", ");
+      const addonParams: any[] = [];
+      for (const line of addons.lines) {
+        addonParams.push(quoteId, line.addon_id, line.title, line.currency_code, line.amount);
+      }
+      await conn.query(
+        `INSERT INTO linescout_quote_addon_lines (quote_id, addon_id, title, currency_code, amount, created_at)
+         VALUES ${values}`,
+        addonParams
+      );
+    }
 
     const [handoffRows]: any = await conn.query(
       `SELECT q.handoff_id, h.email, h.customer_name

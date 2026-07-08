@@ -53,6 +53,7 @@ type QuoteRow = {
   exchange_rate_rmb: number;
   exchange_rate_usd: number;
   shipping_type_id?: number | null;
+  shipping_rate_id?: number | null;
   shipping_rate_usd: number;
   shipping_rate_unit: "per_kg" | "per_cbm";
   shipping_payment_enabled?: number | null;
@@ -107,6 +108,12 @@ type Settings = {
   commitment_due_ngn: number;
 };
 
+type Country = {
+  id: number;
+  name: string;
+  iso2: string;
+};
+
 const purposeOptions = [
   { value: "commitment_fee", label: "Commitment fee" },
   { value: "deposit", label: "Deposit" },
@@ -131,6 +138,7 @@ export default function QuoteEditPage() {
   const [shippingRateUsd, setShippingRateUsd] = useState("0");
   const [shippingRateUnit, setShippingRateUnit] = useState<"per_kg" | "per_cbm">("per_kg");
   const [shippingTypeId, setShippingTypeId] = useState<number | null>(null);
+  const [shippingRateId, setShippingRateId] = useState<number | null>(null);
   const [shippingPaymentEnabled, setShippingPaymentEnabled] = useState(false);
   const [shippingActualWeightKg, setShippingActualWeightKg] = useState("");
   const [shippingActualCbm, setShippingActualCbm] = useState("");
@@ -152,6 +160,7 @@ export default function QuoteEditPage() {
   const [displayCurrency, setDisplayCurrency] = useState<string | null>(null);
 
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
+  const [countries, setCountries] = useState<Country[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -169,8 +178,10 @@ export default function QuoteEditPage() {
         const q = quoteData.item as QuoteRow;
         const settings = configData.settings as Settings;
         const rates = Array.isArray(configData.shipping_rates) ? (configData.shipping_rates as ShippingRate[]) : [];
+        const countryRows = Array.isArray(configData.countries) ? (configData.countries as Country[]) : [];
 
         setShippingRates(rates);
+        setCountries(countryRows);
         setItems(parseQuoteItems(q.items_json));
 
         setExchangeRmb(String(q.exchange_rate_rmb ?? settings.exchange_rate_rmb ?? 0));
@@ -178,6 +189,7 @@ export default function QuoteEditPage() {
         setShippingRateUsd(String(q.shipping_rate_usd ?? 0));
         setShippingRateUnit(q.shipping_rate_unit || "per_kg");
         setShippingTypeId(q.shipping_type_id ?? null);
+        setShippingRateId(q.shipping_rate_id ?? null);
         setShippingPaymentEnabled(Boolean(q.shipping_payment_enabled));
         setShippingActualWeightKg(
           Number.isFinite(Number(q.shipping_actual_weight_kg)) && Number(q.shipping_actual_weight_kg || 0) > 0
@@ -288,7 +300,7 @@ export default function QuoteEditPage() {
   ]);
 
   const availableShippingRates = useMemo(() => {
-    if (!countryId) return shippingRates;
+    if (!countryId) return [];
     return shippingRates.filter((rate) => Number(rate.country_id || 0) === countryId);
   }, [shippingRates, countryId]);
 
@@ -306,6 +318,8 @@ export default function QuoteEditPage() {
           exchange_rate_usd: Number(exchangeUsd),
           shipping_rate_usd: Number(shippingRateUsd),
           shipping_rate_unit: shippingRateUnit,
+          shipping_rate_id: shippingRateId,
+          country_id: countryId,
           shipping_payment_enabled: shippingPaymentEnabled,
           shipping_actual_weight_kg: shippingActualWeightKg.trim() ? Number(shippingActualWeightKg) : null,
           shipping_actual_cbm: shippingActualCbm.trim() ? Number(shippingActualCbm) : null,
@@ -350,6 +364,7 @@ export default function QuoteEditPage() {
   const selectRate = (rateId: number) => {
     const rate = availableShippingRates.find((r) => r.id === rateId);
     if (!rate) return;
+    setShippingRateId(rate.id);
     setShippingRateUsd(String(rate.rate_value));
     setShippingRateUnit(rate.rate_unit);
     setShippingTypeId(rate.shipping_type_id);
@@ -471,12 +486,40 @@ export default function QuoteEditPage() {
 
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
         <div className="text-sm font-semibold text-neutral-100">Shipping</div>
+        <div className="mt-3">
+          <label className="text-[11px] text-neutral-500">Destination country</label>
+          <select
+            value={countryId || ""}
+            onChange={(e) => {
+              const nextId = Number(e.target.value || 0) || null;
+              const country = countries.find((c) => Number(c.id) === Number(nextId));
+              setCountryId(nextId);
+              setCountryName(country?.name || null);
+              setCountryIso2(country?.iso2 || null);
+              setShippingRateId(null);
+              setShippingRateUsd("0");
+              setShippingTypeId(null);
+            }}
+            className="mt-2 w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+          >
+            <option value="">Select destination</option>
+            {countries.map((country) => (
+              <option key={country.id} value={country.id}>
+                {country.name}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {availableShippingRates.map((rate) => (
             <button
               key={rate.id}
               onClick={() => selectRate(rate.id)}
-              className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700"
+              className={`rounded-lg border px-3 py-2 text-xs ${
+                shippingRateId === rate.id
+                  ? "border-white bg-white text-neutral-900"
+                  : "border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700"
+              }`}
             >
               {rate.shipping_type_name} · {fmtUsd(Number(rate.rate_value || 0))} / {rate.rate_unit}
             </button>
