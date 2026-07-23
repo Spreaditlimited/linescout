@@ -26,7 +26,34 @@ type ManualHandoffResponse =
     }
   | { ok: false; error: string };
 
-type BankItem = { id: number; name: string; is_active?: number };
+type BankAccountItem = {
+  id: number;
+  bank_id: number;
+  bank_name: string;
+  country_id: number;
+  country_name?: string | null;
+  country_iso2?: string | null;
+  currency_code: string;
+  purpose: string;
+  account_name: string;
+  account_number: string;
+  sort_code?: string | null;
+  iban?: string | null;
+  swift_bic?: string | null;
+  is_active?: number;
+};
+type BankAccountDraft = {
+  bank_name: string;
+  country_id: number | null;
+  currency_code: string;
+  purpose: string;
+  account_name: string;
+  account_number: string;
+  sort_code: string;
+  iban: string;
+  swift_bic: string;
+  is_active: boolean;
+};
 type UserSearchItem = {
   id: number;
   email: string;
@@ -227,16 +254,25 @@ export default function InternalSettingsPage() {
   const [userSearchErr, setUserSearchErr] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
-  // Banks (for dropdown + management)
-  const [banks, setBanks] = useState<BankItem[]>([]);
-  const [banksLoading, setBanksLoading] = useState(false);
-  const [banksErr, setBanksErr] = useState<string | null>(null);
-
-  // Bank creation (settings)
-  const [newBankName, setNewBankName] = useState("");
-  const [creatingBank, setCreatingBank] = useState(false);
-  const [bankMsg, setBankMsg] = useState<string | null>(null);
-  const [bankCreateErr, setBankCreateErr] = useState<string | null>(null);
+  // Customer-facing bank transfer accounts
+  const [bankAccounts, setBankAccounts] = useState<BankAccountItem[]>([]);
+  const [bankAccountsLoading, setBankAccountsLoading] = useState(false);
+  const [bankAccountsErr, setBankAccountsErr] = useState<string | null>(null);
+  const [bankAccountMsg, setBankAccountMsg] = useState<string | null>(null);
+  const [editingBankAccountId, setEditingBankAccountId] = useState<number | null>(null);
+  const [savingBankAccount, setSavingBankAccount] = useState(false);
+  const [bankAccountDraft, setBankAccountDraft] = useState<BankAccountDraft>({
+    bank_name: "",
+    country_id: null,
+    currency_code: "NGN",
+    purpose: "general",
+    account_name: "",
+    account_number: "",
+    sort_code: "",
+    iban: "",
+    swift_bic: "",
+    is_active: true,
+  });
 
   // Global settings
   const [settingsLoading, setSettingsLoading] = useState(false);
@@ -1365,24 +1401,24 @@ export default function InternalSettingsPage() {
     }
   }
 
-  async function loadBanks() {
-    setBanksLoading(true);
-    setBanksErr(null);
+  async function loadBankAccounts() {
+    setBankAccountsLoading(true);
+    setBankAccountsErr(null);
     try {
-      const res = await fetch("/api/linescout-banks", { cache: "no-store" });
+      const res = await fetch("/api/internal/bank-accounts", { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load banks");
-      setBanks((data.items || []) as BankItem[]);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load bank accounts");
+      setBankAccounts((data.items || []) as BankAccountItem[]);
     } catch (e: any) {
-      setBanksErr(e?.message || "Failed to load banks");
+      setBankAccountsErr(e?.message || "Failed to load bank accounts");
     } finally {
-      setBanksLoading(false);
+      setBankAccountsLoading(false);
     }
   }
 
   useEffect(() => {
-    // Load banks once (for modal dropdown + settings list)
-    loadBanks();
+    // Load customer-facing transfer accounts once.
+    loadBankAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1828,34 +1864,78 @@ export default function InternalSettingsPage() {
     }
   }
 
-  async function createBank() {
-    setBankMsg(null);
-    setBankCreateErr(null);
+  function beginNewBankAccount() {
+    const nigeria = countries.find((country) => String(country.iso2 || "").toUpperCase() === "NG");
+    const firstCountry = nigeria || countries.find((country) => country.is_active !== 0);
+    setEditingBankAccountId(0);
+    setBankAccountMsg(null);
+    setBankAccountsErr(null);
+    setBankAccountDraft({
+      bank_name: "",
+      country_id: firstCountry?.id || null,
+      currency_code: String(firstCountry?.settlement_currency_code || "NGN").toUpperCase(),
+      purpose: "general",
+      account_name: "",
+      account_number: "",
+      sort_code: "",
+      iban: "",
+      swift_bic: "",
+      is_active: true,
+    });
+  }
 
-    const name = newBankName.trim();
-    if (name.length < 2) {
-      setBankCreateErr("Bank name is too short.");
+  function beginEditBankAccount(account: BankAccountItem) {
+    setEditingBankAccountId(account.id);
+    setBankAccountMsg(null);
+    setBankAccountsErr(null);
+    setBankAccountDraft({
+      bank_name: String(account.bank_name || ""),
+      country_id: Number(account.country_id || 0) || null,
+      currency_code: String(account.currency_code || "").toUpperCase(),
+      purpose: String(account.purpose || "general"),
+      account_name: String(account.account_name || ""),
+      account_number: String(account.account_number || ""),
+      sort_code: String(account.sort_code || ""),
+      iban: String(account.iban || ""),
+      swift_bic: String(account.swift_bic || ""),
+      is_active: account.is_active !== 0,
+    });
+  }
+
+  async function saveBankAccount() {
+    setBankAccountMsg(null);
+    setBankAccountsErr(null);
+    if (
+      !bankAccountDraft.bank_name.trim() ||
+      !bankAccountDraft.country_id ||
+      !bankAccountDraft.currency_code.trim() ||
+      !bankAccountDraft.account_name.trim() ||
+      !bankAccountDraft.account_number.trim()
+    ) {
+      setBankAccountsErr("Bank, country, currency, account name and account number are required.");
       return;
     }
 
-    setCreatingBank(true);
+    setSavingBankAccount(true);
     try {
-      const res = await fetch("/api/linescout-banks", {
+      const res = await fetch("/api/internal/bank-accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          id: editingBankAccountId || undefined,
+          ...bankAccountDraft,
+          is_active: bankAccountDraft.is_active ? 1 : 0,
+        }),
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Failed to create bank");
-
-      setNewBankName("");
-      setBankMsg(`Created bank "${name}".`);
-      await loadBanks();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to save bank account");
+      setEditingBankAccountId(null);
+      setBankAccountMsg(editingBankAccountId ? "Bank account updated." : "Bank account added.");
+      await loadBankAccounts();
     } catch (e: any) {
-      setBankCreateErr(e?.message || "Failed to create bank");
+      setBankAccountsErr(e?.message || "Failed to save bank account");
     } finally {
-      setCreatingBank(false);
+      setSavingBankAccount(false);
     }
   }
 
@@ -1870,7 +1950,6 @@ export default function InternalSettingsPage() {
     );
   }
 
-  const activeBanks = banks.filter((b) => b.is_active !== 0);
   const wlExemptionsNow = Date.now();
 
   return (
@@ -3756,96 +3835,255 @@ export default function InternalSettingsPage() {
 
       <ShippingCompaniesPanel />
 
-      {/* Banks panel */}
+      {/* Customer transfer accounts */}
       <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-neutral-100">Banks</h3>
-            <p className="text-xs text-neutral-400">
-              Legacy bank list. In-app payments use Paystack/PayPal, so this is no longer used for
-              onboarding.
-            </p>
+        <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-neutral-100">Customer transfer accounts</h3>
+              <p className="mt-1 text-xs text-neutral-400">
+                Accounts are shown only when both country and currency match the invoice.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={loadBankAccounts}
+                className="rounded-xl border border-neutral-800 px-3 py-2 text-xs font-semibold text-neutral-200 hover:border-neutral-600"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={beginNewBankAccount}
+                className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-neutral-950 hover:bg-neutral-200"
+              >
+                Add account
+              </button>
+            </div>
           </div>
 
-          <div className="w-full lg:max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/40 p-4">
-            <div className="text-sm font-semibold text-neutral-100">Add bank</div>
+          {bankAccountMsg ? (
+            <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
+              {bankAccountMsg}
+            </div>
+          ) : null}
+          {bankAccountsErr ? (
+            <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+              {bankAccountsErr}
+            </div>
+          ) : null}
 
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label className="text-xs text-neutral-400">Bank name</label>
-                <input
-                  value={newBankName}
-                  onChange={(e) => setNewBankName(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                  placeholder="e.g. Access Bank"
-                />
+          {editingBankAccountId !== null ? (
+            <div className="mt-4 rounded-2xl border border-neutral-700 bg-neutral-900/50 p-4">
+              <div className="text-sm font-semibold text-neutral-100">
+                {editingBankAccountId ? "Edit transfer account" : "Add transfer account"}
               </div>
-
-              <div className="flex gap-2">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="text-xs text-neutral-400">
+                  Bank name
+                  <input
+                    value={bankAccountDraft.bank_name}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, bank_name: e.target.value }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="e.g. Lloyds Bank"
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Country
+                  <SearchableSelect
+                    className="mt-1"
+                    value={bankAccountDraft.country_id ? String(bankAccountDraft.country_id) : ""}
+                    options={countries
+                      .filter((country) => country.is_active !== 0)
+                      .map((country) => ({
+                        value: String(country.id),
+                        label: `${country.name}${country.iso2 ? ` (${country.iso2})` : ""}`,
+                    }))}
+                    placeholder="Select country"
+                    onChange={(next) => {
+                      const countryId = Number(next) || null;
+                      const country = countries.find((item) => item.id === countryId);
+                      setBankAccountDraft((prev) => ({
+                        ...prev,
+                        country_id: countryId,
+                        currency_code: String(
+                          country?.settlement_currency_code || prev.currency_code
+                        ).toUpperCase(),
+                      }));
+                    }}
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Currency
+                  <SearchableSelect
+                    className="mt-1"
+                    value={bankAccountDraft.currency_code}
+                    options={currencies
+                      .filter((currency) => currency.is_active !== 0)
+                      .map((currency) => ({
+                        value: currency.code,
+                        label: currency.symbol
+                          ? `${currency.code} (${currency.symbol})`
+                          : currency.code,
+                    }))}
+                    placeholder="Select currency"
+                    onChange={(next) =>
+                      setBankAccountDraft((prev) => ({
+                        ...prev,
+                        currency_code: String(next || "").toUpperCase(),
+                      }))
+                    }
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Account name
+                  <input
+                    value={bankAccountDraft.account_name}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, account_name: e.target.value }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="Account holder name"
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Account number
+                  <input
+                    value={bankAccountDraft.account_number}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, account_number: e.target.value }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="Account number"
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Sort code
+                  <input
+                    value={bankAccountDraft.sort_code}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, sort_code: e.target.value }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="e.g. 12-34-56"
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  IBAN (optional)
+                  <input
+                    value={bankAccountDraft.iban}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, iban: e.target.value.toUpperCase() }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="GB00..."
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  SWIFT/BIC (optional)
+                  <input
+                    value={bankAccountDraft.swift_bic}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, swift_bic: e.target.value.toUpperCase() }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="e.g. LOYDGB2L"
+                  />
+                </label>
+                <label className="text-xs text-neutral-400">
+                  Purpose
+                  <input
+                    value={bankAccountDraft.purpose}
+                    onChange={(e) =>
+                      setBankAccountDraft((prev) => ({ ...prev, purpose: e.target.value }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100"
+                    placeholder="general"
+                  />
+                </label>
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-xs text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={bankAccountDraft.is_active}
+                  onChange={(e) =>
+                    setBankAccountDraft((prev) => ({ ...prev, is_active: e.target.checked }))
+                  }
+                />
+                Active and visible to matching customers
+              </label>
+              <div className="mt-4 flex gap-2">
                 <button
-                  onClick={createBank}
-                  disabled={creatingBank}
-                  className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 hover:bg-neutral-200 disabled:opacity-60"
+                  onClick={saveBankAccount}
+                  disabled={savingBankAccount}
+                  className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-neutral-950 disabled:opacity-60"
                 >
-                  {creatingBank ? "Adding..." : "Add"}
+                  {savingBankAccount ? "Saving..." : "Save account"}
                 </button>
-
                 <button
-                  onClick={loadBanks}
-                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700"
+                  onClick={() => setEditingBankAccountId(null)}
+                  className="rounded-xl border border-neutral-700 px-4 py-2 text-sm text-neutral-300"
                 >
-                  Refresh
+                  Cancel
                 </button>
               </div>
             </div>
+          ) : null}
 
-            {bankMsg ? (
-              <div className="mt-3 rounded-xl border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
-                {bankMsg}
-              </div>
-            ) : null}
-
-            {bankCreateErr ? (
-              <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
-                {bankCreateErr}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-4">
-          {banksLoading ? <p className="text-sm text-neutral-400">Loading banks...</p> : null}
-          {banksErr ? <p className="text-sm text-red-300">{banksErr}</p> : null}
-
-          {!banksLoading && !banksErr ? (
-            <div className="overflow-x-auto rounded-2xl border border-neutral-800">
+          {bankAccountsLoading ? (
+            <p className="mt-4 text-sm text-neutral-400">Loading bank accounts...</p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-neutral-800">
               <table className="min-w-full text-sm">
                 <thead className="bg-neutral-900/70 text-neutral-300">
                   <tr>
-                    <th className="px-3 py-2 text-left">Name</th>
+                    <th className="px-3 py-2 text-left">Bank</th>
+                    <th className="px-3 py-2 text-left">Country</th>
+                    <th className="px-3 py-2 text-left">Currency</th>
+                    <th className="px-3 py-2 text-left">Account</th>
+                    <th className="px-3 py-2 text-left">Sort code</th>
                     <th className="px-3 py-2 text-left">Active</th>
+                    <th className="px-3 py-2 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="bg-neutral-950">
-                  {banks.map((b) => (
-                    <tr key={b.id} className="border-t border-neutral-800">
-                      <td className="px-3 py-2 text-neutral-100">{b.name}</td>
-                      <td className="px-3 py-2 text-neutral-200">
-                        {b.is_active === 0 ? "No" : "Yes"}
+                  {bankAccounts.map((account) => (
+                    <tr key={account.id} className="border-t border-neutral-800">
+                      <td className="px-3 py-2 text-neutral-100">{account.bank_name}</td>
+                      <td className="px-3 py-2 text-neutral-300">
+                        {account.country_name || account.country_iso2 || "—"}
+                      </td>
+                      <td className="px-3 py-2 text-neutral-300">{account.currency_code || "—"}</td>
+                      <td className="px-3 py-2 text-neutral-300">
+                        <div>{account.account_name}</div>
+                        <div className="text-xs text-neutral-500">{account.account_number}</div>
+                      </td>
+                      <td className="px-3 py-2 text-neutral-300">{account.sort_code || "—"}</td>
+                      <td className="px-3 py-2 text-neutral-300">
+                        {account.is_active === 0 ? "No" : "Yes"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => beginEditBankAccount(account)}
+                          className="rounded-lg border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-neutral-500"
+                        >
+                          Edit
+                        </button>
                       </td>
                     </tr>
                   ))}
-                  {banks.length === 0 ? (
+                  {!bankAccounts.length ? (
                     <tr className="border-t border-neutral-800">
-                      <td className="px-3 py-3 text-neutral-400" colSpan={2}>
-                        No banks yet.
+                      <td colSpan={7} className="px-3 py-4 text-neutral-500">
+                        No transfer accounts configured.
                       </td>
                     </tr>
                   ) : null}
                 </tbody>
               </table>
             </div>
-          ) : null}
+          )}
         </div>
       </div>
 

@@ -198,6 +198,7 @@ export default async function ShippingQuotePage({ params }: { params: Promise<{ 
           depositPercent={Number(quote.deposit_percent || 0)}
           commitmentDueNgn={Number(quote.commitment_due_ngn || 0)}
           provider={quote.country_iso2 && String(quote.country_iso2).toUpperCase() !== "NG" ? "paypal" : "paystack"}
+          countryId={quoteCountryId}
           displayCurrencyCode={displayCurrencyCode}
           displayFxRate={displayFxRate}
           shippingFxRate={shippingFxRate}

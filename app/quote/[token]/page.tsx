@@ -271,6 +271,7 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
           shippingActualRateUsd={Number(quote.shipping_actual_rate_usd || 0)}
           shippingActualRateUnit={String(quote.shipping_actual_rate_unit || "")}
           provider={provider}
+          countryId={quoteCountryId}
           displayCurrencyCode={displayCurrencyCode}
           displayFxRate={displayFxRate}
           shippingFxRate={shippingFxRate}

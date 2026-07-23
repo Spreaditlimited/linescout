@@ -608,14 +608,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
       await ensureAffiliateTables(conn);
 
+      const originalAmount = Number(p.amount || 0);
+      const originalCurrency = String(p.currency || "NGN").trim().toUpperCase() || "NGN";
       const amountNgn = Number(p.base_amount || p.amount || 0);
       const handoffPurpose = quotePurposeToHandoffPurpose(String(p.purpose || ""));
       const bankLabel = String(meta?.bank_name || p.provider_ref || p.method || "Direct bank transfer").trim();
       await conn.query(
         `INSERT INTO linescout_handoff_payments
          (handoff_id, amount, currency, purpose, note, paid_at, created_at)
-         VALUES (?, ?, 'NGN', ?, ?, NOW(), NOW())`,
-        [handoffId, amountNgn, handoffPurpose, `Quote payment approved (${bankLabel})`]
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
+        [handoffId, originalAmount, originalCurrency, handoffPurpose, `Quote payment approved (${bankLabel})`]
       );
 
       if (paymentId && handoffId) {
@@ -685,7 +687,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           subject: `Payment confirmed – ${String(p.handoff_token || `Handoff #${handoffId}`)}`,
           title: "Payment confirmed",
           lines: [
-            `Amount: NGN ${Number(amountNgn || 0).toLocaleString()}`,
+            `Amount: ${originalCurrency} ${Number(originalAmount || 0).toLocaleString(undefined, {
+              maximumFractionDigits: originalCurrency === "NGN" ? 0 : 2,
+            })}`,
             `Purpose: ${handoffPurpose.replace(/_/g, " ")}`,
             nextStatus === "paid" && currentStatus !== "paid"
               ? "Your project milestone has been updated to Paid."

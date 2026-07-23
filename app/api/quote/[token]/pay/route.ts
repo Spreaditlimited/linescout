@@ -15,6 +15,7 @@ import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
 import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/lib/paypal-quote-fees";
 import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
 import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
+import { ensureBankAccountCountryColumns } from "@/lib/bank-accounts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,19 +89,38 @@ function computeTotals(
   const safeLineScoutPercent = Math.max(0, lineScoutMarginPercent);
   const safeServiceChargePercent = Math.max(0, Math.min(serviceChargePercent, safeLineScoutPercent));
   const hiddenUpliftPercent = Math.max(0, safeLineScoutPercent - safeServiceChargePercent);
+  const agentUpliftRmb = (totalProductRmb * safeAgentPercent) / 100;
   const agentUpliftNgn = (baseProductNgn * safeAgentPercent) / 100;
+  const hiddenUpliftRmb = (totalProductRmb * hiddenUpliftPercent) / 100;
   const hiddenUpliftNgn = (baseProductNgn * hiddenUpliftPercent) / 100;
+  const totalProductRmbWithAgent = totalProductRmbWithLocal + agentUpliftRmb + hiddenUpliftRmb;
   const totalProductNgnWithAgent = baseProductNgn + localTransportNgn + agentUpliftNgn + hiddenUpliftNgn;
   const totalMarkupNgn = (baseProductNgn * safeServiceChargePercent) / 100;
   const totalDueNgn = totalProductNgnWithAgent + totalShippingNgn + totalMarkupNgn;
 
   return {
+    totalProductRmbWithAgent,
     totalProductNgn: totalProductNgnWithAgent,
     baseProductNgn,
+    totalShippingUsd,
     totalShippingNgn,
     totalMarkupNgn,
     totalDueNgn,
   };
+}
+
+async function convertCurrency(conn: any, amount: number, fromRaw: string, toRaw: string) {
+  const from = String(fromRaw || "").trim().toUpperCase();
+  const to = String(toRaw || "").trim().toUpperCase();
+  if (!Number.isFinite(amount) || amount < 0 || !from || !to) return null;
+  if (from === to) return amount;
+
+  const direct = await getFxRate(conn, from, to);
+  if (direct && direct > 0) return amount * direct;
+
+  const inverse = await getFxRate(conn, to, from);
+  if (inverse && inverse > 0) return amount / inverse;
+  return null;
 }
 
 function pickItems(raw: any) {
@@ -268,6 +288,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     await ensureQuoteAddonTables(conn);
     await ensureQuotePaymentFeeColumns(conn);
     await ensureCountryConfig(conn);
+    await ensureBankAccountCountryColumns(conn);
     await ensureShippingRateCountryColumn(conn);
     await ensureQuoteShippingControlColumns(conn);
     const [rows]: any = await conn.query(
@@ -422,7 +443,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
     const productTarget = Math.max(0, Math.round(productTotalWithAddons - commitmentDue));
 
     const [paidRows]: any = await conn.query(
-      `SELECT purpose, status, amount, base_amount, currency
+      `SELECT purpose, status, amount, base_amount, currency, provider_ref, processing_fee_meta_json
        FROM linescout_quote_payments
        WHERE quote_id = ?`,
       [quote.id]
@@ -436,8 +457,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       const currency = String(row?.currency || "NGN").trim().toUpperCase() || "NGN";
       const amount = num(row?.amount, 0);
       const baseAmount = num(row?.base_amount, 0);
+      let paymentMeta: any = row?.processing_fee_meta_json;
+      if (typeof paymentMeta === "string") {
+        try {
+          paymentMeta = JSON.parse(paymentMeta);
+        } catch {
+          paymentMeta = null;
+        }
+      }
+      const isDirectBankTransfer =
+        paymentMeta?.direct_bank_transfer === true ||
+        String(row?.provider_ref || "").trim().toUpperCase().startsWith("DBT_");
       let amountNgn = 0;
-      if (currency === "NGN") {
+      if (isDirectBankTransfer && baseAmount > 0) {
+        amountNgn = baseAmount;
+      } else if (currency === "NGN") {
         amountNgn = baseAmount > 0 ? baseAmount : amount;
       } else if (amount > 0) {
         const directFx = await getFxRate(conn, currency, "NGN");
@@ -650,18 +684,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
     const directBankTransferRequested = paymentChannel === "direct_bank_transfer";
     if (directBankTransferRequested) {
-      if (countryIso2 !== "NG") {
-        return NextResponse.json(
-          { ok: false, error: "Direct bank transfer is available for Nigeria payments only." },
-          { status: 400 }
-        );
-      }
-      if (provider !== "paystack" && provider !== "providus") {
-        return NextResponse.json(
-          { ok: false, error: "Direct bank transfer is only available with Paystack or Providus channels." },
-          { status: 400 }
-        );
-      }
       if (!directBankAccountId) {
         return NextResponse.json(
           { ok: false, error: "Please select a bank for direct transfer." },
@@ -674,14 +696,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
            a.id,
            a.account_name,
            a.account_number,
+           a.currency_code,
+           a.sort_code,
+           a.iban,
+           a.swift_bic,
            b.name AS bank_name
          FROM linescout_bank_accounts a
          JOIN linescout_banks b ON b.id = a.bank_id
          WHERE a.id = ?
            AND a.is_active = 1
            AND b.is_active = 1
+           AND a.country_id = ?
+           AND UPPER(a.currency_code) = ?
          LIMIT 1`,
-        [directBankAccountId]
+        [directBankAccountId, quoteCountryId, displayCurrencyCode]
       );
       const bankRow = bankRows?.[0];
       if (!bankRow?.id) {
@@ -694,6 +722,106 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       const bankName = String(bankRow.bank_name || directBankName || "").trim();
       const accountName = String(bankRow.account_name || "").trim();
       const accountNumber = String(bankRow.account_number || "").trim();
+      const bankCurrency = String(bankRow.currency_code || displayCurrencyCode).trim().toUpperCase();
+      const sortCode = String(bankRow.sort_code || "").trim();
+      const iban = String(bankRow.iban || "").trim();
+      const swiftBic = String(bankRow.swift_bic || "").trim();
+      let transferAmount = remaining;
+      if (bankCurrency !== "NGN") {
+        const ngnFx = await convertCurrency(conn, 1, "NGN", bankCurrency);
+        const productFx = await convertCurrency(conn, 1, "RMB", bankCurrency);
+        const shippingFx = await convertCurrency(conn, 1, "USD", bankCurrency);
+        if (!ngnFx || !productFx || !shippingFx) {
+          return NextResponse.json(
+            { ok: false, error: `${bankCurrency} exchange rates are not configured.` },
+            { status: 500 }
+          );
+        }
+
+        let addonTotalDisplay = 0;
+        for (const row of addonRows || []) {
+          if (excludedAddonIds.includes(Number(row.id || 0))) continue;
+          const amount = num(row.amount, 0);
+          const code = String(row.currency_code || "NGN").trim().toUpperCase() || "NGN";
+          if (amount <= 0) continue;
+          const converted = await convertCurrency(conn, amount, code, bankCurrency);
+          if (converted == null) {
+            return NextResponse.json(
+              { ok: false, error: `Missing FX rate for ${code} to ${bankCurrency} (add-on).` },
+              { status: 500 }
+            );
+          }
+          addonTotalDisplay += converted;
+        }
+
+        const commitmentDisplay =
+          commitmentPayment.amount > 0
+            ? await convertCurrency(
+                conn,
+                num(commitmentPayment.amount, 0),
+                String(commitmentPayment.currency || "NGN"),
+                bankCurrency
+              )
+            : commitmentDue * ngnFx;
+        if (commitmentDisplay == null) {
+          return NextResponse.json(
+            { ok: false, error: `Commitment payment exchange rate for ${bankCurrency} is not configured.` },
+            { status: 500 }
+          );
+        }
+
+        let depositPaidDisplay = 0;
+        let productPaidDisplay = 0;
+        let shippingPaidDisplay = 0;
+        for (const row of paidRows || []) {
+          if (String(row?.status || "") !== "paid") continue;
+          const paidDisplay = await convertCurrency(
+            conn,
+            num(row?.amount, 0),
+            String(row?.currency || "NGN"),
+            bankCurrency
+          );
+          if (paidDisplay == null) {
+            return NextResponse.json(
+              { ok: false, error: `Paid payment exchange rate for ${bankCurrency} is not configured.` },
+              { status: 500 }
+            );
+          }
+          const paidPurpose = String(row?.purpose || "");
+          if (paidPurpose === "deposit") depositPaidDisplay += paidDisplay;
+          else if (paidPurpose === "shipping_payment") shippingPaidDisplay += paidDisplay;
+          else if (paidPurpose === "product_balance" || paidPurpose === "full_product_payment") {
+            productPaidDisplay += paidDisplay;
+          }
+        }
+
+        const walletAppliedDisplay = walletApplied > 0 ? walletApplied * ngnFx : 0;
+        if (purpose === "deposit") {
+          const depositAmountNgn = computeDepositAmount(productTotalWithAddons, depositPercent);
+          transferAmount = depositAmountNgn * ngnFx - depositPaidDisplay - walletAppliedDisplay;
+        } else if (purpose === "shipping_payment") {
+          transferAmount = totals.totalShippingUsd * shippingFx - shippingPaidDisplay - walletAppliedDisplay;
+        } else {
+          const productTotalDisplay =
+            totals.totalProductRmbWithAgent * productFx +
+            totals.totalMarkupNgn * ngnFx +
+            addonTotalDisplay +
+            totalVatNgn * ngnFx;
+          transferAmount =
+            productTotalDisplay -
+            commitmentDisplay -
+            depositPaidDisplay -
+            productPaidDisplay -
+            walletAppliedDisplay;
+        }
+        transferAmount = Number(Math.max(0, transferAmount).toFixed(2));
+      }
+      if (!transferAmount || !Number.isFinite(transferAmount) || transferAmount <= 0) {
+        return NextResponse.json(
+          { ok: false, error: `${bankCurrency} exchange rate is not configured.` },
+          { status: 500 }
+        );
+      }
 
       const [existingRows]: any = await conn.query(
         `SELECT id
@@ -721,6 +849,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           bank_name: bankName,
           account_name: accountName,
           account_number: accountNumber,
+          sort_code: sortCode,
+          iban,
+          swift_bic: swiftBic,
+          currency: bankCurrency,
+          transfer_amount: transferAmount,
           message: "A pending direct transfer already exists for this payment. Await admin verification.",
         });
       }
@@ -729,14 +862,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       const [ins]: any = await conn.query(
         `INSERT INTO linescout_quote_payments
          (quote_id, handoff_id, user_id, purpose, method, status, amount, base_amount, processing_fee_amount, processing_fee_meta_json, currency, provider_ref, shipping_type_id, created_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, 'NGN', ?, ?, NOW())`,
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?, ?, ?, ?, NOW())`,
         [
           quote.id,
           handoffId || null,
           ownerUserId,
           purpose,
           provider,
-          remaining,
+          transferAmount,
           remaining,
           JSON.stringify({
             channel: "direct_bank_transfer",
@@ -745,9 +878,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
             bank_name: bankName,
             account_name: accountName,
             account_number: accountNumber,
+            sort_code: sortCode,
+            iban,
+            swift_bic: swiftBic,
+            currency: bankCurrency,
+            transfer_amount: transferAmount,
+            base_amount_ngn: remaining,
             provider_channel: provider,
             customer_confirmed_at: new Date().toISOString(),
           }),
+          bankCurrency,
           providerRef,
           shipType || null,
         ]
@@ -763,6 +903,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
         bank_name: bankName,
         account_name: accountName,
         account_number: accountNumber,
+        sort_code: sortCode,
+        iban,
+        swift_bic: swiftBic,
+        currency: bankCurrency,
+        transfer_amount: transferAmount,
         message: "Payment submitted. Status: Pending verification.",
       });
     }

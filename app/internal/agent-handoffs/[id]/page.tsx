@@ -326,14 +326,17 @@ function purposeLabel(p: string) {
 
 function fmtMoney(n: number, currency: string) {
   if (!Number.isFinite(n)) return `${currency} 0`;
+  const normalizedCurrency = String(currency || "NGN").toUpperCase();
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "NGN",
-      maximumFractionDigits: 0,
+      currency: normalizedCurrency,
+      maximumFractionDigits: normalizedCurrency === "NGN" ? 0 : 2,
     }).format(n);
   } catch {
-    return `${currency} ${Math.round(n).toLocaleString()}`;
+    return `${normalizedCurrency} ${Number(n).toLocaleString(undefined, {
+      maximumFractionDigits: normalizedCurrency === "NGN" ? 0 : 2,
+    })}`;
   }
 }
 
@@ -1357,7 +1360,7 @@ export default function HandoffDetailPage() {
                           </div>
                           <div className="mt-1 text-neutral-400">
                             {p.quote_id ? `Quote #${p.quote_id} · ` : ""}
-                            {fmtMoney(Number(p.base_amount || p.amount || 0), p.currency || "NGN")}
+                            {fmtMoney(Number(p.amount || 0), p.currency || "NGN")}
                             {p.bank_name ? ` · ${p.bank_name}` : ""}
                             {p.customer_confirmed_at ? ` · customer confirmed ${fmt(p.customer_confirmed_at)}` : ""}
                           </div>

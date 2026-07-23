@@ -200,7 +200,8 @@ export async function GET(req: Request) {
          qp.id AS quote_payment_id,
          qp.quote_id,
          q.token AS quote_token,
-         COALESCE(qp.base_amount, qp.amount) AS amount,
+         qp.amount,
+         COALESCE(qp.base_amount, qp.amount) AS base_amount,
          qp.currency,
          qp.purpose,
          qp.method,
@@ -215,8 +216,8 @@ export async function GET(req: Request) {
       [handoffId]
     );
 
-    const [sumRows]: any = await conn.query(
-      `SELECT COALESCE(SUM(amount),0) AS total_paid
+    const [handoffPaymentRows]: any = await conn.query(
+      `SELECT amount, currency
        FROM linescout_handoff_payments
        WHERE handoff_id = ?`,
       [handoffId]
@@ -366,7 +367,7 @@ export async function GET(req: Request) {
       const shippingDue = Math.max(0, Math.round(Number(latestQuote.total_shipping_ngn || 0)));
 
       const [quotePaymentRows]: any = await conn.query(
-        `SELECT purpose, status, COALESCE(base_amount, amount) AS paid_amount, currency
+        `SELECT purpose, status, amount, COALESCE(base_amount, amount) AS base_amount, currency
          FROM linescout_quote_payments
          WHERE quote_id = ?
            AND status = 'paid'`,
@@ -377,12 +378,13 @@ export async function GET(req: Request) {
       let productPaidDisplay = 0;
       let shippingPaidDisplay = 0;
       for (const row of quotePaymentRows || []) {
-        const amount = Number(row?.paid_amount || 0);
+        const amount = Number(row?.amount || 0);
+        const baseAmount = Number(row?.base_amount || 0);
         const cur = normalizeCurrency(row?.currency, "NGN");
         if (!Number.isFinite(amount) || amount <= 0) continue;
 
         const toNgn = resolveFxRate(fxLookup, cur, "NGN");
-        const asNgn = toNgn > 0 ? amount * toNgn : 0;
+        const asNgn = baseAmount > 0 ? baseAmount : toNgn > 0 ? amount * toNgn : 0;
         const asDisplay = convertToDisplay(amount, cur, displayCurrencyCode, fxLookup);
         const disp = asDisplay.amount != null ? asDisplay.amount : 0;
 
@@ -454,9 +456,15 @@ export async function GET(req: Request) {
       };
     }
 
-    const totalPaid = Number(sumRows?.[0]?.total_paid || 0);
     const totalDue = Number(finRows?.[0]?.total_due || 0);
     const currency = normalizeCurrency(finRows?.[0]?.currency, "NGN");
+    const totalPaid = (handoffPaymentRows || []).reduce((sum: number, row: any) => {
+      const amount = Number(row?.amount || 0);
+      if (!Number.isFinite(amount) || amount <= 0) return sum;
+      const paymentCurrency = normalizeCurrency(row?.currency, currency);
+      const rate = resolveFxRate(fxLookup, paymentCurrency, currency);
+      return rate > 0 ? sum + amount * rate : sum;
+    }, 0);
 
     const dueDisplayConv = convertToDisplay(totalDue, currency, displayCurrencyCode, fxLookup);
     const displayTotalDue =

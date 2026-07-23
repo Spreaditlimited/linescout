@@ -90,7 +90,7 @@ export async function POST(req: Request) {
   }
 }
 
-// PATCH: toggle bank active (admin only)
+// PATCH: update bank name or active state (admin only)
 export async function PATCH(req: Request) {
   const auth = await requireAdmin();
   if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
@@ -98,23 +98,32 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({}));
   const action = String(body?.action || "").trim();
 
-  if (action !== "toggle_active") {
+  if (action !== "toggle_active" && action !== "update_name") {
     return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
   }
 
   const id = Number(body?.id || 0);
-  const is_active = Number(body?.is_active);
-
-  if (!id || (is_active !== 0 && is_active !== 1)) {
-    return NextResponse.json({ ok: false, error: "id and is_active are required" }, { status: 400 });
-  }
+  if (!id) return NextResponse.json({ ok: false, error: "id is required" }, { status: 400 });
 
   const conn = await db.getConnection();
   try {
-    const [result]: any = await conn.query(
-      `UPDATE linescout_banks SET is_active = ? WHERE id = ?`,
-      [is_active, id]
-    );
+    let result: any;
+    if (action === "update_name") {
+      const name = String(body?.name || "").trim();
+      if (name.length < 2) {
+        return NextResponse.json({ ok: false, error: "Bank name too short" }, { status: 400 });
+      }
+      [result] = await conn.query(`UPDATE linescout_banks SET name = ? WHERE id = ?`, [name, id]);
+    } else {
+      const is_active = Number(body?.is_active);
+      if (is_active !== 0 && is_active !== 1) {
+        return NextResponse.json({ ok: false, error: "is_active is required" }, { status: 400 });
+      }
+      [result] = await conn.query(
+        `UPDATE linescout_banks SET is_active = ? WHERE id = ?`,
+        [is_active, id]
+      );
+    }
 
     if (!result || result.affectedRows !== 1) {
       return NextResponse.json({ ok: false, error: "Bank not found" }, { status: 404 });
