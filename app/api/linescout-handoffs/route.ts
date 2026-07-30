@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import type { PoolConnection } from "mysql2/promise";
+import { db } from "@/lib/db";
 import {
   ensureCountryConfig,
   ensureHandoffCountryColumns,
@@ -29,16 +30,10 @@ function parseTestEmails(raw: any): string[] {
 }
 
 export async function GET(req: Request) {
-  let conn: mysql.Connection | null = null;
+  let conn: PoolConnection | null = null;
 
   try {
-    conn = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-    });
+    conn = await db.getConnection();
 
     const url = new URL(req.url);
     const excludeTest = url.searchParams.get("exclude_test") === "1";
@@ -125,7 +120,7 @@ export async function GET(req: Request) {
     );
   } finally {
     try {
-      if (conn) await conn.end();
+      if (conn) conn.release();
     } catch {}
   }
 }

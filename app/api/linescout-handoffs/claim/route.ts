@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import type { PoolConnection } from "mysql2/promise";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ async function ensureClaimAuditTable(conn: any) {
 }
 
 export async function POST(req: NextRequest) {
+  let connection: PoolConnection | null = null;
   try {
     const body = await req.json();
     const id = Number(body?.id);
@@ -37,12 +39,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-    });
+    connection = await db.getConnection();
     await ensureClaimAuditTable(connection);
 
     // Only claim if still pending
@@ -70,8 +67,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await connection.end();
-
     if (affected === 0) {
       return NextResponse.json(
         { ok: false, error: "Already claimed or not pending." },
@@ -86,5 +81,7 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "Failed to claim handoff" },
       { status: 500 }
     );
+  } finally {
+    connection?.release();
   }
 }

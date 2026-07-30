@@ -1,22 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import mysql from "mysql2/promise";
 import { paypalCreateProduct, paypalCreatePlan, paypalGetPlan } from "@/lib/paypal";
 import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+const pool = db;
 
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;

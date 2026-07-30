@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import type mysql from "mysql2/promise";
 import { cookies } from "next/headers";
+import { db } from "@/lib/db";
 import { ensureCountryConfig } from "@/lib/country-config";
 import { ensureAffiliateSettingsColumns } from "@/lib/affiliates";
 import { resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
@@ -8,16 +9,7 @@ import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 import { recomputeWhiteLabelLandedCostsForCountry } from "@/lib/white-label-landed";
 import { DEFAULT_PAYPAL_QUOTE_FEE_CONFIG, parsePaypalQuoteFeeConfig } from "@/lib/paypal-quote-fees";
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+const pool = db;
 
 async function requireAdmin() {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;

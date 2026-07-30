@@ -1,7 +1,8 @@
 // app/api/linescout-handoffs/update-status/route.ts
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import mysql from "mysql2/promise";
+import type { PoolConnection } from "mysql2/promise";
+import { db } from "@/lib/db";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { computeAgentPointsForHandoff } from "@/lib/agent-points";
 import { createEasyPostTracker } from "@/lib/easypost";
@@ -67,7 +68,7 @@ function getSmtpConfig() {
   return { host, port, user, pass, from };
 }
 
-async function getProductPaymentStatus(conn: mysql.Connection, handoffId: number) {
+async function getProductPaymentStatus(conn: PoolConnection, handoffId: number) {
   const [quoteRows]: any = await conn.execute(
     `SELECT id, total_product_ngn, total_markup_ngn, commitment_due_ngn
      FROM linescout_quotes
@@ -134,7 +135,7 @@ async function sendEmail(opts: { to: string; subject: string; text: string; html
   return { ok: true as const };
 }
 
-async function getInternalUser(conn: mysql.Connection) {
+async function getInternalUser(conn: PoolConnection) {
   const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
   if (!cookieName) return null;
 
@@ -205,7 +206,7 @@ async function safeNotifyN8n(payload: any) {
 }
 
 export async function POST(req: Request) {
-  let conn: mysql.Connection | null = null;
+  let conn: PoolConnection | null = null;
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -261,13 +262,7 @@ export async function POST(req: Request) {
       );
     }
 
-    conn = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-    });
+    conn = await db.getConnection();
 
     // Load current
     const [rows] = await conn.execute<any[]>(
@@ -276,7 +271,7 @@ export async function POST(req: Request) {
     );
 
     if (!rows || rows.length === 0) {
-      await conn.end();
+      conn.release();
       return NextResponse.json({ ok: false, error: "Handoff not found" }, { status: 404 });
     }
 
@@ -313,7 +308,7 @@ export async function POST(req: Request) {
 
     // No changes allowed once delivered/cancelled
     if (current === "delivered" || current === "cancelled") {
-      await conn.end();
+      conn.release();
       return NextResponse.json(
         { ok: false, error: `Cannot update a handoff that is ${current}.` },
         { status: 400 }
@@ -323,7 +318,7 @@ export async function POST(req: Request) {
     // Must be claimed before updates (except cancel/pending)
     if (manufacturerUpdateOnly) {
       if (!hasClaim) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "This project must be claimed before updating manufacturer details." },
           { status: 400 }
@@ -331,7 +326,7 @@ export async function POST(req: Request) {
       }
     } else if (target !== "cancelled" && target !== "pending") {
       if (!hasClaim) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "This project must be claimed before updating milestones." },
           { status: 400 }
@@ -344,7 +339,7 @@ export async function POST(req: Request) {
       const effectiveCurrent = current === "pending" && hasClaim ? "claimed" : current;
       const allowed = NEXT_ALLOWED[effectiveCurrent] ?? [];
       if (target !== effectiveCurrent && !allowed.includes(target)) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: `Invalid transition: ${effectiveCurrent} → ${target}` },
           { status: 400 }
@@ -363,7 +358,7 @@ export async function POST(req: Request) {
       );
       const shipPaid = Number(shipPaidRows?.[0]?.paid || 0);
       if (!Number.isFinite(shipPaid) || shipPaid <= 0) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Shipping payment must be completed before marking delivered." },
           { status: 400 }
@@ -372,7 +367,7 @@ export async function POST(req: Request) {
     }
 
     if (manufacturerUpdateOnly && (current === "delivered" || current === "cancelled")) {
-      await conn.end();
+      conn.release();
       return NextResponse.json(
         { ok: false, error: `Cannot update manufacturer details when handoff is ${current}.` },
         { status: 400 }
@@ -380,7 +375,7 @@ export async function POST(req: Request) {
     }
 
     if (hasManufacturerPayload && !manufacturerUpdateOnly && target !== "manufacturer_found") {
-      await conn.end();
+      conn.release();
       return NextResponse.json(
         { ok: false, error: "Use manufacturer_update to edit details without changing status." },
         { status: 400 }
@@ -395,21 +390,21 @@ export async function POST(req: Request) {
         !nonEmpty(manufacturer_contact_email) ||
         !nonEmpty(manufacturer_contact_phone)
       ) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Manufacturer name, address, contact person, email, and phone are required." },
           { status: 400 }
         );
       }
       if (!isValidEmail(manufacturer_contact_email)) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Manufacturer email must be valid." },
           { status: 400 }
         );
       }
       if (!isValidChinaPhone(manufacturer_contact_phone)) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Manufacturer phone must start with +86 and have 11 digits after the country code." },
           { status: 400 }
@@ -422,14 +417,14 @@ export async function POST(req: Request) {
     if (target === "paid" || target === "shipped") {
       const statusCheck = await getProductPaymentStatus(conn, id);
       if (!statusCheck.ok) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: target === "paid" ? "A quote is required before marking paid." : "A quote is required before marking shipped." },
           { status: 400 }
         );
       }
       if (statusCheck.productPaid <= 0) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           {
             ok: false,
@@ -442,7 +437,7 @@ export async function POST(req: Request) {
         );
       }
       if (statusCheck.productDue > 0 && statusCheck.productPaid < statusCheck.productDue) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           {
             ok: false,
@@ -460,7 +455,7 @@ export async function POST(req: Request) {
 
       // Require shipping company selection
       if (!shipping_company_id) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Missing shipping_company_id" },
           { status: 400 }
@@ -478,7 +473,7 @@ export async function POST(req: Request) {
         );
 
         if (!scRows || scRows.length === 0) {
-          await conn.end();
+          conn.release();
           return NextResponse.json(
             { ok: false, error: "Invalid shipping_company_id" },
             { status: 400 }
@@ -486,7 +481,7 @@ export async function POST(req: Request) {
         }
 
         if (!scRows[0].is_active) {
-          await conn.end();
+          conn.release();
           return NextResponse.json(
             { ok: false, error: "Selected shipping company is inactive" },
             { status: 400 }
@@ -506,13 +501,13 @@ export async function POST(req: Request) {
       );
 
       if (!bRows || bRows.length === 0) {
-        await conn.end();
+        conn.release();
         return NextResponse.json({ ok: false, error: "Invalid bank_id" }, { status: 400 });
       }
 
       // If your banks table has is_active, enforce it (safe even if column exists)
       if (typeof bRows[0].is_active !== "undefined" && !bRows[0].is_active) {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Selected bank is inactive" },
           { status: 400 }
@@ -522,14 +517,14 @@ export async function POST(req: Request) {
 
     if (target === "cancelled") {
       if (actor?.role !== "admin") {
-        await conn.end();
+        conn.release();
         return NextResponse.json(
           { ok: false, error: "Only admin can cancel a project." },
           { status: 403 }
         );
       }
       if (!nonEmpty(cancel_reason)) {
-        await conn.end();
+        conn.release();
         return NextResponse.json({ ok: false, error: "Missing cancel_reason" }, { status: 400 });
       }
     }
@@ -624,7 +619,7 @@ export async function POST(req: Request) {
     }
 
     if (!setParts.length) {
-      await conn.end();
+      conn.release();
       return NextResponse.json({ ok: false, error: "No updates provided" }, { status: 400 });
     }
 
@@ -692,19 +687,14 @@ export async function POST(req: Request) {
       [id]
     );
 
-    await conn.end();
+    conn.release();
     conn = null;
 
     const handoff = handoffRows?.[0] || null;
     let trackingId: string | null = null;
 
     if (target === "shipped" && handoff) {
-      const shipmentConn = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-      });
+      const shipmentConn = await db.getConnection();
       try {
         await ensureShipmentTables(shipmentConn as any);
         const [shipRows]: any = await shipmentConn.query(
@@ -786,7 +776,7 @@ export async function POST(req: Request) {
           }
         }
       } finally {
-        await shipmentConn.end();
+        shipmentConn.release();
       }
     }
 
@@ -866,7 +856,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("update-status error:", err);
     try {
-      if (conn) await conn.end();
+      if (conn) conn.release();
     } catch {}
     return NextResponse.json(
       { ok: false, error: err?.message || "Failed to update status" },

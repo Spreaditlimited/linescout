@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import mysql from "mysql2/promise";
+import type mysql from "mysql2/promise";
+import { db } from "@/lib/db";
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -16,7 +17,7 @@ async function getDb() {
     throw new Error("Missing DB env vars (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME)");
   }
 
-  return mysql.createConnection({ host, user, password, database });
+  return db;
 }
 
 async function getUserIdFromBearer(req: Request) {
@@ -39,8 +40,6 @@ async function getUserIdFromBearer(req: Request) {
     `,
     [tokenHash]
   );
-
-  await conn.end();
 
   if (!rows.length) return null;
   return Number(rows[0].id);
@@ -108,7 +107,6 @@ export async function POST(req: Request) {
     );
 
     if (!crows.length) {
-      await conn.end();
       return NextResponse.json({ ok: false, error: "Conversation not found" }, { status: 404 });
     }
 
@@ -116,14 +114,12 @@ export async function POST(req: Request) {
 
     // Ownership check for user sending user messages
     if (senderType === "user" && Number(convo.user_id) !== userId) {
-      await conn.end();
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
     // For MVP: block agent/ai from mobile client.
     // Agent messages will come from internal admin later with separate auth.
     if (senderType !== "user") {
-      await conn.end();
       return NextResponse.json({ ok: false, error: "Not allowed from client" }, { status: 403 });
     }
 
@@ -135,8 +131,6 @@ export async function POST(req: Request) {
       `,
       [conversationId, userId, messageText]
     );
-
-    await conn.end();
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {

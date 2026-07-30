@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import type { PoolConnection } from "mysql2/promise";
+import { db as sharedDb } from "@/lib/db";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import {
   ensureCountryConfig,
@@ -23,13 +24,7 @@ const N8N_STATUS_NOTIFY_URL =
   "https://n8n.sureimports.com/webhook/linescout_status_notify";
 
 function db() {
-  return mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  });
+  return sharedDb.getConnection();
 }
 
 function randomChunk(len: number) {
@@ -152,7 +147,7 @@ async function notifyStatusEmail(payload: any) {
  * }
  */
 export async function POST(req: Request) {
-  let conn: mysql.Connection | null = null;
+  let conn: PoolConnection | null = null;
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -586,6 +581,6 @@ export async function POST(req: Request) {
     } catch {}
     return NextResponse.json({ ok: false, error: "Failed to create manual handoff" }, { status: 500 });
   } finally {
-    if (conn) await conn.end();
+    if (conn) conn.release();
   }
 }

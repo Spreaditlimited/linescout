@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -91,16 +91,6 @@ async function saveDraftToDb(sessionId: string, messages: any[]) {
     return;
   }
 
-  const pool = mysql.createPool({
-    host,
-    user,
-    password,
-    database,
-    waitForConnections: true,
-    connectionLimit: 5,
-    queueLimit: 0,
-  });
-
   const intake = {
     source: "linescout_chat",
     sessionId,
@@ -116,8 +106,7 @@ async function saveDraftToDb(sessionId: string, messages: any[]) {
       updated_at = CURRENT_TIMESTAMP
   `;
 
-  await pool.execute(sql, [sessionId, JSON.stringify(intake)]);
-  await pool.end();
+  await db.execute(sql, [sessionId, JSON.stringify(intake)]);
 }
 
 export async function POST(req: NextRequest) {

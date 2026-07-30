@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import type { PoolConnection } from "mysql2/promise";
+import { db as sharedDb } from "@/lib/db";
 import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
 import { ensureQuotePaymentMethodSupportsManual } from "@/lib/quote-payment-fees";
 
@@ -14,13 +15,7 @@ const N8N_STATUS_NOTIFY_URL =
   "https://n8n.sureimports.com/webhook/linescout_status_notify";
 
 function db() {
-  return mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
-  });
+  return sharedDb.getConnection();
 }
 
 function pickItems(raw: any) {
@@ -172,7 +167,7 @@ async function notifyStatusEmail(payload: any) {
  * - payment history
  */
 export async function GET(req: Request) {
-  let conn: mysql.Connection | null = null;
+  let conn: PoolConnection | null = null;
 
   try {
     const url = new URL(req.url);
@@ -610,7 +605,7 @@ export async function GET(req: Request) {
       { status: 500 }
     );
   } finally {
-    if (conn) await conn.end();
+    if (conn) conn.release();
   }
 }
 
@@ -630,7 +625,7 @@ export async function GET(req: Request) {
  * }
  */
 export async function POST(req: Request) {
-  let conn: mysql.Connection | null = null;
+  let conn: PoolConnection | null = null;
 
   // capture for notification (after commit)
   let notifyPayload: any = null;
@@ -919,6 +914,6 @@ export async function POST(req: Request) {
     } catch {}
     return NextResponse.json({ ok: false, error: "Failed to save payment" }, { status: 500 });
   } finally {
-    if (conn) await conn.end();
+    if (conn) conn.release();
   }
 }

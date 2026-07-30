@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,38 +14,24 @@ async function getDraftFromDb(sessionId: string) {
     throw new Error("DB env vars missing.");
   }
 
-  const pool = mysql.createPool({
-    host,
-    user,
-    password,
-    database,
-    waitForConnections: true,
-    connectionLimit: 5,
-    queueLimit: 0,
-  });
+  const [rows] = await db.execute<any[]>(
+    `
+    SELECT intake_json
+    FROM linescout_business_plan_drafts
+    WHERE session_id = ?
+    LIMIT 1
+    `,
+    [sessionId]
+  );
 
-  try {
-    const [rows] = await pool.execute<any[]>(
-      `
-      SELECT intake_json
-      FROM linescout_business_plan_drafts
-      WHERE session_id = ?
-      LIMIT 1
-      `,
-      [sessionId]
-    );
+  if (!rows || rows.length === 0) return null;
 
-    if (!rows || rows.length === 0) return null;
+  const intakeJson = rows[0]?.intake_json;
+  if (!intakeJson) return null;
 
-    const intakeJson = rows[0]?.intake_json;
-    if (!intakeJson) return null;
-
-    // mysql2 may return JSON as object or string depending on config
-    const parsed = typeof intakeJson === "string" ? JSON.parse(intakeJson) : intakeJson;
-    return parsed;
-  } finally {
-    await pool.end();
-  }
+  // mysql2 may return JSON as object or string depending on config
+  const parsed = typeof intakeJson === "string" ? JSON.parse(intakeJson) : intakeJson;
+  return parsed;
 }
 
 export async function POST(req: NextRequest) {
