@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck, Ship, Factory, Handshake, ArrowRight, Star, ChevronDown } from "lucide-react";
-import MarketingTopNav from "@/components/MarketingTopNav";
-import Footer from "@/components/Footer";
 import InlineEmailOtpForm from "@/components/marketing/InlineEmailOtpForm";
 
 export const metadata: Metadata = {
@@ -117,7 +115,7 @@ const faqs = [
 ];
 
 export default function ImportFromChinaPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
 
   return (
     <div
@@ -138,25 +136,9 @@ export default function ImportFromChinaPage() {
           display: none;
         }
       `}</style>
-      <MarketingTopNav
-        backgroundClassName="bg-white/80 backdrop-blur-md"
-        borderClassName="border-b border-neutral-200/50"
-        dividerClassName="bg-[rgba(45,52,97,0.2)]"
-        accentClassName="text-[var(--agent-blue)]"
-        navTextClassName="text-neutral-600"
-        navHoverClassName="hover:text-[var(--agent-blue)]"
-        buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-        buttonTextClassName="text-[var(--agent-blue)]"
-        menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-        menuBgClassName="bg-white/95"
-        menuTextClassName="text-neutral-700"
-        menuHoverClassName="hover:text-[var(--agent-blue)]"
-        disabledNavClassName="text-neutral-400"
-      />
-
       <main className="relative flex-1">
         {/* --- HERO SECTION --- */}
-        <section className="mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-12 px-6 pb-20 pt-12 md:grid-cols-[1.1fr_0.9fr] md:gap-16 md:pt-24">
+        <section className="si-hero mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-12 px-6 pb-20 pt-12 md:grid-cols-[1.1fr_0.9fr] md:gap-16 md:pt-24">
           {/* Left Column: Value Prop */}
           <div className="flex flex-col justify-center">
             <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-white px-3 py-1.5 shadow-sm">
@@ -344,7 +326,6 @@ export default function ImportFromChinaPage() {
           </div>
         </section>
       </main>
-      <Footer variant="agent" />
     </div>
   );
 }

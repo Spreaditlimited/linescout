@@ -1,8 +1,17 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import Navbar from "@/components/Navbar";
 import FloatingWhatsAppButton from "@/components/FloatingWhatsAppButton";
+import MarketingTopNav from "@/components/home/NavBar";
+import Footer from "@/components/Footer";
+import CookieNotice from "@/components/CookieNotice";
+
+const LeadCapturePopup = dynamic(
+  () => import("@/components/marketing/LeadCapturePopup"),
+  { ssr: false },
+);
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -52,25 +61,52 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     isMachineSourcingLeads ||
     isMachineSourcingWebinar;
 
-  const shellClass = isNoStretch
-    ? "flex flex-col"
-    : isLanding
-      ? "flex min-h-screen flex-col"
-      : "min-h-screen flex flex-col";
+  const privateWhiteLabelSections = [
+    "/white-label/ideas",
+    "/white-label/insights",
+    "/white-label/start",
+    "/white-label/step-",
+    "/white-label/subscribe",
+    "/white-label/wizard",
+  ];
+  const isPublicWhiteLabel =
+    pathname === "/white-label" ||
+    (pathname.startsWith("/white-label/") &&
+      !privateWhiteLabelSections.some((route) => pathname.startsWith(route)));
+  const isPublicSite =
+    pathname === "/" ||
+    pathname === "/account-deletion" ||
+    pathname === "/agents" ||
+    pathname === "/affiliates" ||
+    pathname === "/business-plan" ||
+    pathname === "/agent-app" ||
+    isImportFromChina ||
+    isPublicWhiteLabel ||
+    pathname.startsWith("/machines") ||
+    pathname.startsWith("/machine-sourcing-webinar") ||
+    pathname.startsWith("/white-label-leads") ||
+    pathname.startsWith("/white-label-webinar") ||
+    pathname.startsWith("/track");
+  const hasDarkPublicHero =
+    pathname === "/" ||
+    pathname === "/affiliates" ||
+    pathname === "/agent-app" ||
+    pathname === "/business-plan" ||
+    pathname === "/import-from-china" ||
+    pathname === "/machines" ||
+    pathname === "/track" ||
+    pathname === "/white-label" ||
+    pathname.startsWith("/machine-sourcing-webinar") ||
+    pathname.startsWith("/white-label-leads") ||
+    pathname.startsWith("/white-label-webinar");
 
-  const showFloatingWhatsApp =
-    !isInternal &&
-    !isAgents &&
-    !isAgentApp &&
-    !isAuth &&
-    !isApp &&
-    !isAccountDeletion &&
-    !isPublicQuote &&
-    !isAffiliate;
+  const shellClass = "flex min-h-screen flex-col";
 
   return (
-    <div className={shellClass}>
-      {!isInternal &&
+    <div className={`${shellClass}${isPublicSite ? " public-site" : ""}`}>
+      {isPublicSite ? (
+        <MarketingTopNav />
+      ) : !isInternal &&
       !isLanding &&
       !isAgents &&
       !isAgentApp &&
@@ -82,10 +118,19 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       !isAffiliate ? (
         <Navbar />
       ) : null}
-      {isLanding ? children : (
+      {isPublicSite && !hasDarkPublicHero ? (
+        <div
+          className="h-[86px] shrink-0 bg-[linear-gradient(110deg,#11153A_0%,#050817_56%,#2A1115_100%)]"
+          aria-hidden="true"
+        />
+      ) : null}
+      {isPublicSite || isLanding ? children : (
         <main className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</main>
       )}
-      {showFloatingWhatsApp ? <FloatingWhatsAppButton /> : null}
+      {isPublicSite ? <Footer /> : null}
+      {isPublicSite ? <LeadCapturePopup /> : null}
+      <CookieNotice />
+      <FloatingWhatsAppButton />
     </div>
   );
 }

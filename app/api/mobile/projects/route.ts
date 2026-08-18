@@ -6,7 +6,6 @@ import type { RowDataPacket } from "mysql2/promise";
 import {
   buildConversationAccessScope,
   buildProjectVisibilityScope,
-  ensureLinescoutProjectAccessInfraOnce,
 } from "@/lib/accounts";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
@@ -27,7 +26,6 @@ type ConversationRow = RowDataPacket & {
 export async function GET(req: Request) {
   try {
     const user = await requireAccountUser(req);
-    await ensureLinescoutProjectAccessInfraOnce();
     const access = buildConversationAccessScope("c", {
       accountId: Number(user.account_id),
       userId: Number(user.id),

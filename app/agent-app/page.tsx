@@ -3,9 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, Bolt, Briefcase, ShieldCheck, Smartphone } from "lucide-react";
-import Footer from "@/components/Footer";
 import ComingSoonModal from "@/components/ComingSoonModal";
-import MarketingTopNav from "@/components/MarketingTopNav";
 
 const highlights = [
   {
@@ -49,7 +47,7 @@ const steps = [
 ];
 
 export default function AgentAppLandingPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
   const [showAppModal, setShowAppModal] = useState(false);
   return (
     <main
@@ -64,25 +62,9 @@ export default function AgentAppLandingPage() {
       </div>
 
       <div className="relative">
-        <MarketingTopNav
-          backgroundClassName="bg-white/95"
-          borderClassName="border-transparent"
-          dividerClassName="bg-[rgba(45,52,97,0.2)]"
-          accentClassName="text-[var(--agent-blue)]"
-          navTextClassName="text-neutral-600"
-          navHoverClassName="hover:text-[var(--agent-blue)]"
-          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-          buttonTextClassName="text-[var(--agent-blue)]"
-          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-          menuBgClassName="bg-white/95"
-          menuTextClassName="text-neutral-700"
-          menuHoverClassName="hover:text-[var(--agent-blue)]"
-          disabledNavClassName="text-neutral-400"
-        />
-
         <section
           id="features"
-          className="mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 md:pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-16"
+          className="si-hero mx-auto grid max-w-6xl gap-12 px-6 pb-20 pt-10 md:pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-16"
         >
           <div className="lg:pt-4">
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
@@ -313,7 +295,6 @@ export default function AgentAppLandingPage() {
           </div>
         </section>
 
-        <Footer variant="agent" />
         <ComingSoonModal
           open={showAppModal}
           title="LineScout Agent Mobile App"

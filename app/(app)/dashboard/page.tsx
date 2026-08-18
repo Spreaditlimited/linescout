@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import {
+  getWorkspaceOverview,
+  type WorkspaceProject,
+  type WorkspaceSummary,
+} from "@/lib/workspace-overview-client";
 
 const money = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -15,27 +20,6 @@ const shortDate = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
 });
 
-type ProjectRow = {
-  conversation_id: number;
-  handoff_id?: number | null;
-  conversation_status?: "active" | "cancelled" | string;
-  stage: string | null;
-  updated_at: string;
-};
-
-type QuoteSummary = {
-  due_amount: number;
-};
-
-type SummaryRow = {
-  conversation_id: number;
-  handoff_id?: number | null;
-  stage: string;
-  summary: string | null;
-  quote_summary: QuoteSummary | null;
-  payments: Array<{ id: number; amount: number; paid_at: string | null; created_at: string | null }>;
-};
-
 type WalletResponse = {
   wallet?: {
     balance: string | number;
@@ -44,8 +28,8 @@ type WalletResponse = {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [summaries, setSummaries] = useState<SummaryRow[]>([]);
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [summaries, setSummaries] = useState<WorkspaceSummary[]>([]);
   const [wallet, setWallet] = useState<WalletResponse | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -71,46 +55,35 @@ export default function DashboardPage() {
       setStatus("loading");
       setMessage(null);
 
-      const projectsRes = await authFetch("/api/mobile/projects");
-      const projectsJson = await projectsRes.json().catch(() => ({}));
-      if (!projectsRes.ok) {
-        if (projectsRes.status === 401) {
+      try {
+        const [overview, walletResult] = await Promise.all([
+          getWorkspaceOverview(),
+          authFetch("/api/mobile/wallet/balance").then(async (response) => ({
+            ok: response.ok,
+            json: await response.json().catch(() => ({})),
+          })),
+        ]);
+
+        if (active) {
+          setProjects(overview.projects);
+          setSummaries(overview.summaries);
+          setWallet(
+            walletResult.ok
+              ? (walletResult.json as WalletResponse)
+              : null,
+          );
+          setStatus("idle");
+        }
+      } catch (error: unknown) {
+        const requestError = error as Error & { status?: number };
+        if (requestError.status === 401) {
           router.replace("/sign-in");
           return;
         }
         if (active) {
           setStatus("error");
-          setMessage(projectsJson?.error || "Unable to load dashboard.");
+          setMessage(requestError.message || "Unable to load dashboard.");
         }
-        return;
-      }
-
-      const rows: ProjectRow[] = Array.isArray(projectsJson?.projects)
-        ? projectsJson.projects
-        : [];
-
-      const summariesRes = await Promise.all(
-        rows.map(async (project) => {
-          const summaryQuery = project.handoff_id
-            ? `handoff_id=${project.handoff_id}`
-            : `conversation_id=${project.conversation_id}`;
-          const res = await authFetch(
-            `/api/mobile/projects/summary?${summaryQuery}`
-          );
-          if (!res.ok) return null;
-          const json = await res.json().catch(() => null);
-          return json as SummaryRow | null;
-        })
-      );
-
-      const walletRes = await authFetch("/api/mobile/wallet");
-      const walletJson = await walletRes.json().catch(() => ({}));
-
-      if (active) {
-        setProjects(rows);
-        setSummaries(summariesRes.filter((item): item is SummaryRow => !!item));
-        setWallet(walletRes.ok ? (walletJson as WalletResponse) : null);
-        setStatus("idle");
       }
     }
 

@@ -375,8 +375,6 @@ export async function ensureLinescoutAccountInfraOnce() {
 export async function getAccountContextForUser(
   userId: number
 ): Promise<AccountContext | null> {
-  await ensureLinescoutAccountInfraOnce();
-
   const conn = await db.getConnection();
   try {
     const [rows]: any = await conn.query<RowDataPacket[]>(

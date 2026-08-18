@@ -105,7 +105,7 @@ export default function ActiveProjectPage() {
     <div className="mx-auto w-full max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Active project</h1>
+          <h1 className="text-xl font-semibold text-neutral-900">Active project</h1>
           <p className="mt-1 text-sm text-neutral-600">
             The most recent project currently in progress.
           </p>

@@ -1,19 +1,18 @@
 import Link from "next/link";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import WhiteLabelProductGuide from "@/components/white-label/WhiteLabelProductGuide";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
-import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
-import MarketingTopNav from "@/components/MarketingTopNav";
-import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
-import DeferredSection from "@/components/white-label/DeferredSection";
+import { computeLandedRange } from "@/lib/white-label-products";
 import { currencyForCode, formatCurrency, pickLandedFieldsByCurrency } from "@/lib/white-label-country";
-import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
-import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { marketplaceCurrency, normalizeAmazonMarketplace } from "@/lib/white-label-marketplace";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 import { getFxRate } from "@/lib/fx";
+import { getWhiteLabelSeoContent } from "@/data/white-label-seo-content";
+import { parseWhiteLabelSeoContent } from "@/lib/white-label-seo-types";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -62,6 +61,8 @@ type ProductRow = {
   amazon_us_price_high?: number | null;
   amazon_us_last_checked_at?: string | null;
   view_count?: number | null;
+  seo_content_json?: unknown;
+  seo_content_updated_at?: string | Date | null;
 };
 
 function formatPerUnitRangeWithCurrency(
@@ -229,21 +230,30 @@ function fallbackAngle(product: ProductRow) {
   return "Focus on durable packaging, a clean brand story, and consistent availability. Offer bundles or starter kits to make your brand feel premium while keeping pricing accessible.";
 }
 
-function cloudinaryTransform(url: string, size: number) {
-  if (!url.includes("res.cloudinary.com/") || !url.includes("/image/upload/")) {
-    return url;
-  }
-  return url.replace("/image/upload/", `/image/upload/f_auto,q_auto,w_${size},h_${size},c_fit/`);
+function resolvedSeoContent(product: ProductRow, pageSlug: string) {
+  return parseWhiteLabelSeoContent(product.seo_content_json) || getWhiteLabelSeoContent(pageSlug);
 }
 
-async function fetchProduct(slug: string) {
+const fetchProduct = cache(async (slug: string) => {
   const conn = await db.getConnection();
   try {
-    await ensureWhiteLabelProductsReady(conn);
-
     const [rows]: any = await conn.query(
       `
-      SELECT p.*, COALESCE(v.views, 0) AS view_count
+      SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             (
+               SELECT revision.content_json
+               FROM linescout_white_label_seo_revisions revision
+               WHERE revision.product_id = p.id AND revision.status = 'published'
+               ORDER BY revision.version DESC
+               LIMIT 1
+             ) AS seo_content_json,
+             (
+               SELECT revision.updated_at
+               FROM linescout_white_label_seo_revisions revision
+               WHERE revision.product_id = p.id AND revision.status = 'published'
+               ORDER BY revision.version DESC
+               LIMIT 1
+             ) AS seo_content_updated_at
       FROM linescout_white_label_products p
       LEFT JOIN (
         SELECT product_id, COUNT(*) AS views
@@ -260,6 +270,10 @@ async function fetchProduct(slug: string) {
   } finally {
     conn.release();
   }
+});
+
+function serializeJsonLd(value: unknown) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 export async function generateMetadata({
@@ -277,18 +291,34 @@ export async function generateMetadata({
     };
   }
 
-  const url = `${BASE_URL}/white-label/${product.slug || slugify(product.product_name)}`;
+  const pageSlug = product.slug || slugify(product.product_name);
+  const url = `${BASE_URL}/white-label/${pageSlug}`;
+  const seoContent = resolvedSeoContent(product, pageSlug);
+  const title = seoContent?.seoTitle || product.seo_title || `${product.product_name} | White Label Idea`;
+  const description = seoContent?.seoDescription || fallbackSeoDescription(product);
 
   return {
-    title: product.seo_title || `${product.product_name} | White Label Idea`,
-    description: fallbackSeoDescription(product),
+    title,
+    description,
+    keywords: seoContent?.keywords,
     alternates: { canonical: url },
     openGraph: {
-      title: product.seo_title || `${product.product_name} | White Label Idea`,
-      description: fallbackSeoDescription(product),
-      images: product.image_url ? [product.image_url] : undefined,
+      title,
+      description,
+      type: "article",
+      siteName: "LineScout",
+      images: product.image_url
+        ? [{ url: product.image_url, alt: `${product.product_name} private label sourcing guide` }]
+        : undefined,
       url,
     },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: product.image_url ? [product.image_url] : undefined,
+    },
+    robots: { index: true, follow: true },
   };
 }
 
@@ -311,8 +341,6 @@ export default async function WhiteLabelMarketingDetailPage({
   let amazonComparisonEnabled = false;
   let pickedCountry: { amazon_marketplace?: string | null } | null = null;
   try {
-    await ensureCountryConfig(conn);
-    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     const currencyById = new Map<number, string>(
       (lists.currencies || []).map((c: any) => [Number(c.id), String(c.code || "").toUpperCase()])
@@ -334,12 +362,23 @@ export default async function WhiteLabelMarketingDetailPage({
       Boolean(normalizedMarketplace) &&
       isKeepaMarketplaceSupported(normalizedMarketplace);
 
-    await ensureWhiteLabelProductsReady(conn);
-    await ensureWhiteLabelLandedCostTable(conn);
-
     const [rows]: any = await conn.query(
       `
       SELECT p.*, COALESCE(v.views, 0) AS view_count,
+             (
+               SELECT revision.content_json
+               FROM linescout_white_label_seo_revisions revision
+               WHERE revision.product_id = p.id AND revision.status = 'published'
+               ORDER BY revision.version DESC
+               LIMIT 1
+             ) AS seo_content_json,
+             (
+               SELECT revision.updated_at
+               FROM linescout_white_label_seo_revisions revision
+               WHERE revision.product_id = p.id AND revision.status = 'published'
+               ORDER BY revision.version DESC
+               LIMIT 1
+             ) AS seo_content_updated_at,
              lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
       FROM linescout_white_label_products p
       LEFT JOIN linescout_white_label_landed_costs lc
@@ -439,7 +478,39 @@ export default async function WhiteLabelMarketingDetailPage({
       `,
       [countryId, product.category, product.id]
     );
-    similar = (similarRows || []).map(withLanded);
+    const categorySimilar = (similarRows || []).map(withLanded);
+    const editorialSlugs =
+      resolvedSeoContent(product, product.slug || slugify(product.product_name))?.relatedSlugs || [];
+    let editorialSimilar: ProductRow[] = [];
+    if (editorialSlugs.length) {
+      const placeholders = editorialSlugs.map(() => "?").join(", ");
+      const orderPlaceholders = editorialSlugs.map(() => "?").join(", ");
+      const [editorialRows]: any = await conn.query(
+        `SELECT p.*, COALESCE(v.views, 0) AS view_count,
+                lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high,
+                lc.landed_total_1000_low, lc.landed_total_1000_high
+         FROM linescout_white_label_products p
+         LEFT JOIN linescout_white_label_landed_costs lc
+           ON lc.product_id = p.id AND lc.country_id = ?
+         LEFT JOIN (
+           SELECT product_id, COUNT(*) AS views
+           FROM linescout_white_label_views
+           GROUP BY product_id
+         ) v ON v.product_id = p.id
+         WHERE p.slug IN (${placeholders}) AND p.is_active = 1
+         ORDER BY FIELD(p.slug, ${orderPlaceholders})`,
+        [countryId, ...editorialSlugs, ...editorialSlugs],
+      );
+      editorialSimilar = (editorialRows || []).map(withLanded);
+    }
+    const seenRelated = new Set<number>();
+    similar = [...editorialSimilar, ...categorySimilar]
+      .filter((item) => {
+        if (seenRelated.has(Number(item.id))) return false;
+        seenRelated.add(Number(item.id));
+        return true;
+      })
+      .slice(0, 6);
 
     const [viewRows]: any = await conn.query(
       `
@@ -468,6 +539,10 @@ export default async function WhiteLabelMarketingDetailPage({
 
   if (!product) return null;
 
+  const pageSlug = product.slug || slugify(product.product_name);
+  const seoContent = resolvedSeoContent(product, pageSlug);
+  const canonicalUrl = `${BASE_URL}/white-label/${pageSlug}`;
+
   const landedPicked = {
     perUnitLow: product.landed_per_unit_low ?? null,
     perUnitHigh: product.landed_per_unit_high ?? null,
@@ -475,9 +550,9 @@ export default async function WhiteLabelMarketingDetailPage({
     totalHigh: product.landed_total_1000_high ?? null,
   };
 
-  const summary = fallbackSummary(product);
-  const marketNotes = fallbackMarketNotes(product);
-  const angle = fallbackAngle(product);
+  const summary = seoContent?.businessSummary || fallbackSummary(product);
+  const marketNotes = seoContent?.marketNotes || fallbackMarketNotes(product);
+  const angle = seoContent?.whiteLabelAngle || fallbackAngle(product);
 
   const ukLow = product.amazon_uk_price_low != null ? Number(product.amazon_uk_price_low) : null;
   const ukHigh = product.amazon_uk_price_high != null ? Number(product.amazon_uk_price_high) : null;
@@ -510,201 +585,79 @@ export default async function WhiteLabelMarketingDetailPage({
 
   const trendingItems = mostViewed;
 
+  const sourcingHref = `/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(
+    String(product.id)
+  )}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(
+    product.category
+  )}&product_landed_ngn_per_unit=${encodeURIComponent(
+    formatPerUnitRangeWithCurrency(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency)
+  )}`;
+
+  const jsonLd = seoContent
+    ? {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Home", item: BASE_URL },
+              { "@type": "ListItem", position: 2, name: "White Label Ideas", item: `${BASE_URL}/white-label` },
+              { "@type": "ListItem", position: 3, name: product.product_name, item: canonicalUrl },
+            ],
+          },
+          {
+            "@type": "Article",
+            "@id": `${canonicalUrl}#guide`,
+            headline: seoContent.seoTitle,
+            description: seoContent.seoDescription,
+            image: product.image_url || undefined,
+            mainEntityOfPage: canonicalUrl,
+            dateModified: product.seo_content_updated_at
+              ? new Date(product.seo_content_updated_at).toISOString()
+              : undefined,
+            about: {
+              "@type": "Thing",
+              name: product.product_name,
+              description: seoContent.introduction,
+            },
+            author: { "@type": "Organization", name: "LineScout by Sure Imports", url: BASE_URL },
+            publisher: { "@type": "Organization", name: "LineScout by Sure Imports", url: BASE_URL },
+          },
+          {
+            "@type": "FAQPage",
+            "@id": `${canonicalUrl}#faq`,
+            mainEntity: seoContent.faqs.map((faq) => ({
+              "@type": "Question",
+              name: faq.question,
+              acceptedAnswer: { "@type": "Answer", text: faq.answer },
+            })),
+          },
+        ],
+      }
+    : null;
+
   return (
-    <main className="min-h-screen bg-[#F5F6FA] text-neutral-900">
-      <MarketingTopNav
-        backgroundClassName="bg-white/95"
-        borderClassName="border-transparent"
-        dividerClassName="bg-[rgba(45,52,97,0.2)]"
-        accentClassName="text-[#2D3461]"
-        navTextClassName="text-neutral-600"
-        navHoverClassName="hover:text-[#2D3461]"
-        buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-        buttonTextClassName="text-[#2D3461]"
-        menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-        menuBgClassName="bg-white/95"
-        menuTextClassName="text-neutral-700"
-        menuHoverClassName="hover:text-[#2D3461]"
-        disabledNavClassName="text-neutral-400"
+    <>
+      {jsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
+        />
+      ) : null}
+      <WhiteLabelProductGuide
+        product={product}
+        seoContent={seoContent}
+        summary={summary}
+        marketNotes={marketNotes}
+        angle={angle}
+        regulatoryNote={formatRegulatoryNote(product.regulatory_note, countryIso2)}
+        currencyCode={currencyCode}
+        sourcingHref={sourcingHref}
+        amazonComparisonEnabled={amazonComparisonEnabled}
+        amazonPriceRange={amazonPriceRange}
+        similarItems={similarItems}
+        popularItems={trendingItems}
       />
-
-      <WhiteLabelViewTracker productId={product.id} source="marketing" />
-
-      <section className="mx-auto max-w-6xl px-6 pb-16 pt-10">
-        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="rounded-[30px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-            <div className="mb-4 flex justify-end" />
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#2D3461]">{product.category}</p>
-                <h1 className="mt-2 text-3xl font-semibold text-neutral-900">{product.product_name}</h1>
-                <p className="mt-3 text-sm text-neutral-600">{fallbackSeoDescription(product)}</p>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-xs font-semibold text-neutral-700">
-                {formatPerUnitRangeWithCurrency(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency) || "Pricing pending"}
-              </div>
-            </div>
-
-            <div className="mt-6 overflow-hidden rounded-[22px] border border-neutral-200 bg-[#F2F3F5] p-4">
-              {product.image_url ? (
-                <img
-                  src={cloudinaryTransform(product.image_url, 640)}
-                  alt={`${product.product_name} white label idea`}
-                  width={640}
-                  height={640}
-                  loading="eager"
-                  fetchPriority="high"
-                  decoding="async"
-                  className="h-[320px] w-full rounded-[18px] object-contain"
-                />
-              ) : (
-                <div className="flex h-[320px] w-full items-center justify-center">
-                  <div className="h-28 w-28 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-center">
-                    <div className="pt-4 text-[10px] font-semibold text-emerald-700">YOUR LOGO</div>
-                    <div className="mt-1 text-[12px] font-semibold text-neutral-700">
-                      {slugify(product.product_name).slice(0, 2).toUpperCase()}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-neutral-900">Business summary</h3>
-                <p className="mt-2 text-sm text-neutral-600">{summary}</p>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-neutral-900">Market notes</h3>
-                <p className="mt-2 text-sm text-neutral-600">{marketNotes}</p>
-              </div>
-              <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-neutral-900">White-label angle</h3>
-                <p className="mt-2 text-sm text-neutral-600">{angle}</p>
-              </div>
-            <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-              <h3 className="text-sm font-semibold text-neutral-900">Regulatory note</h3>
-              <p className="mt-2 text-sm text-neutral-600">
-                {formatRegulatoryNote(product.regulatory_note, countryIso2)}
-              </p>
-            </div>
-            </div>
-
-            <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-[260px] flex-col gap-2">
-                <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
-                  {landedPicked.totalLow != null || landedPicked.totalHigh != null
-                    ? `${formatCurrency(landedPicked.totalLow, currency)}–${formatCurrency(
-                        landedPicked.totalHigh,
-                        currency
-                      )} for 1,000 units`
-                    : "Pricing pending"}
-                </div>
-                {amazonComparisonEnabled ? (
-                  <div className="rounded-2xl border border-[rgba(45,52,97,0.22)] bg-gradient-to-br from-white via-white to-[rgba(45,52,97,0.10)] px-4 py-3 text-xs text-neutral-600 shadow-[0_14px_30px_rgba(45,52,97,0.16)]">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-neutral-400">
-                      Amazon price
-                    </p>
-                    <div className="mt-1 flex min-h-[70px] flex-col">
-                      <p className="text-[11px] text-neutral-500">Amazon price available</p>
-                      <div className="mt-2">
-                        <span className="inline-flex rounded-full bg-[rgba(45,52,97,0.2)] px-4 py-1 text-[11px] font-semibold text-[rgba(45,52,97,0.55)] blur-sm">
-                          £129.99–£199.99
-                        </span>
-                      </div>
-                      <Link
-                        href="/sign-in?next=/white-label/ideas"
-                        className="mt-auto inline-flex text-[11px] font-semibold text-[#2D3461]"
-                      >
-                        Sign in to compare Amazon prices
-                      </Link>
-                    </div>
-                  </div>
-                ) : null}
-                <Link href="/white-label" className="text-sm font-semibold text-neutral-500 hover:text-neutral-700">
-                  Back to ideas
-                </Link>
-              </div>
-              <Link
-                href={`/sourcing-project?route_type=white_label&product_id=${encodeURIComponent(String(product.id))}&product_name=${encodeURIComponent(product.product_name)}&product_category=${encodeURIComponent(product.category)}&product_landed_ngn_per_unit=${encodeURIComponent(formatPerUnitRangeWithCurrency(landedPicked.perUnitLow, landedPicked.perUnitHigh, currency))}`}
-                className="ml-auto inline-flex items-center gap-2 rounded-2xl bg-[#2D3461] px-6 py-3 text-sm font-semibold text-white"
-              >
-                Start sourcing
-              </Link>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <DeferredSection>
-              <div className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">Similar in {product.category}</h3>
-              <div className="mt-4 space-y-4">
-                {similarItems.length ? (
-                  similarItems.map((item) => (
-                    <Link
-                      key={item.id}
-                      href={`/white-label/${item.slug || slugify(item.product_name)}`}
-                      className="flex items-center gap-4 rounded-2xl border border-neutral-200 bg-neutral-50 p-3"
-                    >
-                      <div className="h-14 w-14 overflow-hidden rounded-xl border border-neutral-200 bg-[#F2F3F5]">
-                        {item.image_url ? (
-                          <img
-                            src={cloudinaryTransform(item.image_url, 160)}
-                            alt={item.product_name}
-                            width={160}
-                            height={160}
-                            loading="lazy"
-                            decoding="async"
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-neutral-500">
-                            WL
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-neutral-900">{item.product_name}</p>
-                        <p className="text-xs text-neutral-500">
-                        {formatPerUnitRangeWithCurrency(
-                          item.landed_per_unit_low ?? null,
-                          item.landed_per_unit_high ?? null,
-                          currency
-                        ) || "Pricing pending"}
-                        </p>
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <p className="text-sm text-neutral-500">More ideas coming soon in this category.</p>
-                )}
-              </div>
-              </div>
-            </DeferredSection>
-
-            <DeferredSection>
-              <div className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-500">Most viewed ideas</h3>
-              <div className="mt-4 space-y-4">
-                {trendingItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={`/white-label/${item.slug || slugify(item.product_name)}`}
-                  className="flex items-center justify-between rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">{item.product_name}</p>
-                      <p className="text-xs text-neutral-500">{item.category}</p>
-                    </div>
-                    <span className="text-xs font-semibold text-neutral-500">{item.view_count || 0} views</span>
-                  </Link>
-                ))}
-              </div>
-              </div>
-            </DeferredSection>
-          </div>
-        </div>
-      </section>
-    </main>
+    </>
   );
 }

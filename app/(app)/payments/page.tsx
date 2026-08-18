@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { authFetch } from "@/lib/auth-client";
+import {
+  getWorkspaceOverview,
+  type WorkspacePayment,
+} from "@/lib/workspace-overview-client";
 
 const money = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -14,25 +17,9 @@ const shortDate = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
 });
 
-type PaymentItem = {
-  id: number;
-  purpose: string;
-  method: string;
-  status: string;
-  amount: number;
-  currency: string;
-  created_at: string | null;
-  paid_at: string | null;
-};
-
-type SummaryRow = {
-  conversation_id: number;
-  payments: PaymentItem[];
-};
-
 export default function PaymentsPage() {
   const router = useRouter();
-  const [payments, setPayments] = useState<PaymentItem[]>([]);
+  const [payments, setPayments] = useState<WorkspacePayment[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -45,45 +32,25 @@ export default function PaymentsPage() {
       setStatus("loading");
       setMessage(null);
 
-      const projectsRes = await authFetch("/api/mobile/projects");
-      const projectsJson = await projectsRes.json().catch(() => ({}));
-      if (!projectsRes.ok) {
-        if (projectsRes.status === 401) {
+      try {
+        const overview = await getWorkspaceOverview();
+        const allPayments = overview.summaries.flatMap(
+          (item) => item.payments || [],
+        );
+        if (active) {
+          setPayments(allPayments);
+          setStatus("idle");
+        }
+      } catch (error: unknown) {
+        const requestError = error as Error & { status?: number };
+        if (requestError.status === 401) {
           router.replace("/sign-in");
           return;
         }
         if (active) {
           setStatus("error");
-          setMessage(projectsJson?.error || "Unable to load payments.");
+          setMessage(requestError.message || "Unable to load payments.");
         }
-        return;
-      }
-
-      const projects: Array<{ conversation_id: number; handoff_id?: number | null }> = Array.isArray(projectsJson?.projects)
-        ? projectsJson.projects
-        : [];
-
-      const summaries = await Promise.all(
-        projects.map(async (project) => {
-          const summaryQuery = project.handoff_id
-            ? `handoff_id=${project.handoff_id}`
-            : `conversation_id=${project.conversation_id}`;
-          const res = await authFetch(
-            `/api/mobile/projects/summary?${summaryQuery}`
-          );
-          if (!res.ok) return null;
-          const json = await res.json().catch(() => null);
-          return json as SummaryRow | null;
-        })
-      );
-
-      const allPayments = summaries
-        .filter((item): item is SummaryRow => !!item)
-        .flatMap((item) => item.payments || []);
-
-      if (active) {
-        setPayments(allPayments);
-        setStatus("idle");
       }
     }
 

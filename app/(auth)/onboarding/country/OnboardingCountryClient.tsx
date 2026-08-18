@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 import SearchableSelect from "@/app/internal/_components/SearchableSelect";
+import { getSafeNextPath } from "@/lib/safe-next-path";
 
 type ProfileResponse = {
   ok?: boolean;
@@ -36,7 +37,9 @@ export default function OnboardingCountryClient() {
       const json: ProfileResponse = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
-          router.replace("/sign-in");
+          const nextPath = getSafeNextPath(searchParams.get("next"));
+          const suffix = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
+          router.replace(`/sign-in${suffix}`);
           return;
         }
         if (active) {
@@ -60,7 +63,7 @@ export default function OnboardingCountryClient() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, searchParams]);
 
   function getCountryDefaultCurrency(nextCountryId: number | "") {
     if (!nextCountryId) return "";
@@ -114,7 +117,8 @@ export default function OnboardingCountryClient() {
       return;
     }
 
-    router.replace("/projects/new");
+    const nextPath = getSafeNextPath(searchParams.get("next"));
+    router.replace(nextPath || "/projects/new");
   }
 
   return (

@@ -52,7 +52,7 @@ export default function TrackLookupClient() {
   const ok = result && result.ok;
 
   return (
-    <section className="mx-auto grid max-w-5xl grid-cols-1 items-center gap-10 px-4 pb-16 pt-12 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20">
+    <section className="si-hero mx-auto grid max-w-5xl grid-cols-1 items-center gap-10 px-4 pb-16 pt-12 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20">
       <div>
         <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
           Tracking

@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { authFetch } from "@/lib/auth-client";
+import {
+  getWorkspaceOverview,
+  type WorkspaceSummary,
+} from "@/lib/workspace-overview-client";
 
 const money = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -11,36 +14,9 @@ const money = new Intl.NumberFormat("en-NG", {
   maximumFractionDigits: 0,
 });
 
-type ProjectRow = {
-  conversation_id: number;
-  handoff_id?: number | null;
-};
-
-type QuoteSummary = {
-  quote_id: number;
-  quote_token: string;
-  product_name: string | null;
-  quantity: number;
-  due_amount: number;
-  shipping_type: string | null;
-  product_balance: number;
-  shipping_balance: number;
-  display_currency_code?: string | null;
-  due_amount_display?: number;
-  product_balance_display?: number;
-  shipping_balance_display?: number;
-};
-
-type SummaryRow = {
-  conversation_id: number;
-  stage: string;
-  quote_summary: QuoteSummary | null;
-  quote_summaries?: QuoteSummary[] | null;
-};
-
 export default function QuotesPage() {
   const router = useRouter();
-  const [rows, setRows] = useState<SummaryRow[]>([]);
+  const [rows, setRows] = useState<WorkspaceSummary[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -52,43 +28,26 @@ export default function QuotesPage() {
       setStatus("loading");
       setMessage(null);
 
-      const projectsRes = await authFetch("/api/mobile/projects");
-      const projectsJson = await projectsRes.json().catch(() => ({}));
-      if (!projectsRes.ok) {
-        if (projectsRes.status === 401) {
+      try {
+        const overview = await getWorkspaceOverview();
+        const filtered = overview.summaries.filter(
+          (item) =>
+            !!item.quote_summary || !!item.quote_summaries?.length,
+        );
+        if (active) {
+          setRows(filtered);
+          setStatus("idle");
+        }
+      } catch (error: unknown) {
+        const requestError = error as Error & { status?: number };
+        if (requestError.status === 401) {
           router.replace("/sign-in");
           return;
         }
         if (active) {
           setStatus("error");
-          setMessage(projectsJson?.error || "Unable to load quotes.");
+          setMessage(requestError.message || "Unable to load quotes.");
         }
-        return;
-      }
-
-      const projects: ProjectRow[] = Array.isArray(projectsJson?.projects)
-        ? projectsJson.projects
-        : [];
-
-      const summaries = await Promise.all(
-        projects.map(async (project) => {
-          const summaryQuery = project.handoff_id
-            ? `handoff_id=${project.handoff_id}`
-            : `conversation_id=${project.conversation_id}`;
-          const res = await authFetch(
-            `/api/mobile/projects/summary?${summaryQuery}`
-          );
-          if (!res.ok) return null;
-          const json = await res.json().catch(() => null);
-          return json as SummaryRow | null;
-        })
-      );
-
-      const filtered = summaries.filter((item): item is SummaryRow => !!item && (!!item.quote_summary || !!item.quote_summaries?.length));
-
-      if (active) {
-        setRows(filtered);
-        setStatus("idle");
       }
     }
 

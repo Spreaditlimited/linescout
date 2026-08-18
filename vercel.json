@@ -15,6 +15,10 @@
     {
       "path": "/api/internal/cron/keepa-weekly",
       "schedule": "45 3 * * 1"
+    },
+    {
+      "path": "/api/internal/cron/white-label-seo",
+      "schedule": "15 6 * * *"
     }
   ]
 }

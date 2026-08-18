@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import { getSafeNextPath } from "@/lib/safe-next-path";
 
 export default function OnboardingNameClient() {
   const router = useRouter();
@@ -14,8 +15,7 @@ export default function OnboardingNameClient() {
 
   async function routeAfterProfile() {
     const nextParam = String(searchParams.get("next") || "").trim();
-    let safeNext =
-      nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+    let safeNext = getSafeNextPath(nextParam);
     if (safeNext === "/white-label" || safeNext.startsWith("/white-label?")) {
       safeNext = "/white-label/ideas";
     }
@@ -73,8 +73,7 @@ export default function OnboardingNameClient() {
     }
 
     const nextParam = String(searchParams.get("next") || "").trim();
-    const safeNext =
-      nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+    const safeNext = getSafeNextPath(nextParam);
     const qs = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
     router.push(`/onboarding/country${qs}`);
   }

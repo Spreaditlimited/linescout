@@ -5,7 +5,6 @@ import { ArrowRight, Settings, Wrench } from "lucide-react";
 import { db } from "@/lib/db";
 import {
   computeMachineLandedRange,
-  ensureMachinesReady,
   getMachinePricingSettings,
   slugify,
 } from "@/lib/machines";
@@ -56,7 +55,6 @@ export async function generateMetadata({
   const { slug } = await params;
   const conn = await db.getConnection();
   try {
-    await ensureMachinesReady(conn);
     const [rows]: any = await conn.query(
       `SELECT * FROM linescout_machines WHERE slug = ? LIMIT 1`,
       [slug]
@@ -109,7 +107,6 @@ export default async function MachineDetailPage({
   let machine: MachineRow | null = null;
   let pricing = await getMachinePricingSettings(conn);
   try {
-    await ensureMachinesReady(conn);
     const [rows]: any = await conn.query(
       `SELECT * FROM linescout_machines WHERE slug = ? LIMIT 1`,
       [slug]
@@ -221,7 +218,7 @@ export default async function MachineDetailPage({
                 )}&machine_landed_ngn=${encodeURIComponent(
                   `${formatNaira(landed.landed_ngn_low)}–${formatNaira(landed.landed_ngn_high)}`
                 )}`}
-                className="inline-flex items-center gap-2 rounded-2xl bg-[#2D3461] px-5 py-3 text-xs font-semibold text-white"
+                className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600"
               >
                 Start sourcing <ArrowRight className="h-4 w-4" />
               </Link>

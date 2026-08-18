@@ -1,13 +1,11 @@
-import Footer from "@/components/Footer";
 import MarketingFrame from "@/components/MarketingFrame";
-import MarketingTopNav from "@/components/MarketingTopNav";
 
 export const metadata = {
   title: "LineScout Agents Agreement",
 };
 
 export default function AgentsAgreementPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
   return (
     <MarketingFrame>
       <div
@@ -18,22 +16,6 @@ export default function AgentsAgreementPage() {
           <div className="absolute -top-32 right-[-180px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
           <div className="absolute -bottom-40 left-[-140px] h-[380px] w-[380px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
         </div>
-
-        <MarketingTopNav
-          backgroundClassName="bg-white/95"
-          borderClassName="border-transparent"
-          dividerClassName="bg-[rgba(45,52,97,0.2)]"
-          accentClassName="text-[var(--agent-blue)]"
-          navTextClassName="text-neutral-600"
-          navHoverClassName="hover:text-[var(--agent-blue)]"
-          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-          buttonTextClassName="text-[var(--agent-blue)]"
-          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-          menuBgClassName="bg-white/95"
-          menuTextClassName="text-neutral-700"
-          menuHoverClassName="hover:text-[var(--agent-blue)]"
-          disabledNavClassName="text-neutral-400"
-        />
 
         <main className="relative flex-1">
           <section className="mx-auto w-full max-w-6xl px-4 pb-12 pt-10 sm:px-6 md:pt-16">
@@ -177,7 +159,6 @@ export default function AgentsAgreementPage() {
           </section>
         </main>
 
-        <Footer variant="agent" />
       </div>
     </MarketingFrame>
   );

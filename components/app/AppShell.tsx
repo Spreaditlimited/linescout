@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import { clearWorkspaceOverviewCache } from "@/lib/workspace-overview-client";
 import SearchableSelect from "@/app/internal/_components/SearchableSelect";
 import { LayoutDashboard, FolderKanban, FileText, CreditCard, Wallet, Bot, User, ArrowLeft, Sparkles, Package, MessageCircle } from "lucide-react";
 
@@ -35,7 +36,6 @@ function NavLink({
   return (
     <Link
       href={href}
-      prefetch={false}
       className={`group inline-flex items-center gap-1.5 whitespace-nowrap rounded-2xl px-2.5 py-2 text-[11px] font-semibold transition sm:gap-2 sm:px-4 sm:py-3 sm:text-sm ${
         active
           ? "bg-[var(--agent-blue)] text-white shadow-lg shadow-[rgba(45,52,97,0.25)]"
@@ -73,9 +73,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const brandBlue = "#2D3461";
   const CACHE_KEY = "linescout_user_gate_v1";
   const CACHE_TTL_MS = 10 * 60 * 1000;
+  const initialNextPath = useRef(
+    `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`,
+  );
 
   const signOut = async () => {
     await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
+    window.sessionStorage.removeItem(CACHE_KEY);
+    clearWorkspaceOverviewCache();
     router.replace("/sign-in");
   };
 
@@ -90,6 +95,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             const fresh = Date.now() - Number(cached?.ts || 0) < CACHE_TTL_MS;
             if (fresh && cached?.ok && cached?.allow === true) {
               if (active) setChecking(false);
+              return;
             }
           } catch {
             // ignore cache parse errors
@@ -99,9 +105,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       const res = await authFetch("/api/auth/me");
       if (!res.ok) {
-        const qs = searchParams.toString();
-        const nextPath = qs ? `${pathname}?${qs}` : pathname;
-        router.replace(`/sign-in?next=${encodeURIComponent(nextPath)}`);
+        router.replace(
+          `/sign-in?next=${encodeURIComponent(initialNextPath.current)}`,
+        );
         return;
       }
 
@@ -126,7 +132,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [router, pathname, searchParams]);
+  }, [router]);
 
   useEffect(() => {
     if (checking) return;

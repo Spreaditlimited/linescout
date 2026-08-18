@@ -13,9 +13,9 @@ export default function MarketingFrame({ children }: { children: React.ReactNode
     const prevBodyHeight = document.body.style.height;
     const prevHtmlHeight = document.documentElement.style.height;
 
-    document.body.style.background = "#F7F6F2";
+    document.body.style.background = "#F8FAFC";
     document.body.style.paddingBottom = "0px";
-    document.documentElement.style.background = "#0F1C18";
+    document.documentElement.style.background = "#020617";
     document.documentElement.style.paddingBottom = "0px";
     document.body.style.minHeight = "";
     document.documentElement.style.minHeight = "";

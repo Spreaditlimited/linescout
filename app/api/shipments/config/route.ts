@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { ensureCountryConfig, ensureShippingRateCountryColumn } from "@/lib/country-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +16,6 @@ export async function GET(req: Request) {
 
   const conn = await db.getConnection();
   try {
-    await ensureCountryConfig(conn);
-    await ensureShippingRateCountryColumn(conn);
-
     const [countries]: any = await conn.query(
       `SELECT id, name, iso2, iso3, default_currency_id, settlement_currency_code, payment_provider
        FROM linescout_countries

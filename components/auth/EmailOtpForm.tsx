@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
+import { getSafeNextPath } from "@/lib/safe-next-path";
 
 type Step = "email" | "otp";
 
@@ -37,8 +38,7 @@ export default function EmailOtpForm() {
 
   async function routeAfterProfile() {
     const nextParam = String(searchParams.get("next") || "").trim();
-    let safeNext =
-      nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+    let safeNext = getSafeNextPath(nextParam);
     if (safeNext === "/white-label" || safeNext.startsWith("/white-label?")) {
       safeNext = "/white-label/ideas";
     }
@@ -78,8 +78,7 @@ export default function EmailOtpForm() {
 
         if (!first || !last) {
           const nextParam = String(searchParams.get("next") || "").trim();
-          const safeNext =
-            nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+          const safeNext = getSafeNextPath(nextParam);
           const nextSuffix = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
           router.replace(`/onboarding/name${nextSuffix}`);
           return;
@@ -155,8 +154,7 @@ export default function EmailOtpForm() {
 
     if (!first || !last) {
       const nextParam = String(searchParams.get("next") || "").trim();
-      const safeNext =
-        nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "";
+      const safeNext = getSafeNextPath(nextParam);
       const nextSuffix = safeNext ? `?next=${encodeURIComponent(safeNext)}` : "";
       router.replace(`/onboarding/name${nextSuffix}`);
       return;

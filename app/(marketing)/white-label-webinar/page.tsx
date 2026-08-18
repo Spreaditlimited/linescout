@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { ArrowRight, Sparkles } from "lucide-react";
-import MarketingTopNav from "@/components/MarketingTopNav";
 
 export const metadata: Metadata = {
   title: "White Label Webinar | LineScout",
@@ -11,51 +10,20 @@ export const metadata: Metadata = {
 const VIDEO_EMBED_URL = "https://www.youtube.com/embed/ms-yhEExIRg";
 
 export default function WhiteLabelWebinarPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
 
   return (
     <div
       className="relative flex flex-col bg-[#F5F6FA] text-neutral-900"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
-      <style>{`
-        @media (max-width: 767px) {
-          html,
-          body {
-            min-height: 0 !important;
-            height: auto !important;
-          }
-          body {
-            padding-bottom: 0 !important;
-          }
-          main {
-            padding-bottom: 0 !important;
-          }
-        }
-      `}</style>
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-48 right-[-200px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
         <div className="absolute -bottom-48 left-[-180px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
       </div>
 
-      <MarketingTopNav
-        backgroundClassName="bg-white/95"
-        borderClassName="border-transparent"
-        dividerClassName="bg-[rgba(45,52,97,0.2)]"
-        accentClassName="text-[var(--agent-blue)]"
-        navTextClassName="text-neutral-600"
-        navHoverClassName="hover:text-[var(--agent-blue)]"
-        buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-        buttonTextClassName="text-[var(--agent-blue)]"
-        menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-        menuBgClassName="bg-white/95"
-        menuTextClassName="text-neutral-700"
-        menuHoverClassName="hover:text-[var(--agent-blue)]"
-        disabledNavClassName="text-neutral-400"
-      />
-
       <main className="relative flex-1">
-        <section className="mx-auto w-full max-w-5xl px-4 pb-0 pt-10 sm:px-6 md:pt-16">
+        <section className="si-hero mx-auto w-full max-w-5xl px-4 pb-0 pt-10 sm:px-6 md:pt-16">
           <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
             <Sparkles className="h-4 w-4" />
             White‑Label Webinar

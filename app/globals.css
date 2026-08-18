@@ -1,4 +1,42 @@
 @import "tailwindcss";
+@plugin "tailwindcss-animate";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-blue-50: #eef4ff;
+  --color-blue-100: #dce8ff;
+  --color-blue-200: #bdd3ff;
+  --color-blue-300: #93b6ff;
+  --color-blue-400: #6695ff;
+  --color-blue-500: #4579f0;
+  --color-blue-600: #2e62d9;
+  --color-blue-700: #2754bc;
+  --color-blue-800: #20459b;
+  --color-blue-900: #1b397f;
+  --color-blue-950: #112553;
+  --color-indigo-50: #eef4ff;
+  --color-indigo-100: #dce8ff;
+  --color-indigo-200: #bdd3ff;
+  --color-indigo-300: #93b6ff;
+  --color-indigo-400: #6695ff;
+  --color-indigo-500: #4579f0;
+  --color-indigo-600: #2e62d9;
+  --color-indigo-700: #2754bc;
+  --color-indigo-800: #20459b;
+  --color-indigo-900: #1b397f;
+  --color-indigo-950: #112553;
+  --color-brand-orange-50: #fff4ed;
+  --color-brand-orange-100: #ffe6d4;
+  --color-brand-orange-200: #fecaa6;
+  --color-brand-orange-300: #fda66e;
+  --color-brand-orange-400: #fb7b35;
+  --color-brand-orange-500: #f95a0e;
+  --color-brand-orange-600: #ea4306;
+  --color-brand-orange-700: #c23106;
+  --color-brand-orange-800: #9a270d;
+  --color-brand-orange-900: #7c230e;
+  --color-brand-orange-950: #430e05;
+}
 
 /* -------------------------------------------------
    LineScout global baseline
@@ -23,7 +61,6 @@
 
 html,
 body {
-  height: 100%;
   background-color: var(--background);
   color: var(--foreground);
 }
@@ -31,7 +68,7 @@ body {
 html, 
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
@@ -222,4 +259,353 @@ button {
 .agent-app-shell button,
 .agent-app-shell a {
   border-radius: 0.75rem !important;
+}
+
+/* Shared canvas width for every public LineScout page. Route scope is set in Shell. */
+.public-site {
+  --public-content-width: 90rem;
+  --agent-blue: #20459b;
+  --sure-orange: #f95a0e;
+  --sure-indigo: #20459b;
+  background: #fcfcfd;
+  color: #0f172a;
+}
+
+.public-site ::selection {
+  background: rgba(249, 115, 22, 0.22);
+  color: #0f172a;
+}
+
+.public-site :where(h1, h2, h3) {
+  text-wrap: balance;
+}
+
+.public-site h1 {
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+.public-site h2,
+.public-site h3 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.public-site :where(p) {
+  text-wrap: pretty;
+}
+
+.public-site :where(a, button, summary) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Sure Imports public-page hero treatment: slate canvas, orange signal, strong type. */
+.public-site .si-hero {
+  position: relative;
+  isolation: isolate;
+  background-color: #020617;
+  box-shadow: 0 0 0 100vmax #020617;
+  clip-path: inset(0 -100vmax);
+  color: white;
+  padding-top: clamp(9rem, 12vw, 11rem);
+  padding-bottom: clamp(4.5rem, 8vw, 7rem);
+}
+
+.public-site .si-hero::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background:
+    radial-gradient(circle at 82% 18%, rgba(249, 90, 14, 0.2), transparent 30%),
+    radial-gradient(circle at 12% 10%, rgba(79, 70, 229, 0.2), transparent 32%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(2, 6, 23, 0.75));
+}
+
+.public-site .si-hero > :first-child > h1,
+.public-site .si-hero > h1 {
+  color: white;
+  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.public-site .si-hero > :first-child > p,
+.public-site .si-hero > p {
+  color: #cbd5e1;
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  line-height: 1.75;
+}
+
+.public-site .si-hero > .inline-flex,
+.public-site .si-hero > :first-child > .inline-flex {
+  border-color: rgba(249, 90, 14, 0.32);
+  background-color: rgba(249, 90, 14, 0.1);
+  color: #fb923c;
+}
+
+.public-site .si-hero h1 [class*="text-[var(--agent-blue)]"] {
+  color: #fb7b35;
+}
+
+.public-site .si-hero a[class*="px-"],
+.public-site .si-hero button[class*="px-"] {
+  border-radius: 9999px;
+}
+
+.public-site .si-hero > * {
+  min-width: 0;
+}
+
+.public-site .si-hero :where(input, select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 639px) {
+  .public-site .si-hero > :first-child > h1,
+  .public-site .si-hero > h1 {
+    overflow-wrap: anywhere;
+    font-size: clamp(2.25rem, 10vw, 2.75rem);
+    line-height: 1.08;
+  }
+}
+
+.public-site [class*="bg-[var(--agent-blue)]"] {
+  border-radius: 9999px;
+  background-color: var(--sure-orange) !important;
+  box-shadow: 0 12px 30px rgba(249, 90, 14, 0.24);
+}
+
+.public-site [class*="bg-[var(--agent-blue)]"]:hover {
+  background-color: #ea580c !important;
+}
+
+.public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white,
+.public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white\/95,
+.public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white\/90 {
+  border-color: #e2e8f0;
+  box-shadow: 0 22px 60px -38px rgba(15, 23, 42, 0.38);
+}
+
+.public-site a:where(.rounded-2xl, .rounded-3xl).border,
+.public-site article:where(.rounded-2xl, .rounded-3xl).border {
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.public-site a:where(.rounded-2xl, .rounded-3xl).border:hover,
+.public-site article:where(.rounded-2xl, .rounded-3xl).border:hover {
+  transform: translateY(-2px);
+  border-color: #cbd5e1;
+  box-shadow: 0 22px 50px -32px rgba(15, 23, 42, 0.4);
+}
+
+.public-site :where(input, select, textarea) {
+  min-height: 3rem;
+  border-radius: 0.75rem;
+  border-color: #e2e8f0;
+  background-color: rgba(248, 250, 252, 0.75);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.public-site :where(input, select, textarea):focus {
+  border-color: var(--sure-orange);
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(249, 90, 14, 0.14);
+}
+
+.public-site #site-footer input {
+  min-height: 2.5rem;
+  border-radius: 0.375rem;
+  border-color: #1e293b;
+  background-color: #0f172a;
+  color: #fff;
+}
+
+.public-site #site-footer input::placeholder {
+  color: #64748b;
+}
+
+.public-site #site-footer input:focus {
+  border-color: #f97316;
+  background-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+.public-site #lead-capture-popup input {
+  min-height: 2.75rem;
+  border-radius: 0.5rem;
+  border-color: #e2e8f0;
+  background-color: #fff;
+  color: #0f172a;
+}
+
+.public-site #lead-capture-popup input:focus {
+  border-color: #f97316;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+}
+
+.dark .public-site #lead-capture-popup input,
+.dark .public-site #lead-capture-popup input:focus {
+  border-color: #1e293b;
+  background-color: #020617;
+  color: #fff;
+}
+
+.dark .public-site #lead-capture-popup input:focus {
+  border-color: #f97316;
+}
+
+.public-site :where(.max-w-5xl, .max-w-6xl, .max-w-7xl, [class~="max-w-[1600px]"]) {
+  max-width: var(--public-content-width);
+}
+
+.public-site [class*="bg-[#F5F6FA]"] {
+  background-color: #fcfcfd;
+}
+
+.public-site .btn-primary {
+  border-color: #f95a0e;
+  background: #f95a0e;
+  box-shadow: 0 12px 30px rgba(249, 90, 14, 0.22);
+}
+
+.public-site .btn-primary:hover {
+  border-color: #ea580c;
+  background: #ea580c;
+}
+
+.public-site .bg-orange-500 {
+  background-color: #f95a0e;
+}
+
+.public-site .hover\:bg-orange-600:hover {
+  background-color: #ea4306;
+}
+
+.public-site :where(a, button, summary):focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.3);
+  outline-offset: 3px;
+}
+
+/* Central dark theme for public LineScout pages only. */
+.dark .public-site {
+  --agent-blue: #60a5fa !important;
+  --sure-indigo: #60a5fa;
+  color-scheme: dark;
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+.dark .public-site ::selection {
+  background: rgba(249, 115, 22, 0.36);
+  color: #fff7ed;
+}
+
+.dark .public-site [class*="bg-[#F5F6FA]"],
+.dark .public-site .bg-slate-50,
+.dark .public-site .bg-neutral-50,
+.dark .public-site .bg-neutral-50\/70 {
+  background-color: #020617;
+}
+
+.dark .public-site .bg-white,
+.dark .public-site .bg-white\/95,
+.dark .public-site .bg-white\/90,
+.dark .public-site .bg-white\/85,
+.dark .public-site .bg-white\/80,
+.dark .public-site .bg-white\/70 {
+  background-color: #0f172a;
+}
+
+.dark .public-site .bg-neutral-100,
+.dark .public-site [class*="bg-[#F2F3F5]"] {
+  background-color: #111827;
+}
+
+.dark .public-site .bg-neutral-200 {
+  background-color: #1e293b;
+}
+
+.dark .public-site .text-slate-950,
+.dark .public-site .text-neutral-950,
+.dark .public-site .text-neutral-900,
+.dark .public-site .text-neutral-800 {
+  color: #f8fafc;
+}
+
+.dark .public-site .text-neutral-700 {
+  color: #e2e8f0;
+}
+
+.dark .public-site .text-neutral-600 {
+  color: #cbd5e1;
+}
+
+.dark .public-site .text-neutral-500,
+.dark .public-site .text-slate-400 {
+  color: #94a3b8;
+}
+
+.dark .public-site .text-neutral-400,
+.dark .public-site .text-neutral-300 {
+  color: #94a3b8;
+}
+
+.dark .public-site [class*="text-[#20459B]"],
+.dark .public-site [class*="text-[var(--agent-blue)]"] {
+  color: #60a5fa;
+}
+
+.dark .public-site .border-neutral-100,
+.dark .public-site .border-neutral-200,
+.dark .public-site .border-neutral-200\/60,
+.dark .public-site .border-neutral-300,
+.dark .public-site .border-slate-200 {
+  border-color: #334155;
+}
+
+.dark .public-site [class*="border-[rgba(45,52,97"] {
+  border-color: rgba(96, 165, 250, 0.36);
+}
+
+.dark .public-site [class*="bg-[rgba(45,52,97"] {
+  background-color: rgba(37, 99, 235, 0.16);
+}
+
+.dark .public-site :where(input, select, textarea) {
+  border-color: #334155;
+  background-color: rgba(15, 23, 42, 0.94);
+  color: #f8fafc;
+}
+
+.dark .public-site :where(input, select, textarea)::placeholder {
+  color: #64748b;
+}
+
+.dark .public-site :where(input, select, textarea):focus {
+  border-color: var(--sure-orange);
+  background-color: #0f172a;
+  box-shadow: 0 0 0 3px rgba(249, 90, 14, 0.22);
+}
+
+.dark .public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white,
+.dark .public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white\/95,
+.dark .public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white\/90 {
+  border-color: #334155;
+  box-shadow: 0 24px 64px -40px rgba(0, 0, 0, 0.88);
+}
+
+.dark .public-site a:where(.rounded-2xl, .rounded-3xl).border:hover,
+.dark .public-site article:where(.rounded-2xl, .rounded-3xl).border:hover {
+  border-color: #475569;
+  box-shadow: 0 22px 50px -34px rgba(0, 0, 0, 0.92);
+}
+
+.dark .public-site .hover\:bg-neutral-50:hover,
+.dark .public-site .hover\:bg-neutral-100:hover,
+.dark .public-site .hover\:bg-slate-100:hover {
+  background-color: #1e293b;
 }

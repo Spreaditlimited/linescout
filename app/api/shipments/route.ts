@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createEasyPostTracker } from "@/lib/easypost";
-import { ensureShipmentTables, generateTrackingId, normalizeStatus } from "@/lib/shipments";
+import { generateTrackingId, normalizeStatus } from "@/lib/shipments";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +16,6 @@ export async function GET(req: Request) {
     const user = await requireUser(req);
     const conn = await db.getConnection();
     try {
-      await ensureShipmentTables(conn);
       const [rows]: any = await conn.query(
         `
         SELECT public_tracking_id, status, origin_country, destination_country, carrier,
@@ -76,7 +75,6 @@ export async function POST(req: Request) {
 
   const conn = await db.getConnection();
   try {
-    await ensureShipmentTables(conn);
     const trackingId = generateTrackingId();
     const resolvedCarrierTrackingNumber = hasExternalTracking ? carrierTrackingNumber : trackingId;
 

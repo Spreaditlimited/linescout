@@ -1,11 +1,9 @@
 import TrackLookupClient from "@/components/shipments/TrackLookupClient";
-import Footer from "@/components/Footer";
-import MarketingTopNav from "@/components/MarketingTopNav";
 
 export const runtime = "nodejs";
 
 export default function TrackPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
   return (
     <div
       className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900"
@@ -17,28 +15,9 @@ export default function TrackPage() {
         <div className="absolute bottom-[15%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
       </div>
 
-      <MarketingTopNav
-        backgroundClassName="bg-white/95"
-        borderClassName="border-transparent"
-        dividerClassName="bg-[rgba(45,52,97,0.2)]"
-        accentClassName="text-[var(--agent-blue)]"
-        navTextClassName="text-neutral-600"
-        navHoverClassName="hover:text-[var(--agent-blue)]"
-        buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-        buttonTextClassName="text-[var(--agent-blue)]"
-        menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-        menuBgClassName="bg-white/95"
-        menuTextClassName="text-neutral-700"
-        menuHoverClassName="hover:text-[var(--agent-blue)]"
-        disabledNavClassName="text-neutral-400"
-      />
-
       <main className="relative flex-1 pb-24">
         <TrackLookupClient />
       </main>
-      <div className="mt-auto">
-        <Footer variant="agent" />
-      </div>
     </div>
   );
 }

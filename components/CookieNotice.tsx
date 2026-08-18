@@ -8,12 +8,14 @@ export default function CookieNotice() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    try {
-      const seen = window.localStorage.getItem(STORAGE_KEY);
-      if (!seen) setVisible(true);
-    } catch {
-      setVisible(true);
-    }
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        setVisible(!window.localStorage.getItem(STORAGE_KEY));
+      } catch {
+        setVisible(true);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   function acknowledge() {
@@ -26,7 +28,7 @@ export default function CookieNotice() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-[60] w-[min(980px,calc(100%-24px))] -translate-x-1/2">
+    <div className="fixed bottom-20 left-1/2 z-[60] w-[min(980px,calc(100%-24px))] -translate-x-1/2 md:bottom-4">
       <div className="flex flex-col gap-3 rounded-3xl border border-neutral-200 bg-white/95 p-4 shadow-[0_20px_50px_rgba(15,23,42,0.2)] backdrop-blur md:flex-row md:items-center md:justify-between">
         <div className="space-y-1 text-sm text-neutral-700">
           <p className="font-semibold text-neutral-900">We use cookies</p>
@@ -36,7 +38,7 @@ export default function CookieNotice() {
           </p>
           <a
             href="https://www.sureimports.com/privacy-policy"
-            className="text-xs font-semibold text-[var(--agent-blue,#2D3461)] underline"
+            className="text-xs font-semibold text-[#20459B] underline decoration-[#20459B]/30 underline-offset-2"
             target="_blank"
             rel="noreferrer"
           >
@@ -46,7 +48,7 @@ export default function CookieNotice() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={acknowledge}
-            className="rounded-2xl bg-[var(--agent-blue,#2D3461)] px-5 py-2 text-xs font-semibold text-white"
+            className="rounded-full bg-[#F95A0E] px-5 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-[#EA4306]"
           >
             Accept
           </button>

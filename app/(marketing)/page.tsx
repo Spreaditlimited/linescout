@@ -1,112 +1,272 @@
+import crypto from "crypto";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
-import crypto from "crypto";
-import { ArrowRight, BadgeCheck, MessageCircle, ShieldCheck, Sparkles } from "lucide-react";
-import Footer from "@/components/Footer";
-import MarketingTopNav from "@/components/MarketingTopNav";
-import HomeHeroCta from "@/components/marketing/HomeHeroCta";
-import HomeAppDownloadButtons from "@/components/marketing/HomeAppDownloadButtons";
-import { queryOne } from "@/lib/db";
 import type { RowDataPacket } from "mysql2/promise";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Bot,
+  Boxes,
+  Check,
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardCheck,
+  FileText,
+  FolderKanban,
+  Headphones,
+  Lightbulb,
+  MessageCircle,
+  PackageCheck,
+  PackageSearch,
+  RefreshCcw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  WalletCards,
+} from "lucide-react";
 
-const features = [
+import { db, queryOne } from "@/lib/db";
+
+export const runtime = "nodejs";
+
+export const metadata: Metadata = {
+  title: "LineScout | Your China Sourcing Workspace by Sure Imports",
+  description:
+    "Discover product ideas, clarify specifications, work with China sourcing specialists, review quotes, make payments, and track shipments in one sourcing workspace.",
+  alternates: {
+    canonical: "https://linescout.sureimports.com",
+  },
+};
+
+type PopularProduct = {
+  id: number;
+  product_name: string;
+  slug: string;
+  category: string;
+  image_url: string | null;
+  short_desc: string | null;
+  view_count: number;
+};
+
+const getPopularProducts = unstable_cache(
+  async (): Promise<PopularProduct[]> => {
+    const conn = await db.getConnection();
+    try {
+      const [rows] = await conn.query<RowDataPacket[]>(
+        `
+        SELECT
+          p.id,
+          p.product_name,
+          p.slug,
+          p.category,
+          p.image_url,
+          p.short_desc,
+          COUNT(v.product_id) AS view_count
+        FROM linescout_white_label_products p
+        LEFT JOIN linescout_white_label_views v ON v.product_id = p.id
+        WHERE p.is_active = 1
+          AND p.image_url IS NOT NULL
+          AND TRIM(p.image_url) <> ''
+        GROUP BY p.id
+        ORDER BY view_count DESC, p.sort_order ASC, p.id DESC
+        LIMIT 6
+        `,
+      );
+
+      return rows.map((row) => ({
+        id: Number(row.id),
+        product_name: String(row.product_name || ""),
+        slug: String(row.slug || ""),
+        category: String(row.category || "Product idea"),
+        image_url: row.image_url ? String(row.image_url) : null,
+        short_desc: row.short_desc ? String(row.short_desc) : null,
+        view_count: Number(row.view_count || 0),
+      }));
+    } finally {
+      conn.release();
+    }
+  },
+  ["linescout-home-popular-white-label-products"],
+  { revalidate: 3600, tags: ["white-label-products"] },
+);
+
+const capabilities = [
   {
-    title: "Market-ready sourcing clarity",
-    desc: "Get guidance that reflects real costs, timelines, and risks for your market.",
-    icon: ShieldCheck,
+    title: "Discover white-label opportunities",
+    description:
+      "Search more than 1,000 product ideas by category, demand signal, regulatory status, and estimated landed cost.",
+    href: "/white-label",
+    cta: "Explore products",
+    icon: Lightbulb,
   },
   {
-    title: "Specialists when you are ready",
-    desc: "Move from AI clarity to verified human sourcing the moment you want execution.",
-    icon: MessageCircle,
+    title: "Turn an idea into a sourcing brief",
+    description:
+      "Capture the product, quantity, destination, specifications, and commercial goals your sourcing team needs.",
+    href: "/sign-in?next=/projects/new",
+    cta: "Build a project brief",
+    icon: ClipboardCheck,
   },
   {
-    title: "Quotes you can trust",
-    desc: "Clear totals, shipping options, and structured payment milestones.",
-    icon: BadgeCheck,
+    title: "Get guidance before you commit",
+    description:
+      "Use AI chat for early clarity, then bring in a sourcing specialist when the project is ready for execution.",
+    href: "/sign-in?next=/machine",
+    cta: "Start a conversation",
+    icon: Bot,
+  },
+  {
+    title: "Manage sourcing projects",
+    description:
+      "Keep conversations, requirements, project stages, supplier progress, and important decisions in one workspace.",
+    href: "/sign-in?next=/projects",
+    cta: "View your workspace",
+    icon: FolderKanban,
+  },
+  {
+    title: "Review quotes and pay securely",
+    description:
+      "See product and shipping costs clearly, follow payment milestones, and use your LineScout wallet where eligible.",
+    href: "/sign-in?next=/quotes",
+    cta: "Manage quotes",
+    icon: WalletCards,
+  },
+  {
+    title: "Follow goods through delivery",
+    description:
+      "Track shipment updates, packages, shipping milestones, and repeat orders without losing the project history.",
+    href: "/track",
+    cta: "Track a shipment",
+    icon: PackageSearch,
   },
 ];
 
-const stats = [
-  { label: "8+ years", desc: "China sourcing experience" },
-  { label: "40,000+", desc: "Registered users trust Sure Imports" },
-  { label: "4.8/5", desc: "Google rating from 90+ reviews" },
+const workflow = [
+  {
+    step: "01",
+    title: "Explore or describe what you need",
+    description: "Start with a white-label idea, a machine, or any product you want sourced from China.",
+    icon: Search,
+  },
+  {
+    step: "02",
+    title: "Build a precise brief",
+    description: "Share specifications, target quantity, destination, budget, and branding requirements.",
+    icon: FileText,
+  },
+  {
+    step: "03",
+    title: "Work with a sourcing specialist",
+    description: "A verified Sure Imports specialist researches, confirms requirements, and manages supplier execution.",
+    icon: Headphones,
+  },
+  {
+    step: "04",
+    title: "Approve quotes and milestones",
+    description: "Review structured costs and pay against the agreed product and shipping stages.",
+    icon: CircleDollarSign,
+  },
+  {
+    step: "05",
+    title: "Track delivery and reorder",
+    description: "Follow shipment progress and keep the complete record ready for a smoother repeat order.",
+    icon: PackageCheck,
+  },
+];
+
+const sourcingRoutes = [
+  {
+    eyebrow: "Build a brand",
+    title: "White-label products",
+    description:
+      "Find marketable products, assess the opportunity, and move from inspiration to custom branding and production.",
+    href: "/white-label",
+    link: "Browse product ideas",
+    icon: Sparkles,
+  },
+  {
+    eyebrow: "Buy for your business",
+    title: "Bulk product sourcing",
+    description:
+      "Source finished products in commercial quantities with clearer specifications, quotations, and fulfilment stages.",
+    href: "/sign-in?next=/projects/new",
+    link: "Start bulk sourcing",
+    icon: Boxes,
+  },
+  {
+    eyebrow: "Equip your operation",
+    title: "Machinery and equipment",
+    description:
+      "Define operational requirements and work with specialists to identify suitable manufacturers and machine specifications.",
+    href: "/machine-sourcing-webinar",
+    link: "Learn about machine sourcing",
+    icon: PackageCheck,
+  },
 ];
 
 const testimonials = [
   {
-    name: "Chioma Ifeanyi-Eze",
-    title: "Founder, Accountinghub & Fresh Eggs Market",
-    location: "Nigeria",
-    highlight:
-      "Transparent, deeply knowledgeable, and trustworthy. I felt safe enough to sleep after paying a huge sum. The team listens closely and follows through with care.",
-    initials: "CI",
-  },
-  {
-    name: "Chukwuedozie Nwokoye",
-    title: "Businessman",
-    location: "Nigeria",
-    highlight:
-      "Delivered 2,000 custom-branded items with flawless quality and integrity. Pricing came in below expectation. The process was smooth from brief to delivery.",
-    initials: "CN",
-  },
-  {
-    name: "Amarachi Ndukauba Ogbuagu",
-    title: "Businesswoman",
-    location: "Canada",
-    highlight:
-      "Professional, timely delivery and excellent attention to detail. The entire process was smooth and reliable. Everything arrived in perfect condition.",
-    initials: "AO",
-  },
-  {
-    name: "Emmanuel Ayobami Adewumi",
-    title: "Customer",
-    location: "Nigeria",
-    highlight:
-      "Lightning-fast delivery, transparent refurbishment, and generous extras. Reliable service from start to finish. The customer support stayed responsive throughout.",
-    initials: "EA",
-  },
-  {
-    name: "Agu Mba",
-    title: "Customer",
-    location: "United Kingdom",
-    highlight:
-      "Timely arrival and impressive quality for event souvenirs. Cost-effective sourcing without stress. The gifts impressed everyone at the celebration. I would gladly use them again.",
-    initials: "AM",
-  },
-  {
-    name: "Okoli, Augustine J. FCIA",
-    title: "Head of HR & Admin, Microware Solutions Limited",
-    location: "Nigeria",
-    highlight:
-      "Securely packaged, on-time delivery with quality that exceeded expectations. Professional communication throughout. Everything performed flawlessly.",
-    initials: "OA",
-  },
-  {
+    quote:
+      "We had been burned by two previous China imports. Sure Imports delivered early with the correct power rating, and our production capacity is now up by 3.5x.",
     name: "Roberta Edu",
-    title: "Founder, Moppet Foods",
-    location: "Nigeria",
-    highlight:
-      "Equipment arrived early, matched power specs, and installed without drama. Output quality exceeded expectations and production capacity jumped by 3.5x.",
-    long:
-      "We had been burned by two previous China imports, so I needed this expansion to land perfectly. Sure Imports delivered early with the correct power rating, and the installation finished without a single issue. The machine now runs beautifully, and our capacity is up by 3.5x. The quote even came in lower than expected, and the team kept us confident at every step. I recommend them to anyone who needs China sourcing without the headache.",
-    initials: "RE",
+    role: "Founder, Moppet Foods",
   },
   {
-    name: "Boma Sydney",
-    title: "Customer",
-    location: "Nigeria",
-    highlight:
-      "I was afraid of losing my money, but I received my goods and never looked back. Fast service, quick support, and real integrity. I now recommend them with confidence.",
-    initials: "BS",
+    quote:
+      "We needed 2,000 custom-branded items and received exactly what we envisioned. Pricing was transparent and even came in lower than expected.",
+    name: "Chukwuedozie Nwokoye",
+    role: "Business owner",
+  },
+  {
+    quote:
+      "Transparent, deeply knowledgeable, and trustworthy. The team listens closely and follows through with care.",
+    name: "Chioma Ifeanyi-Eze",
+    role: "Founder, Accountinghub & Fresh Eggs Market",
+  },
+];
+
+const faqs = [
+  {
+    question: "What is the relationship between LineScout and Sure Imports?",
+    answer:
+      "LineScout is the digital sourcing workspace built by Sure Imports. You use LineScout to discover ideas, create briefs, communicate, review quotes, make eligible payments, and follow projects. Sure Imports provides the human sourcing and fulfilment expertise behind the execution.",
+  },
+  {
+    question: "What can I source through LineScout?",
+    answer:
+      "You can begin projects for white-label products, bulk finished goods, machinery, equipment, branded merchandise, and other products that need supplier research or purchasing support in China.",
+  },
+  {
+    question: "Do I work with AI or a real person?",
+    answer:
+      "Both are available. AI chat can help you clarify an early idea, while real sourcing specialists handle the work that requires supplier research, quotations, negotiation, purchasing, and fulfilment.",
+  },
+  {
+    question: "Do I need a subscription to browse white-label ideas?",
+    answer:
+      "No. The public white-label catalogue can be browsed without a subscription. When you are ready to source a product, sign in and start a sourcing project.",
+  },
+  {
+    question: "Can I see my quote, payments, and shipment in one place?",
+    answer:
+      "Yes. Your LineScout workspace keeps active projects, quotes, payment records, wallet information, shipment updates, and project conversations together.",
+  },
+  {
+    question: "Can I track a shipment without signing in?",
+    answer:
+      "Yes. Use the public shipment tracker with your LineScout tracking number. Signed-in users can also see shipments connected to their projects.",
   },
 ];
 
 export default async function HomePage() {
   const cookieStore = await cookies();
   const token = cookieStore.get("linescout_session")?.value || "";
+
   if (token) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const session = await queryOne<RowDataPacket & { id: number }>(
@@ -118,249 +278,423 @@ export default async function HomePage() {
         AND expires_at > NOW()
       LIMIT 1
       `,
-      [tokenHash]
+      [tokenHash],
     );
-    if (session?.id) {
-      redirect("/projects/active");
-    }
+    if (session?.id) redirect("/projects/active");
   }
 
-  const brandBlue = "#2D3461";
+  let popularProducts: PopularProduct[] = [];
+  try {
+    popularProducts = await getPopularProducts();
+  } catch (error) {
+    console.error("Unable to load homepage white-label products", error);
+  }
+
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map((faq) => ({
+      "@type": "Question",
+      name: faq.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: faq.answer,
+      },
+    })),
+  };
+
   return (
-    <div
-      className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900"
-      style={{ ["--agent-blue" as any]: brandBlue }}
-    >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
-        <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
-        <div className="absolute bottom-[10%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
-      </div>
+    <main className="relative overflow-hidden bg-[#F5F6FA] text-neutral-900">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
 
-        <MarketingTopNav
-          backgroundClassName="bg-white/95"
-          borderClassName="border-transparent"
-          dividerClassName="bg-[rgba(45,52,97,0.2)]"
-          accentClassName="text-[var(--agent-blue)]"
-          navTextClassName="text-neutral-600"
-          navHoverClassName="hover:text-[var(--agent-blue)]"
-          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-          buttonTextClassName="text-[var(--agent-blue)]"
-          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-          menuBgClassName="bg-white/95"
-          menuTextClassName="text-neutral-700"
-          menuHoverClassName="hover:text-[var(--agent-blue)]"
-          disabledNavClassName="text-neutral-400"
-        />
-
-      <main className="relative flex-1">
-          <section className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 px-4 pb-12 pt-10 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
-                <Sparkles className="h-4 w-4" />
-                Smart China product sourcing
-              </div>
-              <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-                Source smarter from China with market-specific guidance.
-              </h1>
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
-                LineScout helps you think through specs, quotes, and shipping before you commit to a supplier. When you
-                are ready, our specialists take over and execute with verified manufacturers.
-              </p>
-
-              <HomeHeroCta />
-
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                {stats.map((s) => (
-                  <Stat key={s.label} label={s.label} desc={s.desc} />
-                ))}
-              </div>
+      <section className="si-hero relative overflow-hidden">
+        <div className="mx-auto grid w-full min-w-0 max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.04fr_0.96fr] lg:px-8">
+          <div className="min-w-0 max-w-full">
+            <div className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] sm:px-4 sm:text-xs sm:tracking-[0.16em]">
+              <Sparkles className="h-4 w-4" /> A Sure Imports sourcing workspace
             </div>
-
-            <div className="relative mt-4 md:mt-0">
-              <div className="hero-orb hero-orb--a -right-6 -top-6 h-24 w-24 rounded-full bg-emerald-200/50 sm:-right-8 sm:-top-8 sm:h-28 sm:w-28" />
-              <div className="hero-orb hero-orb--b -left-8 top-10 h-20 w-20 rounded-full bg-sky-200/50 sm:h-24 sm:w-24" />
-              <div className="hero-orb hero-orb--a bottom-4 right-6 h-16 w-16 rounded-full bg-amber-200/50 sm:h-20 sm:w-20" />
-              <div className="hero-float rounded-[26px] border border-neutral-200 bg-white p-2.5 shadow-[0_25px_60px_rgba(15,23,42,0.12)] sm:rounded-[32px] sm:p-4">
-                <div className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-2 sm:rounded-[28px] sm:p-3">
-                  <Image
-                    src="/hero.png"
-                    alt="LineScout dashboard preview"
-                    width={520}
-                    height={980}
-                    className="h-auto w-full rounded-[16px] sm:rounded-[22px]"
-                    priority
-                    sizes="(min-width: 1024px) 520px, (min-width: 768px) 45vw, 90vw"
-                  />
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-neutral-600 sm:text-xs">
-                <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Secure payments</span>
-                <span className="rounded-full border border-neutral-200 bg-white px-3 py-1">Verified specialists</span>
-              </div>
+            <h1 className="mt-6 max-w-full break-words text-4xl font-black leading-[1.06] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
+              From product idea to delivered goods, manage sourcing in one place.
+            </h1>
+            <p className="mt-6 max-w-2xl break-words text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
+              Discover opportunities, define exactly what you need, work with sourcing specialists in China, review
+              quotes, make payments, and follow every project through shipping.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href="/sign-in"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
+              >
+                Start Sourcing <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/white-label"
+                className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/15"
+              >
+                View Products
+              </Link>
             </div>
-          </section>
-
-          <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="rounded-[28px] border border-[rgba(45,52,97,0.12)] bg-white/70 p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--agent-blue)]">
-                    Testimonials
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-neutral-900 sm:text-3xl">
-                    Trusted by founders, operators, and growth teams.
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-neutral-600">
-                    Real stories from business owners who source from China with Sure Imports and LineScout.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-4 py-2 text-xs font-semibold text-[var(--agent-blue)]">
-                  90+ verified reviews
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-3">
-                <div className="rounded-[24px] border border-[rgba(45,52,97,0.12)] bg-[rgba(45,52,97,0.04)] p-5 shadow-sm lg:row-span-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--agent-blue)]">
-                    Featured review
-                  </p>
-                  <p className="mt-3 text-sm leading-relaxed text-neutral-700">
-                    {testimonials[6].long || testimonials[6].highlight}
-                  </p>
-                  <div className="mt-6 flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-sm font-semibold text-[var(--agent-blue)] shadow-sm">
-                      {testimonials[6].initials}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-neutral-900">{testimonials[6].name}</p>
-                      <p className="text-xs text-neutral-600">
-                        {testimonials[6].title} · {testimonials[6].location}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {testimonials.filter((_, idx) => idx !== 6).map((t) => (
-                  <div
-                    key={t.name}
-                    className="flex h-full flex-col rounded-[22px] border border-neutral-200 bg-white p-5 shadow-sm"
-                  >
-                    <p className="text-sm text-neutral-700">{t.highlight}</p>
-                    <div className="mt-auto flex items-center gap-3 pt-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(45,52,97,0.08)] text-xs font-semibold text-[var(--agent-blue)]">
-                        {t.initials}
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-neutral-900">{t.name}</p>
-                        <p className="text-[11px] text-neutral-600">
-                          {t.title} · {t.location}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section id="features" className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => (
-                <FeatureCard key={feature.title} {...feature} />
+            <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-300">
+              {[
+                "No subscription required to browse",
+                "AI and human sourcing support",
+                "Powered by Sure Imports",
+              ].map((item) => (
+                <span key={item} className="inline-flex items-center gap-2">
+                  <Check className="h-4 w-4 text-orange-400" /> {item}
+                </span>
               ))}
             </div>
-          </section>
+          </div>
 
-          <section className="mx-auto max-w-6xl px-4 pb-12 sm:px-6">
-            <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)] sm:p-8">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--agent-blue)]">
-                    White Label
-                  </p>
-                  <h2 className="mt-3 text-2xl font-semibold text-neutral-900 sm:text-3xl">
-                    Discover white label winners with market data.
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm text-neutral-600">
-                    Compare landed costs, Amazon pricing signals, and premium insights so you can validate demand
-                    before committing to inventory.
-                  </p>
+          <div className="relative mx-auto hidden w-full max-w-xl md:block lg:mx-0">
+            <div className="absolute -inset-8 rounded-full bg-orange-500/10 blur-3xl" />
+            <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-slate-900 p-3 shadow-2xl shadow-black/40">
+              <div className="flex items-center justify-between border-b border-white/10 px-3 pb-3">
+                <div className="flex gap-1.5" aria-hidden="true">
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
                 </div>
-                <Link
-                  href="/white-label"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-4 py-2 text-xs font-semibold text-[var(--agent-blue)]"
-                >
-                  Explore white label ideas
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Sourcing workspace
+                </span>
               </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-3">
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Curated product ideas</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    High-performing ideas ranked by demand signals and category momentum.
-                  </p>
-                </div>
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <BadgeCheck className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Amazon price comparison</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    Reveal Amazon prices for UK and Canada to validate margin opportunities.
-                  </p>
-                </div>
-                <div className="rounded-[22px] border border-neutral-200 bg-neutral-50 p-5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.12)] text-[var(--agent-blue)]">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-                  <h3 className="mt-4 text-sm font-semibold text-neutral-900">Premium product insights</h3>
-                  <p className="mt-2 text-sm text-neutral-600">
-                    Trend deltas, competition signals, seasonality, and buy-box stability for paid users.
-                  </p>
-                </div>
-              </div>
+              <Image
+                src="/hero.png"
+                alt="LineScout sourcing dashboard showing a managed project"
+                width={520}
+                height={980}
+                sizes="(min-width: 1024px) 520px, 90vw"
+                className="mt-3 max-h-[34rem] w-full rounded-[1.4rem] object-cover object-top"
+              />
             </div>
-          </section>
+            <div className="absolute -bottom-5 -left-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl sm:-left-8">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500">Project stage</p>
+              <p className="mt-1 flex items-center gap-2 text-sm font-bold text-neutral-900">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Supplier sourcing
+              </p>
+            </div>
+            <div className="absolute -right-2 top-16 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl sm:-right-8">
+              <p className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+                <MessageCircle className="h-4 w-4 text-orange-500" /> Specialist connected
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          
-      </main>
+      <section className="relative z-10 mx-auto -mt-6 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-900/10 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["1,000+", "white-label ideas"],
+            ["13", "product categories"],
+            ["AI + human", "sourcing guidance"],
+            ["One workspace", "idea to delivery"],
+          ].map(([value, label], index) => (
+            <div
+              key={label}
+              className={`px-6 py-6 ${index > 0 ? "border-t border-slate-200 sm:border-l sm:border-t-0" : ""} ${index === 2 ? "sm:border-t lg:border-t-0" : ""}`}
+            >
+              <p className="text-2xl font-black tracking-tight text-neutral-900">{value}</p>
+              <p className="mt-1 text-sm text-neutral-600">{label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      <Footer variant="agent" />
-    </div>
-  );
-}
+      <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+        <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:gap-16">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">One connected system</p>
+            <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+              Everything your sourcing project needs after “I have an idea.”
+            </h2>
+            <p className="mt-5 text-base leading-7 text-neutral-600">
+              LineScout replaces scattered chats, forgotten requirements, and unclear payment stages with a workspace
+              designed around the real China sourcing process.
+            </p>
+            <Link href="/sign-in" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
+              Enter the sourcing workspace <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {capabilities.map((item) => (
+              <article key={item.title} className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+                  <item.icon className="h-5 w-5" />
+                </div>
+                <h3 className="mt-5 text-lg font-bold text-neutral-900">{item.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-neutral-600">{item.description}</p>
+                <Link href={item.href} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
+                  {item.cta} <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </Link>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
 
-function FeatureCard({
-  title,
-  desc,
-  icon: Icon,
-}: {
-  title: string;
-  desc: string;
-  icon: React.ElementType;
-}) {
-  return (
-    <div className="rounded-3xl border border-[rgba(45,52,97,0.14)] bg-white p-5 shadow-sm">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]">
-        <Icon className="h-5 w-5" />
-      </div>
-      <h3 className="mt-4 text-lg font-semibold">{title}</h3>
-      <p className="mt-2 text-sm leading-relaxed text-neutral-600">{desc}</p>
-    </div>
-  );
-}
+      {popularProducts.length ? (
+        <section className="border-y border-slate-200 bg-white py-20 lg:py-24">
+          <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">What people are exploring</p>
+                <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+                  Most popular white-label products
+                </h2>
+                <p className="mt-3 max-w-2xl text-base text-neutral-600">
+                  See the product ideas attracting the most attention, then open any idea for positioning, sourcing,
+                  cost, and launch guidance.
+                </p>
+              </div>
+              <Link
+                href="/white-label"
+                className="inline-flex shrink-0 items-center gap-2 text-sm font-bold text-orange-600"
+              >
+                Browse all 1,000+ ideas <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
 
-function Stat({ label, desc }: { label: string; desc: string }) {
-  return (
-    <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm">
-      <p className="text-lg font-semibold text-neutral-900">{label}</p>
-      <p className="mt-1 text-xs text-neutral-600">{desc}</p>
-    </div>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {popularProducts.map((product, index) => (
+                <Link
+                  key={product.id}
+                  href={`/white-label/${product.slug}`}
+                  className="group overflow-hidden rounded-3xl border border-slate-200 bg-neutral-50"
+                >
+                  <div className="relative flex aspect-[16/10] items-center justify-center overflow-hidden bg-white p-6">
+                    {product.image_url ? (
+                      <Image
+                        src={product.image_url}
+                        alt={product.product_name}
+                        fill
+                        sizes="(min-width: 1024px) 30vw, (min-width: 640px) 46vw, 92vw"
+                        className="object-contain p-6 transition duration-300 group-hover:scale-[1.03]"
+                      />
+                    ) : null}
+                    <span className="absolute left-4 top-4 rounded-full border border-slate-200 bg-white/95 px-3 py-1 text-[11px] font-bold text-neutral-700 shadow-sm">
+                      #{index + 1} most popular
+                    </span>
+                  </div>
+                  <div className="p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-600">{product.category}</p>
+                    <h3 className="mt-2 text-lg font-bold text-neutral-900">{product.product_name}</h3>
+                    {product.short_desc ? (
+                      <p className="mt-2 line-clamp-2 text-sm leading-6 text-neutral-600">{product.short_desc}</p>
+                    ) : null}
+                    <div className="mt-4 flex items-center justify-between text-xs font-semibold text-neutral-500">
+                      <span>{product.view_count.toLocaleString()} views</span>
+                      <span className="inline-flex items-center gap-1 text-orange-600">
+                        View idea <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">How LineScout works</p>
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+            A clear path from first question to final delivery
+          </h2>
+          <p className="mt-4 text-base leading-7 text-neutral-600">
+            Every stage builds on the one before it, so specifications, decisions, costs, and conversations stay connected.
+          </p>
+        </div>
+        <div className="relative mt-12 grid gap-4 lg:grid-cols-5">
+          <div className="absolute left-[10%] right-[10%] top-8 hidden h-px bg-slate-200 lg:block" aria-hidden="true" />
+          {workflow.map((item) => (
+            <article key={item.step} className="relative rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg">
+                <item.icon className="h-6 w-6" />
+              </div>
+              <p className="mt-5 text-xs font-black uppercase tracking-[0.2em] text-orange-600">Step {item.step}</p>
+              <h3 className="mt-2 text-base font-bold text-neutral-900">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-neutral-600">{item.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-slate-950 py-20 text-white lg:py-24">
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-6 lg:grid-cols-3">
+            {sourcingRoutes.map((route) => (
+              <article key={route.title} className="rounded-[1.75rem] border border-white/10 bg-white/[0.06] p-7">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500 text-white">
+                  <route.icon className="h-6 w-6" />
+                </div>
+                <p className="mt-6 text-xs font-bold uppercase tracking-[0.2em] text-orange-400">{route.eyebrow}</p>
+                <h2 className="mt-2 text-2xl font-bold">{route.title}</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-300">{route.description}</p>
+                <Link href={route.href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-white">
+                  {route.link} <ArrowRight className="h-4 w-4 text-orange-400" />
+                </Link>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:py-28">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Built for continuity</p>
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+            Your project history does not disappear inside a chat thread.
+          </h2>
+          <p className="mt-5 text-base leading-7 text-neutral-600">
+            LineScout preserves the context behind every sourcing decision. Return to the brief, project stage, quote,
+            payment record, shipment, or specialist conversation whenever you need it.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
+            {[
+              [ShieldCheck, "Structured project records", "Requirements and milestones stay attached to the right project."],
+              [MessageCircle, "Human support in context", "Specialists see the sourcing history instead of asking you to start over."],
+              [BadgeCheck, "Clear quote stages", "Product and shipping balances are presented separately and transparently."],
+              [RefreshCcw, "Simpler repeat orders", "Past project information gives the next order a stronger starting point."],
+            ].map(([Icon, title, description]) => {
+              const FeatureIcon = Icon as typeof ShieldCheck;
+              return (
+                <div key={String(title)} className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <FeatureIcon className="h-5 w-5 text-orange-600" />
+                  <h3 className="mt-3 text-sm font-bold text-neutral-900">{String(title)}</h3>
+                  <p className="mt-1 text-sm leading-6 text-neutral-600">{String(description)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl shadow-slate-900/10 sm:p-7">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-600">Active project</p>
+              <h3 className="mt-1 text-xl font-bold text-neutral-900">Custom product sourcing</h3>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">In progress</span>
+          </div>
+          <div className="mt-7 space-y-5">
+            {[
+              ["Brief received", "Requirements and destination confirmed", true],
+              ["Specialist assigned", "Supplier research and clarification", true],
+              ["Quote prepared", "Product, logistics, and payment stages", true],
+              ["Production", "Begins after quote approval", false],
+              ["Shipment tracking", "Updates through final delivery", false],
+            ].map(([title, description, complete], index) => (
+              <div key={String(title)} className="relative flex gap-4">
+                {index < 4 ? <div className="absolute left-[15px] top-8 h-9 w-px bg-slate-200" /> : null}
+                <span
+                  className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+                    complete ? "bg-emerald-500 text-white" : "border border-slate-300 bg-white text-neutral-400"
+                  }`}
+                >
+                  {complete ? <Check className="h-4 w-4" /> : <span className="h-2 w-2 rounded-full bg-current" />}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-neutral-900">{String(title)}</p>
+                  <p className="mt-1 text-sm text-neutral-600">{String(description)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-slate-200 bg-white py-20 lg:py-24">
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Proven sourcing experience</p>
+              <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+                Backed by the Sure Imports team
+              </h2>
+            </div>
+            <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+              <span className="flex text-amber-400" aria-label="Five stars">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <Star key={index} className="h-4 w-4 fill-current" />
+                ))}
+              </span>
+              4.8/5 from 90+ Google reviews
+            </div>
+          </div>
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {testimonials.map((testimonial) => (
+              <figure key={testimonial.name} className="rounded-3xl border border-slate-200 bg-neutral-50 p-6">
+                <div className="flex text-amber-400" aria-hidden="true">
+                  {Array.from({ length: 5 }).map((_, index) => (
+                    <Star key={index} className="h-4 w-4 fill-current" />
+                  ))}
+                </div>
+                <blockquote className="mt-5 text-sm leading-7 text-neutral-700">“{testimonial.quote}”</blockquote>
+                <figcaption className="mt-6 border-t border-slate-200 pt-4">
+                  <p className="text-sm font-bold text-neutral-900">{testimonial.name}</p>
+                  <p className="mt-1 text-xs text-neutral-500">{testimonial.role}</p>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-4xl px-4 py-20 sm:px-6 lg:py-28">
+        <div className="text-center">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Frequently asked questions</p>
+          <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
+            Before you start sourcing
+          </h2>
+        </div>
+        <div className="mt-10 space-y-3">
+          {faqs.map((faq) => (
+            <details key={faq.question} className="group rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-5 px-5 py-5 text-left text-base font-bold text-neutral-900 sm:px-6">
+                {faq.question}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-orange-600 transition group-open:rotate-180">
+                  <ChevronDown className="h-4 w-4" />
+                </span>
+              </summary>
+              <div className="border-t border-slate-100 px-5 py-5 text-sm leading-7 text-neutral-600 sm:px-6">
+                {faq.answer}
+              </div>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section className="px-4 pb-20 sm:px-6 lg:px-8">
+        <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-12 text-center text-white sm:px-10 lg:py-16">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-400">Ready when you are</p>
+          <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-black tracking-tight sm:text-4xl">
+            Bring the idea. LineScout and Sure Imports will help you move it forward.
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-300">
+            Start a sourcing project or explore the white-label catalogue until you find the right opportunity.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <Link
+              href="/sign-in"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600"
+            >
+              Start Sourcing <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/white-label"
+              className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white hover:bg-white/15"
+            >
+              View Products
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

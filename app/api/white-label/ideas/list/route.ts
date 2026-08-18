@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { computeLandedRange } from "@/lib/white-label-products";
 import { currencyForCode } from "@/lib/white-label-country";
-import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
-import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
-import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
+import { listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 import { marketplaceCurrency, resolveAmazonMarketplace } from "@/lib/white-label-marketplace";
 import { getFxRate } from "@/lib/fx";
@@ -115,8 +113,6 @@ export async function GET(req: Request) {
 
     const conn = await db.getConnection();
     try {
-      await ensureCountryConfig(conn);
-      await ensureWhiteLabelSettings(conn);
       const lists = await listActiveCountriesAndCurrencies(conn);
       const countries = (lists.countries || []) as {
         id: number;
@@ -170,9 +166,6 @@ export async function GET(req: Request) {
         eligible.has(countryCode) &&
         amazonEnabledFlag &&
         isKeepaMarketplaceSupported(countryMarketplace);
-
-      await ensureWhiteLabelProductsReady(conn);
-      await ensureWhiteLabelLandedCostTable(conn);
 
       const clauses = ["p.is_active = 1"];
       const params: any[] = [];

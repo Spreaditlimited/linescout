@@ -6,12 +6,8 @@ import { RowDataPacket } from "mysql2/promise";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
 import { sendMetaLeadEvent } from "@/lib/meta-capi";
 import {
-  ensureCountryConfig,
-  ensureUserCountryColumns,
-  backfillUserDefaults,
   listActiveCountriesAndCurrencies,
 } from "@/lib/country-config";
-import { ensureWhiteLabelSettings, ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 import { findActiveWhiteLabelExemption } from "@/lib/white-label-exemptions";
 
 export const runtime = "nodejs";
@@ -83,17 +79,12 @@ async function getOrCreateLeadByEmail(email: string) {
 
 export async function GET(req: Request) {
   try {
-    await ensureCountryConfig();
-    await ensureUserCountryColumns();
-    await backfillUserDefaults();
     const user = await requireUser(req);
     let settingsRow: any = null;
     let exemption: any = null;
     {
       const conn = await db.getConnection();
       try {
-        await ensureWhiteLabelUserColumns(conn);
-        await ensureWhiteLabelSettings(conn);
         const [settings]: any = await conn.query(
           `SELECT white_label_trial_days, white_label_daily_reveals, white_label_insights_daily_limit
            FROM linescout_settings
@@ -174,17 +165,6 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    await ensureCountryConfig();
-    await ensureUserCountryColumns();
-    await backfillUserDefaults();
-    {
-      const conn = await db.getConnection();
-      try {
-        await ensureWhiteLabelUserColumns(conn);
-      } finally {
-        conn.release();
-      }
-    }
     const user = await requireUser(req);
 
     const body = await req.json().catch(() => ({}));

@@ -6,10 +6,10 @@ import Script from "next/script";
 import "./globals.css";
 
 import MetaPixel from "./MetaPixel";
-import CookieNotice from "@/components/CookieNotice";
 import InstallPrompt from "@/components/InstallPrompt";
 import Shell from "@/components/Shell";
 import GA4 from "@/components/analytics/GA4";
+import LineScoutThemeProvider from "@/components/theme/LineScoutThemeProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -116,10 +116,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <GA4 />
 
         <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
-        <CookieNotice />
-
         {/* Global shell: hides Navbar for /internal routes via Shell */}
-        <Shell>{children}</Shell>
+        <LineScoutThemeProvider>
+          <Shell>{children}</Shell>
+        </LineScoutThemeProvider>
       </body>
     </html>
   );

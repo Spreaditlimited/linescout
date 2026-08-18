@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Sparkles, ShieldCheck, BadgeCheck } from "lucide-react";
-import MarketingTopNav from "@/components/MarketingTopNav";
 import WhiteLabelLeadForm from "@/components/marketing/WhiteLabelLeadForm";
 
 export const metadata: Metadata = {
@@ -28,52 +27,21 @@ const highlights = [
 ];
 
 export default function WhiteLabelLeadsPage() {
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
 
   return (
     <div
       className="relative flex flex-col bg-[#F5F6FA] text-neutral-900"
       style={{ ["--agent-blue" as any]: brandBlue }}
     >
-      <style>{`
-        @media (max-width: 767px) {
-          html,
-          body {
-            min-height: 0 !important;
-            height: auto !important;
-          }
-          body {
-            padding-bottom: 0 !important;
-          }
-          main {
-            padding-bottom: 0 !important;
-          }
-        }
-      `}</style>
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
         <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
         <div className="absolute bottom-[8%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
       </div>
 
-      <MarketingTopNav
-        backgroundClassName="bg-white/95"
-        borderClassName="border-transparent"
-        dividerClassName="bg-[rgba(45,52,97,0.2)]"
-        accentClassName="text-[var(--agent-blue)]"
-        navTextClassName="text-neutral-600"
-        navHoverClassName="hover:text-[var(--agent-blue)]"
-        buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-        buttonTextClassName="text-[var(--agent-blue)]"
-        menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-        menuBgClassName="bg-white/95"
-        menuTextClassName="text-neutral-700"
-        menuHoverClassName="hover:text-[var(--agent-blue)]"
-        disabledNavClassName="text-neutral-400"
-      />
-
       <main className="relative">
-        <section className="mx-auto grid max-w-6xl grid-cols-1 items-start gap-6 px-4 pb-0 pt-8 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20 md:pb-0">
+        <section className="si-hero mx-auto grid max-w-6xl grid-cols-1 items-start gap-6 px-4 pb-0 pt-8 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20 md:pb-0">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
               <Sparkles className="h-4 w-4" />

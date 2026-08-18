@@ -3,9 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, Sparkles, Settings } from "lucide-react";
 import { db } from "@/lib/db";
-import MarketingTopNav from "@/components/MarketingTopNav";
 import MachinesCatalogClient from "@/components/machines/MachinesCatalogClient";
-import { computeMachineLandedRange, ensureMachinesReady, getMachinePricingSettings } from "@/lib/machines";
+import { computeMachineLandedRange, getMachinePricingSettings } from "@/lib/machines";
 import FilterForm from "@/components/filters/FilterForm";
 
 export const runtime = "nodejs";
@@ -158,8 +157,6 @@ export default async function MachinesPage({
   let categories: string[] = [];
   let pricing = await getMachinePricingSettings(conn);
   try {
-    await ensureMachinesReady(conn);
-
     const clauses = ["is_active = 1"];
     const args: any[] = [];
 
@@ -266,7 +263,7 @@ export default async function MachinesPage({
     { value: "name", label: "Name (A-Z)" },
   ];
 
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
 
   return (
     <main
@@ -281,24 +278,8 @@ export default async function MachinesPage({
       </div>
 
       <div className="relative">
-        <MarketingTopNav
-          backgroundClassName="bg-white/95"
-          borderClassName="border-transparent"
-          dividerClassName="bg-[rgba(45,52,97,0.2)]"
-          accentClassName="text-[var(--agent-blue)]"
-          navTextClassName="text-neutral-600"
-          navHoverClassName="hover:text-[var(--agent-blue)]"
-          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-          buttonTextClassName="text-[var(--agent-blue)]"
-          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-          menuBgClassName="bg-white/95"
-          menuTextClassName="text-neutral-700"
-          menuHoverClassName="hover:text-[var(--agent-blue)]"
-          disabledNavClassName="text-neutral-400"
-        />
-
         {!category && !q && (
-          <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-6 pt-10 md:grid-cols-[1.1fr_0.9fr] md:pt-16">
+          <section className="si-hero mx-auto grid max-w-6xl gap-10 px-6 pb-6 pt-10 md:grid-cols-[1.1fr_0.9fr] md:pt-16">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
                 <Sparkles className="h-4 w-4" />

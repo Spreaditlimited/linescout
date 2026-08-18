@@ -4,15 +4,12 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ArrowRight, BadgeCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
-import { computeLandedRange, ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
-import { ensureWhiteLabelLandedCostTable } from "@/lib/white-label-landed";
-import MarketingTopNav from "@/components/MarketingTopNav";
+import { computeLandedRange } from "@/lib/white-label-products";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
 import FilterForm from "@/components/filters/FilterForm";
 import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountrySelector";
 import { currencyForCode } from "@/lib/white-label-country";
-import { ensureCountryConfig, listActiveCountriesAndCurrencies } from "@/lib/country-config";
-import { ensureWhiteLabelSettings } from "@/lib/white-label-access";
+import { listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { normalizeAmazonMarketplace, marketplaceCurrency } from "@/lib/white-label-marketplace";
 import { getFxRate } from "@/lib/fx";
 import { isKeepaMarketplaceSupported } from "@/lib/keepa";
@@ -269,8 +266,6 @@ export default async function WhiteLabelPage({
   let effectivePrice = "";
 
   try {
-    await ensureCountryConfig(conn);
-    await ensureWhiteLabelSettings(conn);
     const lists = await listActiveCountriesAndCurrencies(conn);
     countries = (lists.countries || []) as typeof countries;
     const currencyById = new Map<number, string>(
@@ -294,9 +289,6 @@ export default async function WhiteLabelPage({
       Boolean(picked?.amazon_enabled) &&
       Boolean(normalizedMarketplace) &&
       isKeepaMarketplaceSupported(normalizedMarketplace);
-
-    await ensureWhiteLabelProductsReady(conn);
-    await ensureWhiteLabelLandedCostTable(conn);
 
     const clauses = ["p.is_active = 1"];
     const params: any[] = [];
@@ -478,15 +470,16 @@ export default async function WhiteLabelPage({
 
     items = (rows || []).map(mapItem);
 
-    const [catRows]: any = await conn.query(
+    const [categoryRows]: any = await conn.query(
       `
-      SELECT DISTINCT category
+      SELECT category, COUNT(*) AS total
       FROM linescout_white_label_products
       WHERE is_active = 1
+      GROUP BY category
       ORDER BY category ASC
       `
     );
-    categories = (catRows || [])
+    categories = (categoryRows || [])
       .map((r: any) => String(r.category || "").trim())
       .filter(Boolean);
 
@@ -511,45 +504,56 @@ export default async function WhiteLabelPage({
     );
     mostViewed = (viewRows || []).map(mapItem);
 
-    const [topCategoryRows]: any = await conn.query(
-      `
-      SELECT category, COUNT(*) AS total
-      FROM linescout_white_label_products
-      WHERE is_active = 1
-      GROUP BY category
-      ORDER BY total DESC, category ASC
-      LIMIT 6
-      `
-    );
+    const topCategories = [...(categoryRows || [])]
+      .sort(
+        (a: any, b: any) =>
+          Number(b.total || 0) - Number(a.total || 0) ||
+          String(a.category || "").localeCompare(String(b.category || ""))
+      )
+      .slice(0, 6)
+      .map((row: any) => String(row.category || "").trim())
+      .filter(Boolean);
 
-    for (const row of topCategoryRows || []) {
-      const cat = String(row.category || "").trim();
-      if (!cat) continue;
-      const [catRowsItems]: any = await conn.query(
+    if (topCategories.length) {
+      const placeholders = topCategories.map(() => "?").join(", ");
+      const [spotlightRows]: any = await conn.query(
         `
-        SELECT p.*, COALESCE(v.views, 0) AS view_count,
-               lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high
-        FROM linescout_white_label_products p
-        LEFT JOIN linescout_white_label_landed_costs lc
-          ON lc.product_id = p.id AND lc.country_id = ?
-        LEFT JOIN (
-          SELECT product_id, COUNT(*) AS views
-          FROM linescout_white_label_views
-          GROUP BY product_id
-        ) v ON v.product_id = p.id
-        WHERE p.is_active = 1 AND p.category = ?
-        ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
-                 view_count DESC, p.sort_order ASC, p.id DESC
-        LIMIT 4
+        WITH ranked_products AS (
+          SELECT p.*, COALESCE(v.views, 0) AS view_count,
+                 lc.freight_per_unit, lc.landed_per_unit_low, lc.landed_per_unit_high, lc.landed_total_1000_low, lc.landed_total_1000_high,
+                 ROW_NUMBER() OVER (
+                   PARTITION BY p.category
+                   ORDER BY (CASE WHEN p.amazon_uk_price_low IS NOT NULL OR p.amazon_uk_price_high IS NOT NULL OR p.amazon_ca_price_low IS NOT NULL OR p.amazon_ca_price_high IS NOT NULL OR p.amazon_us_price_low IS NOT NULL OR p.amazon_us_price_high IS NOT NULL THEN 1 ELSE 0 END) DESC,
+                            COALESCE(v.views, 0) DESC, p.sort_order ASC, p.id DESC
+                 ) AS category_rank
+          FROM linescout_white_label_products p
+          LEFT JOIN linescout_white_label_landed_costs lc
+            ON lc.product_id = p.id AND lc.country_id = ?
+          LEFT JOIN (
+            SELECT product_id, COUNT(*) AS views
+            FROM linescout_white_label_views
+            GROUP BY product_id
+          ) v ON v.product_id = p.id
+          WHERE p.is_active = 1 AND p.category IN (${placeholders})
+        )
+        SELECT *
+        FROM ranked_products
+        WHERE category_rank <= 4
         `,
-        [countryId, cat]
+        [countryId, ...topCategories]
       );
 
-      const mapped = (catRowsItems || []).map(mapItem);
-
-      if (mapped.length) {
-        categorySpotlights.push({ category: cat, items: mapped });
+      const byCategory = new Map<string, any[]>();
+      for (const row of spotlightRows || []) {
+        const cat = String(row.category || "").trim();
+        if (!cat) continue;
+        const existing = byCategory.get(cat) || [];
+        existing.push(mapItem(row));
+        byCategory.set(cat, existing);
       }
+      categorySpotlights = topCategories
+        .map((cat) => ({ category: cat, items: byCategory.get(cat) || [] }))
+        .filter((spotlight) => spotlight.items.length > 0);
     }
   } finally {
     conn.release();
@@ -587,7 +591,7 @@ export default async function WhiteLabelPage({
     { value: "name", label: "Name (A-Z)" },
   ];
 
-  const brandBlue = "#2D3461";
+  const brandBlue = "#20459B";
 
   return (
     <main
@@ -602,24 +606,8 @@ export default async function WhiteLabelPage({
       </div>
 
       <div className="relative">
-        <MarketingTopNav
-          backgroundClassName="bg-white/95"
-          borderClassName="border-transparent"
-          dividerClassName="bg-[rgba(45,52,97,0.2)]"
-          accentClassName="text-[var(--agent-blue)]"
-          navTextClassName="text-neutral-600"
-          navHoverClassName="hover:text-[var(--agent-blue)]"
-          buttonBorderClassName="border-[rgba(45,52,97,0.2)]"
-          buttonTextClassName="text-[var(--agent-blue)]"
-          menuBorderClassName="border-[rgba(45,52,97,0.12)]"
-          menuBgClassName="bg-white/95"
-          menuTextClassName="text-neutral-700"
-          menuHoverClassName="hover:text-[var(--agent-blue)]"
-          disabledNavClassName="text-neutral-400"
-        />
-
         {!category && !q && (
-        <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-6 pt-10 md:grid-cols-[1.1fr_0.9fr] md:pt-16">
+        <section className="si-hero mx-auto grid w-full max-w-[1600px] gap-10 px-4 pb-6 pt-10 sm:px-6 md:grid-cols-[1.1fr_0.9fr] md:pt-16 lg:px-8">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
               <Sparkles className="h-4 w-4" />
@@ -660,7 +648,7 @@ export default async function WhiteLabelPage({
               </span>
             </div>
           </div>
-          <div className="relative">
+          <div className="relative hidden md:block">
             <div className="hero-float rounded-[26px] border border-neutral-200 bg-white p-2.5 shadow-[0_25px_60px_rgba(15,23,42,0.12)] sm:rounded-[32px] sm:p-4">
               <div className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-2 sm:rounded-[28px] sm:p-3">
                 <Image
@@ -676,7 +664,7 @@ export default async function WhiteLabelPage({
         </section>
         )}
 
-        <section className="mx-auto max-w-6xl px-6 pb-6">
+        <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
           {!(q || category) ? (
             <FilterForm
               action="/white-label"
@@ -761,7 +749,7 @@ export default async function WhiteLabelPage({
           )}
         </section>
 
-        <section className="mx-auto max-w-6xl px-6 pb-10">
+        <section className="mx-auto w-full max-w-[1600px] px-4 pb-10 sm:px-6 lg:px-8">
           <WhiteLabelCatalogClient
             items={items}
             detailBase="/white-label"
@@ -819,7 +807,7 @@ export default async function WhiteLabelPage({
         </section>
 
         {mostViewed.length ? (
-          <section className="mx-auto max-w-6xl px-6 pb-6">
+          <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
             <div className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -854,7 +842,7 @@ export default async function WhiteLabelPage({
         ) : null}
 
         {categorySpotlights.length ? (
-          <section className="mx-auto max-w-6xl px-6 pb-6">
+          <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
             <div className="space-y-6">
               {categorySpotlights.map((spot) => (
                 <div

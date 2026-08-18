@@ -39,10 +39,6 @@ export default function Navbar() {
 
           {/* Desktop links (never wrap) */}
           <div className="hidden items-center gap-4 text-sm text-neutral-300 lg:flex">
-            <Link href="/machine-sourcing" className="hover:text-white whitespace-nowrap">
-              Machine Sourcing
-            </Link>
-
             <Link href="/white-label" className="hover:text-white whitespace-nowrap">
               White Label
             </Link>
@@ -96,14 +92,6 @@ export default function Navbar() {
           <div className="lg:hidden border-t border-neutral-800 bg-neutral-950">
             <div className="mx-auto max-w-7xl px-4 py-3">
               <div className="grid gap-2 text-sm">
-                <Link
-                  href="/machine-sourcing"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-neutral-200 hover:border-neutral-700"
-                >
-                  Machine Sourcing
-                </Link>
-
                 <Link
                   href="/white-label"
                   onClick={() => setMenuOpen(false)}

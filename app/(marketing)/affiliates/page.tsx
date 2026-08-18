@@ -1,10 +1,8 @@
 import Link from "next/link";
-import MarketingTopNav from "@/components/MarketingTopNav";
-import Footer from "@/components/Footer";
 import { db } from "@/lib/db";
 import { ensureAffiliateTables } from "@/lib/affiliates";
 
-const brandBlue = "#2D3461";
+const brandBlue = "#20459B";
 
 export const metadata = {
   title: "LineScout Affiliate Program | Earn On Every Referral Payment",
@@ -65,15 +63,8 @@ export default async function AffiliatesLandingPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900" style={{ ["--agent-blue" as any]: brandBlue }}>
-      <MarketingTopNav
-        accentClassName="text-[var(--agent-blue)]"
-        navHoverClassName="hover:text-[var(--agent-blue)]"
-        buttonTextClassName="text-[var(--agent-blue)]"
-        menuHoverClassName="hover:text-[var(--agent-blue)]"
-      />
-
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6 lg:py-16">
-        <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 sm:px-6">
+        <div className="si-hero grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <section>
             <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
               LineScout affiliates
@@ -123,7 +114,7 @@ export default async function AffiliatesLandingPage() {
           </section>
         </div>
 
-        <section className="mt-12 grid gap-6 lg:grid-cols-3">
+        <section className="mt-16 grid gap-6 lg:grid-cols-3">
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
               What you earn
@@ -232,7 +223,6 @@ export default async function AffiliatesLandingPage() {
         </section>
       </main>
 
-      <Footer variant="agent" />
     </div>
   );
 }
