@@ -6,6 +6,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
+    "test:webinars": "node --test tests/webinar-access.test.mjs tests/webinar-protection.test.mjs",
     "test:seo": "node --test tests/white-label-seo-content.test.mjs tests/white-label-seo-drafts.test.mjs && node scripts/white-label-seo/validate.cjs",
     "seo:migrate": "node --env-file=.env.local scripts/white-label-seo/migrate.cjs",
     "seo:seed-approved": "node --env-file=.env.local scripts/white-label-seo/seed-approved.cjs",

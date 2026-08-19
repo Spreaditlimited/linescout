@@ -70,7 +70,7 @@ export default function MachineWebinarLeadForm() {
     }
 
     setStatus("success");
-    setModal("success");
+    setModal(json?.already_registered ? "duplicate" : "success");
   }
 
   return (
@@ -111,7 +111,7 @@ export default function MachineWebinarLeadForm() {
           disabled={!canSubmit}
           className="btn btn-primary w-full px-4 py-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {status === "submitting" ? "Saving..." : "Get Free Access"}
+          {status === "submitting" ? "Sending access..." : "Get Free Access"}
         </button>
 
         <p className="text-xs text-neutral-500">

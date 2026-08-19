@@ -1,133 +1,120 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { db } from "@/lib/db";
 import { sendMetaLeadEvent } from "@/lib/meta-capi";
 import { upsertFlodeskSubscriber } from "@/lib/flodesk";
-import crypto from "crypto";
+import { createWebinarAccessToken } from "@/lib/webinar-access";
+import { sendWebinarAccessEmail } from "@/lib/webinar-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function fallbackSessionId() {
-  return crypto.randomUUID();
-}
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
+type LeadRow = RowDataPacket & { id: number; name: string; email: string };
 
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  return {
-    firstName: parts[0] || "",
-    lastName: parts.slice(1).join(" ") || "",
-  };
+  return { firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "" };
 }
-
 export async function POST(req: Request) {
-  const conn = await db.getConnection();
   try {
     const body = await req.json().catch(() => ({}));
-    const name = String(body?.name || "").trim();
-    const emailRaw = String(body?.email || "").trim();
-    const email = normalizeEmail(emailRaw);
-    const sessionIdRaw = String(body?.sessionId || "").trim();
-    const sessionId = sessionIdRaw || fallbackSessionId();
+    const submittedName = String(body?.name || "").trim();
+    const submittedEmail = String(body?.email || "").trim();
+    const emailNormalized = submittedEmail.toLowerCase();
+    const sessionId = String(body?.sessionId || "").trim() || crypto.randomUUID();
     const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
 
-    if (!name || !email || !email.includes("@")) {
-      return NextResponse.json({ ok: false, error: "Missing required fields" }, { status: 400 });
+    if (submittedName.length < 2 || !/^\S+@\S+\.\S+$/.test(emailNormalized)) {
+      return NextResponse.json({ ok: false, error: "Enter a valid name and email address." }, { status: 400 });
     }
 
-    // Store webinar lead record (isolated from app users/leads)
-    const [ins]: any = await conn.query(
-      `
-      INSERT INTO linescout_webinar_leads
-      (session_id, name, email, email_normalized, meta_json)
-      VALUES (?, ?, ?, ?, ?)
-      `,
-      [
-        sessionId,
-        name,
-        emailRaw,
-        email,
-        JSON.stringify({
-          source: "white-label-webinar",
-          page: "white-label-leads",
-          ...meta,
-        }),
-      ]
-    );
-    if (!ins?.insertId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "already-registered",
-          error: "You have already registered. Check your email (including spam) for the webinar link.",
-        },
-        { status: 409 }
-      );
-    }
-
-    const segmentId =
-      process.env.FLODESK_WEBINAR_SEGMENT_ID?.trim() || "6990c932ec27531072f9bbdf";
-    const { firstName, lastName } = splitName(name);
-    const flodeskRes = await upsertFlodeskSubscriber({
-      email,
-      firstName,
-      lastName,
-      segmentId,
-    });
-    if (!flodeskRes.ok) {
-      console.warn("Flodesk webinar subscribe failed:", flodeskRes.error);
-      return NextResponse.json({ ok: false, error: "Failed to subscribe lead" }, { status: 502 });
-    }
-
-    // Fire Meta CAPI lead event with webinar-specific metadata
-    let metaOk = true;
-    const ip =
-      String(req.headers.get("x-forwarded-for") || "")
-        .split(",")[0]
-        .trim() || null;
-    const ua = String(req.headers.get("user-agent") || "").trim() || null;
-    const eventSourceUrl =
-      String(req.headers.get("referer") || "").trim() ||
-      String(req.headers.get("origin") || "").trim() ||
-      "https://linescout.sureimports.com/white-label-leads";
-
+    const conn = await db.getConnection();
+    let lead: LeadRow;
+    let isNewLead = false;
     try {
-      await sendMetaLeadEvent({
-        email,
-        firstName: name.split(" ")[0] || null,
-        lastName: name.split(" ").slice(1).join(" ") || null,
-        clientIp: ip,
-        userAgent: ua,
-        eventSourceUrl,
-        eventName: "WebinarSignup",
-        customData: {
-          lead_type: "webinar",
-          content_name: "white_label_webinar",
-        },
-      });
-    } catch (err) {
-      console.warn("Meta CAPI webinar lead failed:", err);
-      metaOk = false;
+      try {
+        const [result] = await conn.query<ResultSetHeader>(
+          `INSERT INTO linescout_webinar_leads
+           (session_id, name, email, email_normalized, meta_json)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            sessionId,
+            submittedName,
+            submittedEmail,
+            emailNormalized,
+            JSON.stringify({ source: "white-label-webinar", page: "white-label-leads", ...meta }),
+          ],
+        );
+        lead = { id: Number(result.insertId), name: submittedName, email: submittedEmail } as LeadRow;
+        isNewLead = true;
+      } catch (error: unknown) {
+        if ((error as { code?: string })?.code !== "ER_DUP_ENTRY") throw error;
+        const [rows] = await conn.query<LeadRow[]>(
+          `SELECT id, name, email FROM linescout_webinar_leads
+           WHERE email_normalized = ? LIMIT 1`,
+          [emailNormalized],
+        );
+        if (!rows[0]) throw error;
+        lead = rows[0];
+      }
+    } finally {
+      conn.release();
     }
 
-    return NextResponse.json({ ok: true, meta_ok: metaOk });
-  } catch (err: any) {
-    if (err?.code === "ER_DUP_ENTRY") {
+    const origin = new URL(req.url).origin;
+    const token = createWebinarAccessToken("white-label", Number(lead.id));
+    const accessUrl = new URL("/white-label-webinar", origin);
+    accessUrl.searchParams.set("access", token);
+    const { firstName, lastName } = splitName(lead.name);
+    const segmentId = process.env.FLODESK_WEBINAR_SEGMENT_ID?.trim() || "6990c932ec27531072f9bbdf";
+    const ip = String(req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null;
+    const userAgent = String(req.headers.get("user-agent") || "").trim() || null;
+    const eventSourceUrl = String(req.headers.get("referer") || "").trim() || `${origin}/white-label-leads`;
+
+    const [emailResult, flodeskResult, metaResult] = await Promise.allSettled([
+      sendWebinarAccessEmail({
+        kind: "white-label",
+        to: lead.email,
+        name: lead.name,
+        accessUrl: accessUrl.toString(),
+        origin,
+      }),
+      upsertFlodeskSubscriber({ email: lead.email.toLowerCase(), firstName, lastName, segmentId }),
+      isNewLead
+        ? sendMetaLeadEvent({
+            email: lead.email.toLowerCase(),
+            firstName: firstName || null,
+            lastName: lastName || null,
+            clientIp: ip,
+            userAgent,
+            eventSourceUrl,
+            eventName: "WebinarSignup",
+            customData: { lead_type: "webinar", content_name: "white_label_webinar" },
+          })
+        : Promise.resolve(),
+    ]);
+
+    if (emailResult.status === "rejected") {
+      console.error("White-label webinar access email failed:", emailResult.reason);
       return NextResponse.json(
-        {
-          ok: false,
-          code: "already-registered",
-          error: "You have already registered. Check your email (including spam) for the webinar link.",
-        },
-        { status: 409 }
+        { ok: false, error: "We could not send your access email. Please try again." },
+        { status: 502 },
       );
     }
-    console.error("white-label-webinar lead error:", err);
-    return NextResponse.json({ ok: false, error: "Failed to save lead" }, { status: 500 });
-  } finally {
-    conn.release();
+    if (flodeskResult.status === "rejected" || !flodeskResult.value.ok) {
+      console.warn(
+        "Flodesk white-label webinar subscribe failed:",
+        flodeskResult.status === "rejected" ? flodeskResult.reason : flodeskResult.value.error,
+      );
+    }
+    if (metaResult.status === "rejected") {
+      console.warn("Meta CAPI white-label webinar lead failed:", metaResult.reason);
+    }
+
+    return NextResponse.json({ ok: true, email_sent: true, already_registered: !isNewLead });
+  } catch (error: unknown) {
+    console.error("white-label-webinar lead error:", error);
+    return NextResponse.json({ ok: false, error: "Failed to register for the webinar." }, { status: 500 });
   }
 }

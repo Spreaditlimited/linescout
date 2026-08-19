@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
 import { getSafeNextPath } from "@/lib/safe-next-path";
@@ -36,7 +36,7 @@ export default function EmailOtpForm() {
     };
   }, []);
 
-  async function routeAfterProfile() {
+  const routeAfterProfile = useCallback(() => {
     const nextParam = String(searchParams.get("next") || "").trim();
     let safeNext = getSafeNextPath(nextParam);
     if (safeNext === "/white-label" || safeNext.startsWith("/white-label?")) {
@@ -47,24 +47,8 @@ export default function EmailOtpForm() {
       return;
     }
 
-    let hasActiveProject = false;
-    try {
-      const res = await authFetch("/api/mobile/projects");
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(json?.projects)) {
-        hasActiveProject = json.projects.some((p: any) => String(p?.conversation_status) === "active");
-      }
-    } catch {
-      hasActiveProject = false;
-    }
-
-    if (hasActiveProject) {
-      router.replace("/projects/active");
-      return;
-    }
-
     router.replace("/projects/new");
-  }
+  }, [router, searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -91,7 +75,7 @@ export default function EmailOtpForm() {
     return () => {
       active = false;
     };
-  }, [router]);
+  }, [router, routeAfterProfile, searchParams]);
 
   async function requestOtp() {
     setStatus("loading");

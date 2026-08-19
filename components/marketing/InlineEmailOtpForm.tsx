@@ -23,22 +23,6 @@ export default function InlineEmailOtpForm() {
   const emailLooksValid = isValidEmail(email);
 
   async function routeAfterProfile() {
-    let hasActiveProject = false;
-    try {
-      const res = await authFetch("/api/mobile/projects");
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(json?.projects)) {
-        hasActiveProject = json.projects.some((p: any) => String(p?.conversation_status) === "active");
-      }
-    } catch {
-      hasActiveProject = false;
-    }
-
-    if (hasActiveProject) {
-      router.replace("/projects/active");
-      return;
-    }
-
     router.replace("/projects/new");
   }
 

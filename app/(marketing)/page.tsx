@@ -280,7 +280,7 @@ export default async function HomePage() {
       `,
       [tokenHash],
     );
-    if (session?.id) redirect("/projects/active");
+    if (session?.id) redirect("/projects/new");
   }
 
   let popularProducts: PopularProduct[] = [];
@@ -325,7 +325,7 @@ export default async function HomePage() {
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href="/sign-in"
+                href="/sign-in?next=/projects/new"
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
               >
                 Start Sourcing <ArrowRight className="h-4 w-4" />
@@ -417,7 +417,7 @@ export default async function HomePage() {
               LineScout replaces scattered chats, forgotten requirements, and unclear payment stages with a workspace
               designed around the real China sourcing process.
             </p>
-            <Link href="/sign-in" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
+            <Link href="/sign-in?next=/projects/new" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
               Enter the sourcing workspace <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -681,7 +681,7 @@ export default async function HomePage() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
-              href="/sign-in"
+              href="/sign-in?next=/projects/new"
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600"
             >
               Start Sourcing <ArrowRight className="h-4 w-4" />

@@ -1,14 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2/promise";
 import { db } from "@/lib/db";
+import {
+  type WebinarKind,
+  verifyWebinarAccessToken,
+  webinarAccessCookieName,
+} from "@/lib/webinar-access";
 
 export const config = {
-  matcher: ["/internal/:path*", "/api/internal/:path*", "/affiliates", "/affiliates/:path*"],
+  matcher: [
+    "/internal/:path*",
+    "/api/internal/:path*",
+    "/affiliates",
+    "/affiliates/:path*",
+    "/white-label-webinar",
+    "/machine-sourcing-webinar-video",
+  ],
 };
 
 const pool = db;
 
+type InternalAccessRow = RowDataPacket & {
+  role: string;
+  can_view_leads: number;
+  can_view_handoffs: number;
+  can_view_analytics: number;
+};
+
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (pathname === "/white-label-webinar") {
+    return handleWebinarAccess(req, "white-label", "/white-label-leads");
+  }
+  if (pathname === "/machine-sourcing-webinar-video") {
+    return handleWebinarAccess(req, "machine-sourcing", "/machine-sourcing-webinar");
+  }
 
   if (pathname.startsWith("/affiliates/")) {
     const segments = pathname.split("/").filter(Boolean);
@@ -62,7 +89,7 @@ export default async function proxy(req: NextRequest) {
 
   const conn = await pool.getConnection();
   try {
-    const [rows]: any = await conn.query(
+    const [rows] = await conn.query<InternalAccessRow[]>(
       `SELECT
          u.id,
          u.role,
@@ -121,6 +148,48 @@ export default async function proxy(req: NextRequest) {
   } finally {
     conn.release();
   }
+}
+
+function handleWebinarAccess(req: NextRequest, kind: WebinarKind, registrationPath: string) {
+  const accessToken = req.nextUrl.searchParams.get("access")?.trim() || "";
+  const cookieName = webinarAccessCookieName(kind);
+  const cookieToken = req.cookies.get(cookieName)?.value || "";
+
+  if (accessToken) {
+    const access = verifyWebinarAccessToken(accessToken, kind);
+    if (access) {
+      const cleanUrl = req.nextUrl.clone();
+      cleanUrl.searchParams.delete("access");
+      const response = NextResponse.redirect(cleanUrl);
+      response.cookies.set({
+        name: cookieName,
+        value: accessToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: Math.max(1, access.expiresAt - Math.floor(Date.now() / 1000)),
+      });
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    }
+  }
+
+  if (cookieToken && verifyWebinarAccessToken(cookieToken, kind)) {
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+    return response;
+  }
+
+  const registrationUrl = req.nextUrl.clone();
+  registrationUrl.pathname = registrationPath;
+  registrationUrl.search = "";
+  registrationUrl.searchParams.set("access", "required");
+  const response = NextResponse.redirect(registrationUrl);
+  response.cookies.delete(cookieName);
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
 }
 
 function redirectToSignIn(req: NextRequest, pathname: string) {

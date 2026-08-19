@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import type { CSSProperties } from "react";
 import { ArrowRight, Sparkles } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Machine Sourcing Webinar | LineScout",
   description:
     "Watch the free machine sourcing webinar and learn how to source profitable machines from China.",
+  robots: { index: false, follow: false, noarchive: true },
 };
 
 const VIDEO_EMBED_URL = process.env.NEXT_PUBLIC_MACHINE_WEBINAR_VIDEO_URL || "";
@@ -15,7 +18,7 @@ export default function MachineSourcingWebinarVideoPage() {
   return (
     <div
       className="relative flex flex-col bg-[#F5F6FA] text-neutral-900"
-      style={{ ["--agent-blue" as any]: brandBlue }}
+      style={{ "--agent-blue": brandBlue } as CSSProperties}
     >
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-48 right-[-200px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
@@ -60,20 +63,14 @@ export default function MachineSourcingWebinarVideoPage() {
           <div className="mt-8 rounded-[28px] border border-neutral-200 bg-white p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-neutral-900">Ready to take the next step?</h2>
             <p className="mt-2 text-sm text-neutral-600">
-              Create a free machine sourcing account to start sourcing machines the right way and
-              also join our WhatsApp channel for updates and support.
+              Create a free LineScout account and start a machine sourcing project with a structured
+              brief.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <a href="https://linescout.sureimports.com/projects" className="btn btn-primary px-4 py-2 text-xs">
+              <Link href="/projects/new" className="btn btn-primary px-4 py-2 text-xs">
                 Start Sourcing
                 <ArrowRight className="h-4 w-4" />
-              </a>
-              <a
-                href="https://whatsapp.com/channel/0029Vb7dxTwF1YlOfZqz3i2V"
-                className="btn btn-outline px-4 py-2 text-xs border-[rgba(45,52,97,0.2)] text-[var(--agent-blue)]"
-              >
-                Join WhatsApp channel
-              </a>
+              </Link>
             </div>
           </div>
         </section>

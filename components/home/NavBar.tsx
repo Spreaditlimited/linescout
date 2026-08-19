@@ -258,7 +258,7 @@ export default function Navbar({ forceLightNavbar = false }: NavbarProps) {
     isToolsPage ||
     isBlogPage ||
     isSupplierReportProductPage;
-  const signInHref = '/sign-in';
+  const signInHref = '/sign-in?next=/projects/new';
   const isOnShopPage = Boolean(pathname?.startsWith('/shop'));
 
   const handleCartNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
