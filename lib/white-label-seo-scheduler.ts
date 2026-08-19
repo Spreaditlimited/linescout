@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 type GscSignal = {
   pageUrl: string;
@@ -9,7 +10,7 @@ type GscSignal = {
   queries: Array<{ query: string; clicks: number; impressions: number; position: number }>;
 };
 
-type ProductCandidate = {
+type ProductCandidate = RowDataPacket & {
   id: number;
   product_name: string;
   slug: string;
@@ -21,6 +22,21 @@ type ProductCandidate = {
   has_published_content: number;
   published_revision_id: number | null;
 };
+
+type ActiveBatchRow = RowDataPacket & {
+  id: number;
+  batch_key: string;
+  item_count: number;
+  open_items: number;
+};
+
+type DailyBatchRow = RowDataPacket & {
+  id: number;
+  batch_key: string;
+  target_size: number;
+};
+
+type WeeklyBatchRow = RowDataPacket & { scheduled_items: number };
 
 function inferSearchIntent(queries: string[]) {
   const text = queries.join(" ").toLowerCase();
@@ -82,13 +98,33 @@ function batchKey(now: Date) {
     .padStart(2, "0")}`;
 }
 
+function utcWeekWindow(now: Date) {
+  const start = new Date(now);
+  const daysSinceMonday = (start.getUTCDay() + 6) % 7;
+  start.setUTCDate(start.getUTCDate() - daysSinceMonday);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 7);
+  return { start, end };
+}
+
+function utcDayWindow(now: Date) {
+  const start = new Date(now);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { start, end };
+}
+
 export async function scheduleNextWhiteLabelSeoBatch(options?: { targetSize?: number; now?: Date }) {
-  const targetSize = Math.max(1, Math.min(50, Number(options?.targetSize || 25)));
+  const requestedSize = Math.max(1, Math.min(5, Number(options?.targetSize || 5)));
   const now = options?.now || new Date();
+  const week = utcWeekWindow(now);
+  const day = utcDayWindow(now);
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [activeRows]: any = await conn.query(
+    const [activeRows] = await conn.query<ActiveBatchRow[]>(
       `SELECT b.id, b.batch_key, b.status, COUNT(i.id) AS item_count,
               SUM(CASE WHEN i.status NOT IN ('published', 'archived', 'skipped') THEN 1 ELSE 0 END) AS open_items
        FROM linescout_white_label_seo_batches b
@@ -112,8 +148,51 @@ export async function scheduleNextWhiteLabelSeoBatch(options?: { targetSize?: nu
         [Number(active.id)],
       );
     }
+    const [dailyRows] = await conn.query<DailyBatchRow[]>(
+      `SELECT id, batch_key, target_size
+       FROM linescout_white_label_seo_batches
+       WHERE created_at >= ? AND created_at < ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [day.start, day.end],
+    );
+    const dailyBatch = dailyRows?.[0];
+    if (dailyBatch) {
+      await conn.commit();
+      return {
+        created: false,
+        reason: "daily_limit",
+        batchId: Number(dailyBatch.id),
+        batchKey: String(dailyBatch.batch_key),
+        itemCount: Number(dailyBatch.target_size || 0),
+        nextEligibleAt: day.end.toISOString(),
+      };
+    }
 
-    const [candidateRows]: any = await conn.query(
+    const [weeklyRows] = await conn.query<WeeklyBatchRow[]>(
+      `SELECT COALESCE(SUM(target_size), 0) AS scheduled_items
+       FROM linescout_white_label_seo_batches
+       WHERE created_at >= ? AND created_at < ?`,
+      [week.start, week.end],
+    );
+    const scheduledThisWeek = Number(weeklyRows?.[0]?.scheduled_items || 0);
+    const remainingThisWeek = Math.max(0, 35 - scheduledThisWeek);
+    if (remainingThisWeek === 0) {
+      await conn.commit();
+      return {
+        created: false,
+        reason: "weekly_limit",
+        batchId: null,
+        batchKey: null,
+        itemCount: 0,
+        scheduledThisWeek,
+        nextEligibleAt: week.end.toISOString(),
+      };
+    }
+    const targetSize = Math.min(requestedSize, remainingThisWeek);
+
+    const [candidateRows] = await conn.query<ProductCandidate[]>(
       `SELECT p.id, p.product_name, p.slug, p.category, p.short_desc, p.why_sells,
               p.regulatory_note, COALESCE(v.views, 0) AS view_count,
               EXISTS(
@@ -146,7 +225,7 @@ export async function scheduleNextWhiteLabelSeoBatch(options?: { targetSize?: nu
     await conn.commit();
 
     const signals = await fetchGscSignals();
-    const candidates = (candidateRows || []) as ProductCandidate[];
+    const candidates = candidateRows || [];
     const selected = candidates
       .map((product) => ({ product, signal: signals.get(String(product.slug)), score: priorityFor(product, signals.get(String(product.slug))) }))
       .sort((left, right) => right.score - left.score || Number(left.product.id) - Number(right.product.id))
@@ -155,7 +234,7 @@ export async function scheduleNextWhiteLabelSeoBatch(options?: { targetSize?: nu
 
     await conn.beginTransaction();
     const key = batchKey(now);
-    const [batchResult]: any = await conn.query(
+    const [batchResult] = await conn.query<ResultSetHeader>(
       `INSERT INTO linescout_white_label_seo_batches
        (batch_key, status, target_size, selection_method, scheduled_for, notes)
        VALUES (?, 'scheduled', ?, 'gsc_then_views', ?, ?)`,

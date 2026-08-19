@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const result = await scheduleNextWhiteLabelSeoBatch({ targetSize: 25 });
+    const result = await scheduleNextWhiteLabelSeoBatch({ targetSize: 5 });
     return NextResponse.json({ ok: true, ...result });
   } catch (error: unknown) {
     console.error("White-label SEO scheduling failed", error);

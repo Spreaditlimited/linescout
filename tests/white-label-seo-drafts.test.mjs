@@ -28,4 +28,25 @@ test('publishing archives every superseded public or reviewable revision', async
 
   assert.match(publisher, /id <> \?/);
   assert.match(publisher, /status IN \('published', 'draft', 'review_ready'\)/);
+  assert.match(publisher, /NOT EXISTS \(/);
+  assert.match(publisher, /SET b\.status = 'completed'/);
+});
+
+test('scheduler enforces five guides per day and 35 per week', async () => {
+  const scheduler = await readFile(
+    new URL('../lib/white-label-seo-scheduler.ts', import.meta.url),
+    'utf8',
+  );
+  const cronConfig = JSON.parse(
+    await readFile(new URL('../vercel.json', import.meta.url), 'utf8'),
+  );
+  const seoCron = cronConfig.crons.find(
+    (entry) => entry.path === '/api/internal/cron/white-label-seo',
+  );
+
+  assert.match(scheduler, /Math\.min\(5,/);
+  assert.match(scheduler, /35 - scheduledThisWeek/);
+  assert.match(scheduler, /reason: "daily_limit"/);
+  assert.match(scheduler, /reason: "weekly_limit"/);
+  assert.equal(seoCron?.schedule, '15 6 * * *');
 });

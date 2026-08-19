@@ -81,6 +81,18 @@ async function run() {
        WHERE product_id = ? AND batch_id = ?`,
       [Number(revision.id), JSON.stringify(validation), Number(revision.product_id), Number(revision.batch_id || 0)],
     );
+    await connection.query(
+      `UPDATE linescout_white_label_seo_batches b
+       SET b.status = 'completed', b.completed_at = COALESCE(b.completed_at, NOW())
+       WHERE b.id = ?
+         AND NOT EXISTS (
+           SELECT 1
+           FROM linescout_white_label_seo_batch_items i
+           WHERE i.batch_id = b.id
+             AND i.status NOT IN ('published', 'archived', 'skipped')
+         )`,
+      [Number(revision.batch_id || 0)],
+    );
     await connection.commit();
     console.log(JSON.stringify({ ok: true, slug, revisionId: Number(revision.id), qualityScore: validation.score }));
   } catch (error) {
