@@ -64,8 +64,9 @@ async function run() {
     await connection.query(
       `UPDATE linescout_white_label_seo_revisions
        SET status = 'archived', archived_at = NOW()
-       WHERE product_id = ? AND status = 'published'`,
-      [Number(revision.product_id)],
+       WHERE product_id = ? AND id <> ?
+         AND status IN ('published', 'draft', 'review_ready')`,
+      [Number(revision.product_id), Number(revision.id)],
     );
     await connection.query(
       `UPDATE linescout_white_label_seo_revisions

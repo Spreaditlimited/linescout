@@ -19,3 +19,13 @@ test('scheduled white-label drafts pass the complete guide validator', async () 
     introductions.add(content.introduction);
   }
 });
+
+test('publishing archives every superseded public or reviewable revision', async () => {
+  const publisher = await readFile(
+    new URL('../scripts/white-label-seo/publish.cjs', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(publisher, /id <> \?/);
+  assert.match(publisher, /status IN \('published', 'draft', 'review_ready'\)/);
+});
