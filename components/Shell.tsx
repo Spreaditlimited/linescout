@@ -21,6 +21,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isWhiteLabelWebinar = pathname.startsWith("/white-label-webinar");
   const isMachineSourcingLeads = pathname === "/machine-sourcing-webinar";
   const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
+  const isWebinarViewer = isWhiteLabelWebinar || isMachineSourcingWebinar;
   const isImportFromChina = pathname.startsWith("/import-from-china");
   const isWhiteLabelMarketing = pathname === "/white-label" || isWhiteLabelLeads || isWhiteLabelWebinar;
   const isMachineWebinarMarketing = isMachineSourcingLeads || isMachineSourcingWebinar;
@@ -128,7 +129,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         <main className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</main>
       )}
       {isPublicSite ? <Footer /> : null}
-      {isPublicSite ? <LeadCapturePopup /> : null}
+      {isPublicSite && !isWebinarViewer ? <LeadCapturePopup /> : null}
       <CookieNotice />
       <FloatingWhatsAppButton />
     </div>
