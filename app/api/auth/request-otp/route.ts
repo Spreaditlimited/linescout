@@ -4,10 +4,8 @@ import crypto from "crypto";
 import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
 import { findReviewerByEmail } from "@/lib/reviewer-accounts";
-import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const nodemailer = require("nodemailer");
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import nodemailer, { type Transporter } from "nodemailer";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -29,60 +27,21 @@ async function getDb() {
   return db.getConnection();
 }
 
-async function ensureEmailOtpUserAgentColumn(conn: PoolConnection) {
-  const [rows] = await conn.execute<RowDataPacket[]>(
-    `
-    SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
-    FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'email_otps'
-      AND column_name = 'user_agent'
-    LIMIT 1
-    `
-  );
-  if (!rows.length) return;
-  const dataType = String(rows[0].DATA_TYPE || "").toLowerCase();
-  const maxLen = Number(rows[0].CHARACTER_MAXIMUM_LENGTH || 0);
-  if (dataType === "text") return;
-  if (dataType === "varchar" && maxLen >= 512) return;
-  if (dataType === "char" && maxLen >= 512) return;
-  await conn.execute(`ALTER TABLE email_otps MODIFY COLUMN user_agent VARCHAR(512) NULL`);
-}
-
-async function ensureEmailSendFailureTable(conn: PoolConnection) {
-  await conn.execute(
-    `
-    CREATE TABLE IF NOT EXISTS linescout_email_send_failures (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      email VARCHAR(255) NULL,
-      email_normalized VARCHAR(255) NULL,
-      pending_user_id BIGINT UNSIGNED NULL,
-      kind VARCHAR(50) NOT NULL,
-      error_message TEXT NULL,
-      error_code VARCHAR(120) NULL,
-      request_ip VARCHAR(80) NULL,
-      user_agent VARCHAR(512) NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_email_send_failures_email (email_normalized),
-      INDEX idx_email_send_failures_pending (pending_user_id),
-      INDEX idx_email_send_failures_kind (kind),
-      INDEX idx_email_send_failures_created (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `
-  );
-}
-
 async function logEmailFailure(conn: PoolConnection, params: {
   emailRaw: string;
   emailNormalized: string;
   pendingUserId: number | null;
   kind: string;
-  error: any;
+  error: unknown;
   ip: string | null;
   userAgent: string | null;
 }) {
-  const message = String(params.error?.message || params.error || "").slice(0, 5000);
-  const code = String(params.error?.code || params.error?.name || "").slice(0, 120) || null;
+  const errorRecord =
+    typeof params.error === "object" && params.error !== null
+      ? (params.error as Record<string, unknown>)
+      : null;
+  const message = String(errorRecord?.message || params.error || "").slice(0, 5000);
+  const code = String(errorRecord?.code || errorRecord?.name || "").slice(0, 120) || null;
   await conn.execute(
     `
     INSERT INTO linescout_email_send_failures
@@ -109,7 +68,7 @@ async function getOrCreatePendingUser(conn: PoolConnection, emailRaw: string, em
   );
   if (rows.length) return Number(rows[0].id);
 
-  const [ins]: any = await conn.execute(
+  const [ins] = await conn.execute<ResultSetHeader>(
     `
     INSERT INTO pending_users (email, email_normalized, created_at)
     VALUES (?, ?, NOW())
@@ -147,6 +106,29 @@ function getSmtp() {
   };
 }
 
+let otpTransporter: Transporter | null = null;
+let otpTransporterKey = "";
+
+function getOtpTransporter(smtp: Extract<ReturnType<typeof getSmtp>, { ok: true }>) {
+  const configKey = `${smtp.host}:${smtp.port}:${smtp.user}`;
+  if (otpTransporter && otpTransporterKey === configKey) return otpTransporter;
+
+  otpTransporter = nodemailer.createTransport({
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 100,
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: { user: smtp.user, pass: smtp.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
+  });
+  otpTransporterKey = configKey;
+  return otpTransporter as Transporter;
+}
+
 export async function POST(req: Request) {
   let conn: PoolConnection | null = null;
   try {
@@ -162,8 +144,6 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
 
     conn = await getDb();
-    await ensureEmailOtpUserAgentColumn(conn);
-    await ensureEmailSendFailureTable(conn);
 
     // 1) Create or fetch pending user (avoid creating real users before OTP verification)
     const pendingUserId = await getOrCreatePendingUser(conn, emailRaw, email);
@@ -233,12 +213,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "OTP email is not configured." }, { status: 500 });
     }
 
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.port === 465, // 465 = SSL, 587 = STARTTLS
-      auth: { user: smtp.user, pass: smtp.pass },
-    });
+    const transporter = getOtpTransporter(smtp);
 
     const mail = buildOtpEmail({ otp });
 
@@ -251,7 +226,7 @@ export async function POST(req: Request) {
         text: mail.text,
         html: mail.html,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       await logEmailFailure(conn, {
         emailRaw,
@@ -266,7 +241,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   } finally {

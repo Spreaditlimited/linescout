@@ -42,6 +42,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const isAgentApp = pathname.startsWith("/agent-app");
   const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
   const isAccountDeletion = pathname.startsWith("/account-deletion");
+  const isTracking = pathname.startsWith("/track");
   const isApp =
     pathname.startsWith("/dashboard") ||
     (pathname.startsWith("/machine") && !isMachineWebinarMarketing) ||
@@ -94,7 +95,6 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname === "/business-plan" ||
     pathname === "/import-from-china" ||
     pathname === "/machines" ||
-    pathname === "/track" ||
     pathname === "/white-label" ||
     pathname.startsWith("/machine-sourcing-webinar") ||
     pathname.startsWith("/white-label-leads") ||
@@ -105,7 +105,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${shellClass}${isPublicSite ? " public-site" : ""}`}>
       {isPublicSite ? (
-        <MarketingTopNav />
+        <MarketingTopNav forceLightNavbar={isTracking} />
       ) : !isInternal &&
       !isLanding &&
       !isAgents &&
@@ -118,7 +118,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       !isAffiliate ? (
         <Navbar />
       ) : null}
-      {isPublicSite && !hasDarkPublicHero ? (
+      {isPublicSite && !hasDarkPublicHero && !isTracking ? (
         <div
           className="h-[86px] shrink-0 bg-[linear-gradient(110deg,#11153A_0%,#050817_56%,#2A1115_100%)]"
           aria-hidden="true"

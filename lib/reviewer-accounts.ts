@@ -58,7 +58,6 @@ export async function findReviewerByEmail(
   appTarget: "mobile" | "agent",
   email: string
 ) {
-  await ensureReviewerTable(conn);
   const emailNorm = normalizeEmail(email);
   if (!emailNorm) return null;
 
@@ -83,7 +82,6 @@ export async function findReviewerByPhone(
   appTarget: "mobile" | "agent",
   phone: string
 ) {
-  await ensureReviewerTable(conn);
   const phoneNorm = normalizePhone(phone);
   if (!phoneNorm) return null;
 
