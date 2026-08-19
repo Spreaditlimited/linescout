@@ -1,7 +1,17 @@
+import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import MarketingFrame from "@/components/MarketingFrame";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "LineScout Agents Agreement",
+  robots: {
+    index: false,
+    follow: false,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
+    nocache: true,
+  },
 };
 
 export default function AgentsAgreementPage() {
@@ -10,7 +20,7 @@ export default function AgentsAgreementPage() {
     <MarketingFrame>
       <div
         className="relative flex min-h-screen flex-col bg-[#F5F6FA] text-neutral-900"
-        style={{ ["--agent-blue" as any]: brandBlue }}
+        style={{ "--agent-blue": brandBlue } as CSSProperties}
       >
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -top-32 right-[-180px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />

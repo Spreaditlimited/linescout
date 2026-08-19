@@ -28,9 +28,6 @@ export default function AgentFooter() {
               <Link href="/agents" className="hover:text-white">
                 Agent agreement
               </Link>
-              <Link href="#agent-app" className="hover:text-white">
-                Download mobile app
-              </Link>
             </div>
           </div>
 

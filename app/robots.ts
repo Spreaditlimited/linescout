@@ -10,7 +10,9 @@ export default function robots(): MetadataRoute.Robots {
           "/machine-sourcing",
           "/white-label/wizard",
           "/api",
-          "/internal"
+          "/internal",
+          "/agent-app",
+          "/agents",
         ],
       },
     ],

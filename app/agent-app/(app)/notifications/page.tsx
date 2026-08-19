@@ -10,7 +10,7 @@ export default function NotificationsPage() {
           Coming next: data feed and actions for notifications.
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-          We will mirror the agent mobile app endpoints here.
+          Notification history and actions are being prepared for this workspace.
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
           Use the sidebar to move between agent tools.

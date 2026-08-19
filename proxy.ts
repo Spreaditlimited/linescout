@@ -15,6 +15,8 @@ export const config = {
     "/affiliates/:path*",
     "/white-label-webinar",
     "/machine-sourcing-webinar-video",
+    "/agent-app/:path*",
+    "/agents",
   ],
 };
 
@@ -29,6 +31,12 @@ type InternalAccessRow = RowDataPacket & {
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (pathname === "/agents" || pathname === "/agent-app" || pathname.startsWith("/agent-app/")) {
+    const response = NextResponse.next();
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet, noimageindex");
+    return response;
+  }
 
   if (pathname === "/white-label-webinar") {
     return handleWebinarAccess(req, "white-label", "/white-label-leads");
