@@ -153,14 +153,14 @@ const MENU_ITEMS = {
       href: '/white-label-leads',
       icon: Sparkles,
       desc: 'Learn how to build and launch a white-label product',
-      color: 'from-purple-500 to-pink-600',
+      color: 'from-brand-orange-400 to-brand-orange-600',
     },
     {
       title: 'Machine Sourcing Webinar',
       href: '/machine-sourcing-webinar',
       icon: CalendarClock,
       desc: 'Learn how to source machinery and equipment from China',
-      color: 'from-blue-500 to-indigo-600',
+      color: 'from-brand-orange-400 to-brand-orange-600',
     },
   ],
 };
@@ -387,16 +387,22 @@ export default function Navbar({ forceLightNavbar = false }: NavbarProps) {
           </Link>
 
           <div className="hidden xl:block">
-            <NavigationMenu>
+            <NavigationMenu showViewport={false}>
               <NavigationMenuList className="gap-2">
                 {TOP_LEVEL_NAV.map((item) => {
                   if (item.type === 'dropdown') {
                     return (
-                      <NavigationMenuItem key={item.title}>
+                      <NavigationMenuItem key={item.title} className="relative">
                         <NavigationMenuTrigger className={desktopDropdownClass}>
                           {item.title}
                         </NavigationMenuTrigger>
-                        <NavigationMenuContent>
+                        <NavigationMenuContent
+                          className={`z-50 md:top-full ${
+                            item.value === 'webinars'
+                              ? 'md:left-auto md:right-0'
+                              : 'md:left-0 md:right-auto'
+                          }`}
+                        >
                           <ul
                             className={`grid ${item.panelClassName} grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl`}
                           >
@@ -663,7 +669,7 @@ const ListItem = ({ title, href, desc, icon: Icon, color }: ListItemProps) => {
           <Icon className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h4 className="mb-1 text-sm font-bold text-white transition-colors group-hover:text-blue-400">
+          <h4 className="mb-1 text-sm font-bold text-white transition-colors group-hover:text-orange-400">
             {title}
           </h4>
           <p className="line-clamp-2 text-xs text-slate-400">{desc}</p>

@@ -1,91 +1,49 @@
 import type { Metadata } from "next";
-import { Sparkles, ShieldCheck, BadgeCheck } from "lucide-react";
+import { Factory, Gauge, HardHat, ShieldAlert } from "lucide-react";
+import WebinarLeadLanding from "@/components/marketing/WebinarLeadLanding";
 import MachineWebinarLeadForm from "@/components/marketing/MachineWebinarLeadForm";
 
 export const metadata: Metadata = {
-  title: "Machine Sourcing Webinar | LineScout",
+  title: "Free Machine Sourcing Seminar | LineScout by Sure Imports",
   description:
-    "Free training on how to source machines from China and launch profitable operations in your market.",
+    "Learn how to evaluate capacity, specifications, installation and supplier risk before sourcing processing machines from China.",
 };
 
-const highlights = [
+const lessons = [
   {
-    title: "Pick the right machine",
-    desc: "Learn how to evaluate demand, margins, and operational fit before you buy.",
-    icon: Sparkles,
+    title: "Interrogate capacity claims",
+    description: "Understand why advertised output can differ from practical output once materials, labour and operating conditions are considered.",
+    icon: Gauge,
   },
   {
-    title: "Source with confidence",
-    desc: "Avoid common sourcing mistakes and learn how to vet suppliers the right way.",
-    icon: ShieldCheck,
+    title: "Define the complete machine need",
+    description: "Move beyond a machine name to the product, input, output, power, space and process requirements that shape the specification.",
+    icon: Factory,
   },
   {
-    title: "Launch with clarity",
-    desc: "Pricing, setup, and validation steps that protect your capital.",
-    icon: BadgeCheck,
+    title: "Plan installation before shipment",
+    description: "Consider utilities, technicians, commissioning, spare parts and training before the equipment leaves China.",
+    icon: HardHat,
+  },
+  {
+    title: "Control pre-shipment risk",
+    description: "Know what should be verified with the supplier while there is still time to correct a costly mismatch.",
+    icon: ShieldAlert,
   },
 ];
 
 export default function MachineSourcingWebinarPage() {
-  const brandBlue = "#20459B";
-
   return (
-    <div
-      className="relative flex flex-col bg-[#F5F6FA] text-neutral-900"
-      style={{ ["--agent-blue" as any]: brandBlue }}
-    >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
-        <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
-        <div className="absolute bottom-[8%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
-      </div>
-
-      <main className="relative">
-        <section className="si-hero mx-auto grid max-w-6xl grid-cols-1 items-start gap-6 px-4 pb-0 pt-8 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20 md:pb-0">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
-              <Sparkles className="h-4 w-4" />
-              Free Machine Sourcing Webinar
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-              Sourcing Agro Processing Machines From China Without Losing Your Investment
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
-              From Idea to Installation: The Complete Strategy for Protecting Your Capital When
-              Buying Machines From China
-            </p>
-
-            <div className="mt-4 hidden gap-2 sm:mt-8 sm:grid sm:grid-cols-3">
-              {highlights.map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-4"
-                >
-                  <item.icon className="h-5 w-5 text-[var(--agent-blue)]" />
-                  <p className="mt-2 text-sm font-semibold text-neutral-900">{item.title}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 sm:text-xs">
-                    {item.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-neutral-200 bg-white px-5 pb-2 pt-5 shadow-[0_20px_50px_rgba(15,23,42,0.12)] sm:px-8 sm:pb-3 sm:pt-8 md:self-end">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-              Reserve your spot
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Get instant access</h2>
-            <p className="mt-2 text-sm text-neutral-600">
-              Enter your name and email to receive the webinar link.
-            </p>
-
-            <div className="mt-4">
-              <MachineWebinarLeadForm />
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
+    <WebinarLeadLanding
+      eyebrow="Free on-demand machine sourcing seminar"
+      headline="Source Processing Machines From China Without Gambling Your Capital"
+      introduction="A practical session on capacity, specifications, supplier checks and installation planning—designed around the realities businesses face under Nigerian operating conditions."
+      durationLabel="On-demand training"
+      form={<MachineWebinarLeadForm />}
+      lessons={lessons}
+      lessonsCopy="A machine can be genuine and still be wrong for your operation. Learn what must be resolved before money and timelines are committed."
+      decisionHeading="The biggest machine losses often happen before shipment."
+      decisionCopy="Capacity, process fit and installation readiness need to be resolved while the machine can still be specified, tested or corrected—not after it reaches Nigeria."
+    />
   );
 }

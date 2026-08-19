@@ -1,91 +1,49 @@
 import type { Metadata } from "next";
-import { Sparkles, ShieldCheck, BadgeCheck } from "lucide-react";
+import { Calculator, PackageCheck, SearchCheck, ShieldCheck } from "lucide-react";
+import WebinarLeadLanding from "@/components/marketing/WebinarLeadLanding";
 import WhiteLabelLeadForm from "@/components/marketing/WhiteLabelLeadForm";
 
 export const metadata: Metadata = {
-  title: "White Label Webinar | LineScout",
+  title: "Free White-Label Sourcing Seminar | LineScout by Sure Imports",
   description:
-    "Free 35-minute training on how to start your own brand with white-label products from China.",
+    "Learn how to choose, validate, cost and safely source white-label products from China in this practical free seminar from Sure Imports.",
 };
 
-const highlights = [
+const lessons = [
   {
-    title: "Pick a winning product",
-    desc: "Learn how to choose products with demand, margin, and brand potential for your market.",
-    icon: Sparkles,
+    title: "Choose a product worth branding",
+    description: "Screen ideas for demand, repeat-purchase potential, differentiation and realistic room for margin.",
+    icon: SearchCheck,
   },
   {
-    title: "Source with confidence",
-    desc: "Avoid common sourcing mistakes and learn how to vet suppliers the right way.",
+    title: "Validate demand before inventory",
+    description: "Use evidence from your target customer and market instead of relying on enthusiasm or supplier claims.",
+    icon: PackageCheck,
+  },
+  {
+    title: "Calculate the real landed cost",
+    description: "Account for the product, branding, packaging, shipping and other costs before setting your selling price.",
+    icon: Calculator,
+  },
+  {
+    title: "Source with stronger controls",
+    description: "Clarify specifications, compare suppliers and reduce avoidable quality surprises before production.",
     icon: ShieldCheck,
-  },
-  {
-    title: "Launch without guesswork",
-    desc: "Pricing, packaging, and validation steps that protect your capital.",
-    icon: BadgeCheck,
   },
 ];
 
 export default function WhiteLabelLeadsPage() {
-  const brandBlue = "#20459B";
-
   return (
-    <div
-      className="relative flex flex-col bg-[#F5F6FA] text-neutral-900"
-      style={{ ["--agent-blue" as any]: brandBlue }}
-    >
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-40 right-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(45,52,97,0.18)] blur-3xl" />
-        <div className="absolute -bottom-48 left-[-160px] h-[420px] w-[420px] rounded-full bg-[rgba(45,52,97,0.12)] blur-3xl" />
-        <div className="absolute bottom-[8%] right-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-sky-100/60 blur-3xl" />
-      </div>
-
-      <main className="relative">
-        <section className="si-hero mx-auto grid max-w-6xl grid-cols-1 items-start gap-6 px-4 pb-0 pt-8 sm:px-6 md:grid-cols-[1.05fr_0.95fr] md:gap-14 md:pt-20 md:pb-0">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.18)] bg-[rgba(45,52,97,0.06)] px-3 py-1 text-[11px] font-semibold text-[var(--agent-blue)] sm:text-xs">
-              <Sparkles className="h-4 w-4" />
-              Free White‑Label Webinar
-            </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-              Start Your Own Brand With White‑Label Products From China
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-neutral-700 sm:text-base">
-              A 35-minute training on how to find winning products, validate demand, and source safely
-              for your market. Presented by Tochukwu Nkwocha of Sure Importers Limited (since 2018).
-            </p>
-
-            <div className="mt-4 hidden gap-2 sm:mt-8 sm:grid sm:grid-cols-3">
-              {highlights.map((item) => (
-                <div
-                  key={item.title}
-                  className="rounded-2xl border border-neutral-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-4"
-                >
-                  <item.icon className="h-5 w-5 text-[var(--agent-blue)]" />
-                  <p className="mt-2 text-sm font-semibold text-neutral-900">{item.title}</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-neutral-600 sm:text-xs">
-                    {item.desc}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-neutral-200 bg-white px-5 pb-2 pt-5 shadow-[0_20px_50px_rgba(15,23,42,0.12)] sm:px-8 sm:pb-3 sm:pt-8 md:self-end">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-              Reserve your spot
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold text-neutral-900">Get instant access</h2>
-            <p className="mt-2 text-sm text-neutral-600">
-              Enter your name and email to receive the webinar link.
-            </p>
-
-            <div className="mt-4">
-              <WhiteLabelLeadForm />
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
+    <WebinarLeadLanding
+      eyebrow="Free on-demand white-label seminar"
+      headline="Build a White-Label Brand Without Guessing Your Way Through China Sourcing"
+      introduction="A practical 35-minute seminar on choosing the right product, validating demand, calculating the real cost and sourcing safely for your market."
+      durationLabel="35-minute training"
+      form={<WhiteLabelLeadForm />}
+      lessons={lessons}
+      lessonsCopy="Move from an interesting idea to a product decision supported by demand, cost and sourcing evidence."
+      decisionHeading="Most white-label mistakes happen before production begins."
+      decisionCopy="The goal is not simply to put a logo on a product. It is to build an offer your market wants at a cost and quality level the business can sustain."
+    />
   );
 }

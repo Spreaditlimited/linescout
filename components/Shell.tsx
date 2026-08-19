@@ -17,9 +17,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isInternal = pathname.startsWith("/internal");
   const isAgents = pathname.startsWith("/agents");
-  const isWhiteLabelLeads = pathname.startsWith("/white-label-leads");
+  const isWhiteLabelLeads = pathname === "/white-label-leads";
   const isWhiteLabelWebinar = pathname.startsWith("/white-label-webinar");
-  const isMachineSourcingLeads = pathname.startsWith("/machine-sourcing-webinar");
+  const isMachineSourcingLeads = pathname === "/machine-sourcing-webinar";
   const isMachineSourcingWebinar = pathname.startsWith("/machine-sourcing-webinar-video");
   const isImportFromChina = pathname.startsWith("/import-from-china");
   const isWhiteLabelMarketing = pathname === "/white-label" || isWhiteLabelLeads || isWhiteLabelWebinar;
@@ -105,7 +105,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${shellClass}${isPublicSite ? " public-site" : ""}`}>
       {isPublicSite ? (
-        <MarketingTopNav forceLightNavbar={isTracking} />
+        <MarketingTopNav forceLightNavbar={isTracking || isWhiteLabelLeads || isMachineSourcingLeads} />
       ) : !isInternal &&
       !isLanding &&
       !isAgents &&
