@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { ensureAffiliateTables } from "@/lib/affiliates";
+import {
+  LINESCOUT_SOCIAL_IMAGE,
+  LINESCOUT_SOCIAL_IMAGE_METADATA,
+} from "@/lib/linescout-metadata";
 
 const brandBlue = "#20459B";
 
@@ -12,14 +16,14 @@ export const metadata = {
     title: "LineScout Affiliate Program",
     description:
       "Share your LineScout referral link and earn commissions when your referrals pay for sourcing, shipping, and future services.",
-    images: [{ url: "/affiliate-feature.png", width: 1200, height: 630, alt: "LineScout Affiliate Program" }],
+    images: [LINESCOUT_SOCIAL_IMAGE_METADATA],
   },
   twitter: {
     card: "summary_large_image",
     title: "LineScout Affiliate Program",
     description:
       "Share your LineScout referral link and earn commissions when your referrals pay for sourcing, shipping, and future services.",
-    images: ["/affiliate-feature.png"],
+    images: [LINESCOUT_SOCIAL_IMAGE],
   },
 };
 

@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import {
+  LINESCOUT_SOCIAL_IMAGE,
+  LINESCOUT_SOCIAL_IMAGE_METADATA,
+} from "@/lib/linescout-metadata";
 
 export const metadata: Metadata = {
   title: "White Label Product Ideas + China Manufacturing | LineScout",
@@ -25,21 +29,14 @@ export const metadata: Metadata = {
     url: "https://linescout.sureimports.com/white-label",
     siteName: "LineScout",
     type: "website",
-    images: [
-      {
-        url: "https://linescout.sureimports.com/white-label-social.png",
-        width: 1200,
-        height: 630,
-        alt: "White Label Product Ideas for Emerging Brands",
-      },
-    ],
+    images: [LINESCOUT_SOCIAL_IMAGE_METADATA],
   },
   twitter: {
     card: "summary_large_image",
     title: "White Label Product Ideas for Emerging Brands",
     description:
       "Browse white label product ideas and activate sourcing with verified manufacturers in China.",
-    images: ["https://linescout.sureimports.com/white-label-social.png"],
+    images: [LINESCOUT_SOCIAL_IMAGE],
   },
 };
 

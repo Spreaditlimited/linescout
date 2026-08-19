@@ -1,18 +1,13 @@
 import type { Metadata } from "next";
-import { db } from "@/lib/db";
 import WhiteLabelIdeasPageClient from "@/components/white-label/WhiteLabelIdeasPageClient";
+import {
+  LINESCOUT_SOCIAL_IMAGE,
+  LINESCOUT_SOCIAL_IMAGE_METADATA,
+} from "@/lib/linescout-metadata";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
 const BASE_URL = "https://linescout.sureimports.com";
-const SOCIAL_IMAGE = `${BASE_URL}/white-label-social.png`;
-
-function toAbsoluteImage(url: string | null) {
-  if (!url) return null;
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
-  if (url.startsWith("/")) return `${BASE_URL}${url}`;
-  return `${BASE_URL}/${url}`;
-}
 
 type SearchParams = {
   q?: string;
@@ -31,40 +26,6 @@ export async function generateMetadata({
   const params = searchParams ? await searchParams : {};
   const q = String(params?.q || "").trim();
   const category = String(params?.category || "").trim();
-  let ogImage = SOCIAL_IMAGE;
-
-  if (q || category) {
-    const conn = await db.getConnection();
-    try {
-      const clauses = ["is_active = 1", "image_url IS NOT NULL", "TRIM(image_url) <> ''"];
-      const args: any[] = [];
-      if (category) {
-        clauses.push("category = ?");
-        args.push(category);
-      }
-      if (q) {
-        const like = `%${q.toLowerCase()}%`;
-        clauses.push(
-          `(LOWER(product_name) LIKE ? OR LOWER(category) LIKE ? OR LOWER(COALESCE(short_desc,'')) LIKE ? OR LOWER(COALESCE(why_sells,'')) LIKE ?)`
-        );
-        args.push(like, like, like, like);
-      }
-      const [rows]: any = await conn.query(
-        `
-        SELECT image_url
-        FROM linescout_white_label_products
-        WHERE ${clauses.join(" AND ")}
-        ORDER BY sort_order ASC, id DESC
-        LIMIT 1
-        `,
-        args
-      );
-      const picked = rows?.[0]?.image_url ? toAbsoluteImage(String(rows[0].image_url)) : null;
-      if (picked) ogImage = picked;
-    } finally {
-      conn.release();
-    }
-  }
 
   const title = category
     ? `${category} White Label Ideas | LineScout`
@@ -93,20 +54,13 @@ export async function generateMetadata({
       url,
       siteName: "LineScout",
       type: "website",
-      images: [
-        {
-          url: ogImage,
-          width: 1200,
-          height: 630,
-          alt: "White Label Ideas by LineScout",
-        },
-      ],
+      images: [LINESCOUT_SOCIAL_IMAGE_METADATA],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [ogImage],
+      images: [LINESCOUT_SOCIAL_IMAGE],
     },
   };
 }

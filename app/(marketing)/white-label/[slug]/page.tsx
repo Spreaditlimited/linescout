@@ -13,6 +13,7 @@ import { isKeepaMarketplaceSupported } from "@/lib/keepa";
 import { getFxRate } from "@/lib/fx";
 import { getWhiteLabelSeoContent } from "@/data/white-label-seo-content";
 import { parseWhiteLabelSeoContent } from "@/lib/white-label-seo-types";
+import { LINESCOUT_SOCIAL_IMAGE } from "@/lib/linescout-metadata";
 
 export const runtime = "nodejs";
 export const revalidate = 3600;
@@ -296,6 +297,7 @@ export async function generateMetadata({
   const seoContent = resolvedSeoContent(product, pageSlug);
   const title = seoContent?.seoTitle || product.seo_title || `${product.product_name} | White Label Idea`;
   const description = seoContent?.seoDescription || fallbackSeoDescription(product);
+  const image = product.image_url || LINESCOUT_SOCIAL_IMAGE;
 
   return {
     title,
@@ -307,16 +309,14 @@ export async function generateMetadata({
       description,
       type: "article",
       siteName: "LineScout",
-      images: product.image_url
-        ? [{ url: product.image_url, alt: `${product.product_name} private label sourcing guide` }]
-        : undefined,
+      images: [{ url: image, alt: `${product.product_name} private label sourcing guide` }],
       url,
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: product.image_url ? [product.image_url] : undefined,
+      images: [image],
     },
     robots: { index: true, follow: true },
   };

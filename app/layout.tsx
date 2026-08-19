@@ -10,6 +10,10 @@ import InstallPrompt from "@/components/InstallPrompt";
 import Shell from "@/components/Shell";
 import GA4 from "@/components/analytics/GA4";
 import LineScoutThemeProvider from "@/components/theme/LineScoutThemeProvider";
+import {
+  LINESCOUT_SOCIAL_IMAGE,
+  LINESCOUT_SOCIAL_IMAGE_METADATA,
+} from "@/lib/linescout-metadata";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,10 +47,8 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
+    icon: [{ url: "/favico.png", type: "image/png" }],
+    shortcut: [{ url: "/favicon.ico", type: "image/x-icon" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
   },
 
@@ -57,14 +59,7 @@ export const metadata: Metadata = {
     description:
       "China sourcing guidance for products and white-label launches. Compare suppliers, estimate landed costs, and plan execution with confidence.",
     url: "https://linescout.sureimports.com",
-    images: [
-      {
-        url: "/linescout-social.png",
-        width: 1200,
-        height: 630,
-        alt: "LineScout - China Sourcing Intelligence",
-      },
-    ],
+    images: [LINESCOUT_SOCIAL_IMAGE_METADATA],
   },
 
   twitter: {
@@ -72,7 +67,7 @@ export const metadata: Metadata = {
     title: "LineScout - China Sourcing Intelligence by Sure Imports",
     description:
       "China sourcing guidance for products and white-label launches. Compare suppliers, estimate landed costs, and plan execution with confidence.",
-    images: ["/linescout-social.png"],
+    images: [LINESCOUT_SOCIAL_IMAGE],
   },
 };
 

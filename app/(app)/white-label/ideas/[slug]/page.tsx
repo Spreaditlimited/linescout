@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { ensureWhiteLabelProductsReady } from "@/lib/white-label-products";
+import { LINESCOUT_SOCIAL_IMAGE } from "@/lib/linescout-metadata";
 import WhiteLabelIdeaDetailClient from "@/components/white-label/WhiteLabelIdeaDetailClient";
 
 export const runtime = "nodejs";
@@ -65,13 +66,23 @@ export async function generateMetadata({
     };
   }
 
+  const title = product.seo_title || `${product.product_name} | White Label Idea`;
+  const description = fallbackSeoDescription(product);
+  const image = product.image_url || LINESCOUT_SOCIAL_IMAGE;
+
   return {
-    title: product.seo_title || `${product.product_name} | White Label Idea`,
-    description: fallbackSeoDescription(product),
+    title,
+    description,
     openGraph: {
-      title: product.seo_title || `${product.product_name} | White Label Idea`,
-      description: fallbackSeoDescription(product),
-      images: product.image_url ? [product.image_url] : undefined,
+      title,
+      description,
+      images: [{ url: image, alt: `${product.product_name} product sourcing guide` }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
     },
   };
 }

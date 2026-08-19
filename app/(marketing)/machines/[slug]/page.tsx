@@ -8,6 +8,7 @@ import {
   getMachinePricingSettings,
   slugify,
 } from "@/lib/machines";
+import { LINESCOUT_SOCIAL_IMAGE } from "@/lib/linescout-metadata";
 import MachineViewTracker from "@/components/machines/MachineViewTracker";
 
 export const runtime = "nodejs";
@@ -70,9 +71,7 @@ export async function generateMetadata({
     const description =
       machine.seo_description ||
       `Learn about ${machine.machine_name} for agro processing and get sourcing support from LineScout.`;
-    const image =
-      machine.image_url ||
-      `${BASE_URL}/linescout-social.PNG`;
+    const image = machine.image_url || LINESCOUT_SOCIAL_IMAGE;
     const url = `${BASE_URL}/machines/${machine.slug || slugify(machine.machine_name)}`;
     return {
       title,

@@ -1,4 +1,8 @@
 import type { Metadata } from "next";
+import {
+  LINESCOUT_SOCIAL_IMAGE,
+  LINESCOUT_SOCIAL_IMAGE_METADATA,
+} from "@/lib/linescout-metadata";
 
 export const metadata: Metadata = {
   title: "Machine Sourcing from China | LineScout by Sure Imports",
@@ -14,13 +18,14 @@ export const metadata: Metadata = {
     url: "https://linescout.sureimports.com/machine-sourcing",
     siteName: "LineScout",
     type: "website",
+    images: [LINESCOUT_SOCIAL_IMAGE_METADATA],
   },
   twitter: {
     card: "summary_large_image",
     title: "Machine Sourcing from China",
     description:
       "Market-aware guidance for sourcing machines from China. Think through capacity, power, and landed costs before importing.",
-    images: ["https://linescout.sureimports.com/linescout-social.png"],
+    images: [LINESCOUT_SOCIAL_IMAGE],
   },
 };
 
