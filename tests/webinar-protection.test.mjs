@@ -26,6 +26,28 @@ test("both webinar video pages are protected centrally and excluded from indexin
   assert.doesNotMatch(machinePage, /whatsapp\.com\/channel/);
 });
 
+test("public webinar lead pages are canonical, substantial and discoverable", async () => {
+  const [whiteLabelLeadPage, machineLeadPage, landing, sitemap] = await Promise.all([
+    source("app/(marketing)/white-label-leads/page.tsx"),
+    source("app/(marketing)/machine-sourcing-webinar/page.tsx"),
+    source("components/marketing/WebinarLeadLanding.tsx"),
+    source("app/sitemap.ts"),
+  ]);
+
+  assert.match(whiteLabelLeadPage, /alternates: \{ canonical: PAGE_URL \}/);
+  assert.match(machineLeadPage, /alternates: \{ canonical: PAGE_URL \}/);
+  assert.match(whiteLabelLeadPage, /White Label Products from China/);
+  assert.match(machineLeadPage, /How to Source Machines from China/);
+  assert.match(whiteLabelLeadPage, /contextParagraphs=\{\[/);
+  assert.match(machineLeadPage, /contextParagraphs=\{\[/);
+  assert.match(landing, /<details key=\{faq\.question\}/);
+  assert.match(landing, /Related sourcing resources/);
+  assert.match(sitemap, /\$\{BASE_URL\}\/white-label-leads/);
+  assert.match(sitemap, /\$\{BASE_URL\}\/machine-sourcing-webinar/);
+  assert.doesNotMatch(sitemap, /\$\{BASE_URL\}\/white-label-webinar`/);
+  assert.doesNotMatch(sitemap, /\$\{BASE_URL\}\/machine-sourcing-webinar-video/);
+});
+
 test("registration sends signed access by Hostinger email without exposing it in the response", async () => {
   const [whiteLabelRoute, machineRoute, email] = await Promise.all([
     source("app/api/white-label-webinar/lead/route.ts"),

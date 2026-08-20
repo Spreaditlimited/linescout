@@ -1,12 +1,24 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Clock3, MailCheck, PlayCircle, ShieldCheck } from "lucide-react";
+import { Check, ChevronDown, Clock3, MailCheck, PlayCircle, ShieldCheck } from "lucide-react";
 
 type Lesson = {
   title: string;
   description: string;
   icon: LucideIcon;
+};
+
+type Faq = {
+  question: string;
+  answer: string;
+};
+
+type RelatedLink = {
+  href: string;
+  label: string;
+  description: string;
 };
 
 type WebinarLeadLandingProps = {
@@ -17,8 +29,14 @@ type WebinarLeadLandingProps = {
   form: ReactNode;
   lessons: Lesson[];
   lessonsCopy: string;
+  contextHeading: string;
+  contextParagraphs: string[];
+  audienceHeading: string;
+  audienceItems: string[];
   decisionHeading: string;
   decisionCopy: string;
+  faqs: Faq[];
+  relatedLinks: RelatedLink[];
 };
 
 export default function WebinarLeadLanding({
@@ -29,8 +47,14 @@ export default function WebinarLeadLanding({
   form,
   lessons,
   lessonsCopy,
+  contextHeading,
+  contextParagraphs,
+  audienceHeading,
+  audienceItems,
   decisionHeading,
   decisionCopy,
+  faqs,
+  relatedLinks,
 }: WebinarLeadLandingProps) {
   return (
     <main className="min-h-[75vh] bg-slate-50 px-4 pb-24 pt-32 text-slate-950 dark:bg-slate-950 dark:text-white">
@@ -119,6 +143,48 @@ export default function WebinarLeadLanding({
               </ol>
             </section>
 
+            <section
+              className="mt-10 border-t border-slate-200 pt-10 dark:border-slate-800"
+              aria-labelledby="seminar-context-heading"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">
+                Practical sourcing context
+              </p>
+              <h2
+                id="seminar-context-heading"
+                className="mt-3 text-2xl font-bold text-slate-950 dark:text-white sm:text-3xl"
+              >
+                {contextHeading}
+              </h2>
+              <div className="mt-5 max-w-3xl space-y-5 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
+                {contextParagraphs.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
+            </section>
+
+            <section
+              className="mt-10 border-t border-slate-200 pt-10 dark:border-slate-800"
+              aria-labelledby="seminar-audience-heading"
+            >
+              <h2
+                id="seminar-audience-heading"
+                className="text-2xl font-bold text-slate-950 dark:text-white"
+              >
+                {audienceHeading}
+              </h2>
+              <ul className="mt-6 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                {audienceItems.map((item) => (
+                  <li key={item} className="flex items-start gap-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300">
+                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                    </span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
             <section className="mt-10 grid gap-6 border-t border-slate-200 pt-10 dark:border-slate-800 sm:grid-cols-[6rem_1fr] sm:items-start sm:gap-8">
               <Image
                 src="/tochukwu.jpg"
@@ -138,6 +204,54 @@ export default function WebinarLeadLanding({
                 </p>
               </div>
             </section>
+
+            <section
+              className="mx-auto mt-10 max-w-2xl border-t border-slate-200 pt-10 dark:border-slate-800"
+              aria-labelledby="seminar-faq-heading"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400">
+                Common questions
+              </p>
+              <h2 id="seminar-faq-heading" className="mt-3 text-2xl font-bold text-slate-950 dark:text-white sm:text-3xl">
+                Before you register
+              </h2>
+              <div className="mt-6 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                {faqs.map((faq) => (
+                  <details key={faq.question} className="group">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-left font-bold text-slate-950 marker:content-none dark:text-white [&::-webkit-details-marker]:hidden">
+                      <span>{faq.question}</span>
+                      <ChevronDown
+                        className="h-5 w-5 shrink-0 text-blue-700 transition-transform duration-200 group-open:rotate-180 dark:text-blue-400"
+                        aria-hidden="true"
+                      />
+                    </summary>
+                    <p className="max-w-xl pb-5 text-sm leading-7 text-slate-600 dark:text-slate-300">
+                      {faq.answer}
+                    </p>
+                  </details>
+                ))}
+              </div>
+            </section>
+
+            <nav
+              className="mt-10 border-t border-slate-200 pt-10 dark:border-slate-800"
+              aria-label="Related sourcing resources"
+            >
+              <h2 className="text-xl font-bold text-slate-950 dark:text-white">Continue with practical sourcing resources</h2>
+              <ul className="mt-5 divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                {relatedLinks.map((item) => (
+                  <li key={item.href} className="py-4">
+                    <Link
+                      href={item.href}
+                      className="font-bold text-blue-700 underline decoration-blue-200 underline-offset-4 transition hover:text-orange-600 hover:decoration-orange-300 dark:text-blue-300"
+                    >
+                      {item.label}
+                    </Link>
+                    <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{item.description}</p>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           </div>
         </article>
 
