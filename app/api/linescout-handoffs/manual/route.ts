@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import type { PoolConnection } from "mysql2/promise";
 import { db as sharedDb } from "@/lib/db";
 import { buildNoticeEmail } from "@/lib/otp-email";
@@ -8,15 +9,26 @@ import {
   backfillHandoffDefaults,
   getNigeriaDefaults,
 } from "@/lib/country-config";
-import { convertAmount } from "@/lib/fx";
+import { findPaymentAttempt } from "@/lib/payment-attempts";
+import { paystackVerifyTransaction } from "@/lib/paystack";
+import { paypalGetOrder } from "@/lib/paypal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";
+type PaymentSource = "paystack" | "paypal" | "bank_transfer" | "cash" | "other";
 
 function isValidRouteType(v: any): v is RouteType {
   return v === "machine_sourcing" || v === "white_label" || v === "simple_sourcing";
+}
+
+function isValidPaymentSource(v: string): v is PaymentSource {
+  return ["paystack", "paypal", "bank_transfer", "cash", "other"].includes(v);
+}
+
+function handoffTypeForRoute(routeType: RouteType) {
+  return routeType === "white_label" ? "white_label" : "sourcing";
 }
 
 const N8N_STATUS_NOTIFY_URL =
@@ -25,6 +37,38 @@ const N8N_STATUS_NOTIFY_URL =
 
 function db() {
   return sharedDb.getConnection();
+}
+
+async function requireAdmin() {
+  const cookieName = process.env.INTERNAL_AUTH_COOKIE_NAME;
+  if (!cookieName) {
+    return { ok: false as const, status: 500 as const, error: "Missing INTERNAL_AUTH_COOKIE_NAME" };
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(cookieName)?.value;
+  if (!token) return { ok: false as const, status: 401 as const, error: "Not signed in" };
+
+  const conn = await db();
+  try {
+    const [rows]: any = await conn.query(
+      `SELECT u.id, u.role
+       FROM internal_sessions s
+       JOIN internal_users u ON u.id = s.user_id
+       WHERE s.session_token = ?
+         AND s.revoked_at IS NULL
+         AND u.is_active = 1
+       LIMIT 1`,
+      [token]
+    );
+    if (!rows?.length) return { ok: false as const, status: 401 as const, error: "Invalid session" };
+    if (String(rows[0].role || "") !== "admin") {
+      return { ok: false as const, status: 403 as const, error: "Forbidden" };
+    }
+    return { ok: true as const, userId: Number(rows[0].id) };
+  } finally {
+    conn.release();
+  }
 }
 
 function randomChunk(len: number) {
@@ -138,18 +182,24 @@ async function notifyStatusEmail(payload: any) {
  *   customer_phone?: string | null
  *   whatsapp_number?: string | null
  *   notes?: string | null
- *   status?: string | null         (optional, default "pending")
- *   currency?: string | null       (optional, default "NGN")
+ *   currency?: string | null       (required for non-gateway payments)
  *   route_type?: "machine_sourcing" | "white_label" | "simple_sourcing" (optional)
  *   total_due?: number | null      (optional)
- *   payment_source: "paystack" | "paypal" (required)
+ *   payment_source: "paystack" | "paypal" | "bank_transfer" | "cash" | "other" (required)
  *   payment_ref: string (required)
+ *   payment_amount?: number | null  (required for non-gateway payments)
+ *   payment_note?: string | null
  * }
  */
 export async function POST(req: Request) {
   let conn: PoolConnection | null = null;
 
   try {
+    const auth = await requireAdmin();
+    if (!auth.ok) {
+      return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status });
+    }
+
     const body = await req.json().catch(() => ({}));
 
     let customer_name = String(body.customer_name || "").trim();
@@ -160,17 +210,24 @@ export async function POST(req: Request) {
     const whatsapp_number = body.whatsapp_number ? String(body.whatsapp_number).trim() : null;
     const notes = body.notes ? String(body.notes).trim() : null;
 
-    // Handoff status is separate from token status. Default is pending.
-    const status = String(body.status || "pending").trim() || "pending";
+    const status = "pending";
 
-    const currency = String(body.currency || "NGN").trim() || "NGN";
+    const requestedCurrency = String(body.currency || "").trim().toUpperCase();
     const routeTypeRaw = String(body.route_type || "machine_sourcing").trim();
-    const routeType: RouteType = isValidRouteType(routeTypeRaw) ? (routeTypeRaw as RouteType) : "machine_sourcing";
+    if (!isValidRouteType(routeTypeRaw)) {
+      return NextResponse.json({ ok: false, error: "Invalid route_type" }, { status: 400 });
+    }
+    const routeType = routeTypeRaw as RouteType;
 
     const total_due =
       body.total_due === null || body.total_due === undefined ? null : Number(body.total_due);
     const paymentSource = String(body.payment_source || "").trim().toLowerCase();
     const paymentRef = String(body.payment_ref || "").trim();
+    const requestedPaymentAmount =
+      body.payment_amount === null || body.payment_amount === undefined
+        ? null
+        : Number(body.payment_amount);
+    const paymentNote = body.payment_note ? String(body.payment_note).trim() : null;
 
     if (!customer_name) {
       return NextResponse.json({ ok: false, error: "customer_name is required" }, { status: 400 });
@@ -181,35 +238,51 @@ export async function POST(req: Request) {
     if (total_due !== null && (Number.isNaN(total_due) || total_due < 0)) {
       return NextResponse.json({ ok: false, error: "total_due must be >= 0" }, { status: 400 });
     }
-    if (paymentSource !== "paystack" && paymentSource !== "paypal") {
-      return NextResponse.json({ ok: false, error: "payment_source must be paystack or paypal" }, { status: 400 });
+    if (!isValidPaymentSource(paymentSource)) {
+      return NextResponse.json({ ok: false, error: "Invalid payment_source" }, { status: 400 });
     }
     if (!paymentRef) {
       return NextResponse.json({ ok: false, error: "payment_ref is required" }, { status: 400 });
     }
+    if (paymentRef.length > 120) {
+      return NextResponse.json({ ok: false, error: "payment_ref is too long" }, { status: 400 });
+    }
+    const isExternalPayment = !["paystack", "paypal"].includes(paymentSource);
+    if (
+      isExternalPayment &&
+      (requestedPaymentAmount === null ||
+        !Number.isFinite(requestedPaymentAmount) ||
+        requestedPaymentAmount <= 0)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "payment_amount must be greater than 0 for external payments" },
+        { status: 400 }
+      );
+    }
+    if (isExternalPayment && !requestedCurrency) {
+      return NextResponse.json(
+        { ok: false, error: "currency is required for external payments" },
+        { status: 400 }
+      );
+    }
+    if (requestedCurrency && !/^[A-Z]{3,8}$/.test(requestedCurrency)) {
+      return NextResponse.json({ ok: false, error: "Invalid currency code" }, { status: 400 });
+    }
+    if (paymentSource === "other" && !paymentNote) {
+      return NextResponse.json(
+        { ok: false, error: "payment_note is required when payment source is other" },
+        { status: 400 }
+      );
+    }
 
     conn = await db();
-    await conn.beginTransaction();
     await ensureCountryConfig(conn as any);
     await ensureHandoffCountryColumns(conn as any);
     await backfillHandoffDefaults(conn as any);
 
     const defaults = await getNigeriaDefaults(conn as any);
 
-    // 1) Resolve commitment fee (system-configured amount)
-    const [settingsRows]: any = await conn.query(
-      "SELECT commitment_due_ngn FROM linescout_settings ORDER BY id DESC LIMIT 1"
-    );
-    const commitmentDueNgn = Number(settingsRows?.[0]?.commitment_due_ngn || 0);
-    if (!Number.isFinite(commitmentDueNgn) || commitmentDueNgn <= 0) {
-      await conn.rollback();
-      return NextResponse.json(
-        { ok: false, error: "Commitment fee is not configured. Update settings first." },
-        { status: 500 }
-      );
-    }
-
-    // 2) Resolve user for conversation (required for project creation)
+    // 1) Resolve user for conversation (required for project creation)
     const [userRows]: any = await conn.query(
       `
       SELECT u.id, u.email, u.display_name, u.country_id, u.display_currency_code
@@ -221,7 +294,6 @@ export async function POST(req: Request) {
     );
     const userId = Number(userRows?.[0]?.id || 0);
     if (!userId) {
-      await conn.rollback();
       return NextResponse.json(
         { ok: false, error: "No user found for this email. Ask the customer to sign up first." },
         { status: 400 }
@@ -247,7 +319,6 @@ export async function POST(req: Request) {
       [customer_email]
     );
     if (recentRows?.length) {
-      await conn.rollback();
       return NextResponse.json(
         { ok: false, error: "A handoff was created for this user recently. Please wait a few minutes and retry." },
         { status: 409 }
@@ -258,28 +329,85 @@ export async function POST(req: Request) {
     const userDisplayCurrency = String(userRows?.[0]?.display_currency_code || "")
       .trim()
       .toUpperCase();
-    const paypalCurrency = userDisplayCurrency || "GBP";
+    let paymentAmount = Number(requestedPaymentAmount || 0);
+    let paymentCurrency = requestedCurrency || userDisplayCurrency || "NGN";
 
-    let paymentAmount = commitmentDueNgn;
-    let paymentCurrency = "NGN";
-    if (paymentSource === "paypal") {
-      if (paypalCurrency === "NGN") {
-        await conn.rollback();
+    // Gateway references must be verified against the provider and belong to the selected user.
+    if (paymentSource === "paystack") {
+      const verified = await paystackVerifyTransaction(paymentRef);
+      if (!verified.ok) {
+        return NextResponse.json({ ok: false, error: verified.error }, { status: 400 });
+      }
+      const data: any = verified.data;
+      if (String(data?.status || "").toLowerCase() !== "success") {
+        return NextResponse.json({ ok: false, error: "Paystack payment is not successful" }, { status: 409 });
+      }
+      const paidUserId = Number(data?.metadata?.user_id || 0);
+      if (!paidUserId || paidUserId !== userId) {
         return NextResponse.json(
-          { ok: false, error: "PayPal is not available for NGN. Please use Paystack." },
+          { ok: false, error: "Paystack payment does not belong to the selected customer" },
           { status: 400 }
         );
       }
-      const converted = await convertAmount(conn as any, commitmentDueNgn, "NGN", paypalCurrency);
-      if (!converted || !Number.isFinite(converted) || converted <= 0) {
-        await conn.rollback();
+      const paidPurpose = String(data?.metadata?.purpose || "sourcing").trim();
+      if (paidPurpose !== "sourcing") {
         return NextResponse.json(
-          { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
-          { status: 500 }
+          { ok: false, error: "Paystack payment is not for a sourcing project" },
+          { status: 400 }
         );
       }
-      paymentAmount = Number(converted.toFixed(2));
-      paymentCurrency = paypalCurrency;
+      const paidRoute = String(data?.metadata?.route_type || routeType).trim();
+      if (paidRoute !== routeType) {
+        return NextResponse.json(
+          { ok: false, error: `Paystack payment belongs to the ${paidRoute} route` },
+          { status: 400 }
+        );
+      }
+      paymentAmount = Number(data?.amount || 0) / 100;
+      paymentCurrency = String(data?.currency || "NGN").trim().toUpperCase() || "NGN";
+    } else if (paymentSource === "paypal") {
+      const attempt = await findPaymentAttempt(conn as any, "paypal", paymentRef);
+      if (!attempt || Number(attempt.user_id || 0) !== userId) {
+        return NextResponse.json(
+          { ok: false, error: "No PayPal payment attempt belongs to the selected customer" },
+          { status: 400 }
+        );
+      }
+      if (String(attempt.purpose || "").trim() !== "sourcing") {
+        return NextResponse.json(
+          { ok: false, error: "PayPal payment is not for a sourcing project" },
+          { status: 400 }
+        );
+      }
+      if (String(attempt.route_type || routeType).trim() !== routeType) {
+        return NextResponse.json(
+          { ok: false, error: `PayPal payment belongs to the ${attempt.route_type} route` },
+          { status: 400 }
+        );
+      }
+      let order: any;
+      try {
+        order = await paypalGetOrder(paymentRef);
+      } catch (error: any) {
+        return NextResponse.json(
+          { ok: false, error: String(error?.message || "PayPal verification failed") },
+          { status: 400 }
+        );
+      }
+      if (String(order?.status || "").toUpperCase() !== "COMPLETED") {
+        return NextResponse.json({ ok: false, error: "PayPal payment is not completed" }, { status: 409 });
+      }
+      const unit = Array.isArray(order?.purchase_units) ? order.purchase_units[0] : null;
+      const capture = unit?.payments?.captures?.[0];
+      paymentAmount = Number(capture?.amount?.value || unit?.amount?.value || 0);
+      paymentCurrency = String(
+        capture?.amount?.currency_code || unit?.amount?.currency_code || attempt.currency || ""
+      )
+        .trim()
+        .toUpperCase();
+    }
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0 || !paymentCurrency) {
+      return NextResponse.json({ ok: false, error: "Verified payment amount is invalid" }, { status: 400 });
     }
 
     const finalCurrency = paymentCurrency;
@@ -287,20 +415,24 @@ export async function POST(req: Request) {
     const settlementCurrency = finalCurrency || defaults.settlement_currency_code;
     const countryId = userCountryId || defaults.country_id;
 
-    // Ensure payment ref isn't reused
-    if (paymentSource === "paystack") {
-      const [refRows]: any = await conn.query(
-        `SELECT id FROM linescout_tokens WHERE paystack_ref = ? LIMIT 1`,
-        [paymentRef]
+    // Ensure every provider/manual reference is globally single-use, including older PayPal metadata.
+    const [refRows]: any = await conn.query(
+      `SELECT id
+       FROM linescout_tokens
+       WHERE paystack_ref = ?
+          OR JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.paypal.order_id')) = ?
+          OR JSON_UNQUOTE(JSON_EXTRACT(metadata, '$.manual.reference')) = ?
+       LIMIT 1`,
+      [paymentRef, paymentRef, paymentRef]
+    );
+    if (refRows?.length) {
+      return NextResponse.json(
+        { ok: false, error: "This payment reference has already been used." },
+        { status: 409 }
       );
-      if (refRows?.length) {
-        await conn.rollback();
-        return NextResponse.json(
-          { ok: false, error: "This Paystack reference has already been used." },
-          { status: 409 }
-        );
-      }
     }
+
+    await conn.beginTransaction();
 
     // 3) Create token record matching production logic
     // type MUST be "sourcing"
@@ -323,16 +455,20 @@ export async function POST(req: Request) {
             customer_email,
             paymentAmount,
             paymentCurrency,
-            paymentSource === "paystack" ? paymentRef : null,
+            paymentRef,
             "valid",
             JSON.stringify({
               source: "manual_admin",
               created_via: "admin_settings",
+              created_by_admin_user_id: auth.userId,
               created_at: now.toISOString(),
-              note: "Manual project creation after in-app payment",
+              note: "Admin-recorded payment and manual project creation",
               payment_source: paymentSource,
               paystack: paymentSource === "paystack" ? { reference: paymentRef } : undefined,
               paypal: paymentSource === "paypal" ? { order_id: paymentRef } : undefined,
+              manual: isExternalPayment
+                ? { method: paymentSource, reference: paymentRef, note: paymentNote }
+                : undefined,
             }),
             expiresAt,
             customer_name,
@@ -372,7 +508,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Failed to create conversation" }, { status: 500 });
     }
 
-    // 5) Create handoff record (handoff_type MUST be "sourcing")
+    // 5) Create handoff record using the same type mapping as the standard payment flow.
     const [handoffInsert]: any = await conn.query(
       `INSERT INTO linescout_handoffs
        (token, handoff_type, customer_name, email, context, whatsapp_number, status, paid_at, conversation_id,
@@ -380,7 +516,7 @@ export async function POST(req: Request) {
        VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?)`,
       [
         token,
-        "sourcing",
+        handoffTypeForRoute(routeType),
         customer_name,
         customer_email,
         notes || "Created via admin manual onboarding.",
@@ -407,13 +543,23 @@ export async function POST(req: Request) {
          ON DUPLICATE KEY UPDATE
            total_due = VALUES(total_due),
            currency = VALUES(currency)`,
-        [handoffId, currency, total_due]
+        [handoffId, paymentCurrency, total_due]
       );
     }
 
     // 7) Commitment fee is represented via the token (same as standard flow)
     const paymentPurpose = "commitment_fee";
-    const paymentNote = `Manual project creation (${paymentSource === "paypal" ? "PayPal" : "Paystack"})`;
+    const paymentLabel =
+      paymentSource === "bank_transfer"
+        ? "Bank transfer"
+        : paymentSource === "cash"
+          ? "Cash"
+          : paymentSource === "other"
+            ? "Other"
+            : paymentSource === "paypal"
+              ? "PayPal"
+              : "Paystack";
+    const paymentHistoryNote = paymentNote || `Admin-recorded project payment (${paymentLabel})`;
 
     // 8) Link conversation -> handoff
     await conn.query(
@@ -540,14 +686,14 @@ export async function POST(req: Request) {
     extras.payment_currency = paymentCurrency;
     extras.payment_purpose = paymentPurpose;
     extras.payment_method = paymentSource;
-    extras.payment_reference = null;
+    extras.payment_reference = paymentRef;
 
     extras.email_subject = `Payment Received: ${token}`;
     extras.email_text =
       `Your LineScout request has been created.\n\n` +
       `We have recorded your payment of ${paymentCurrency} ${Number(paymentAmount).toLocaleString()}.\n` +
       `Purpose: ${paymentPurpose}\n` +
-      (paymentNote ? `Note: ${paymentNote}\n` : "") +
+      (paymentHistoryNote ? `Note: ${paymentHistoryNote}\n` : "") +
       `\nRequest ID: ${token}\nStatus: ${status}`;
 
     notifyStatusEmail({
@@ -570,9 +716,12 @@ export async function POST(req: Request) {
       customer_email,
       customer_name,
       status,
-      handoff_type: "sourcing",
+      handoff_type: handoffTypeForRoute(routeType),
+      payment_source: paymentSource,
+      payment_amount: paymentAmount,
+      payment_currency: paymentCurrency,
       total_due,
-      currency,
+      currency: paymentCurrency,
     });
   } catch (e) {
     console.error("manual handoff POST error", e);

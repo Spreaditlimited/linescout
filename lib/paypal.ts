@@ -225,6 +225,26 @@ export async function paypalCaptureOrder(orderId: string) {
   return json;
 }
 
+export async function paypalGetOrder(orderId: string) {
+  const token = await paypalAccessToken();
+  const res = await fetch(
+    `${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.id) {
+    throw new Error(json?.message || "PayPal order lookup failed");
+  }
+  return json;
+}
+
 export async function paypalCreatePayout(params: {
   receiverEmail: string;
   amount: string;

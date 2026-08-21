@@ -8,6 +8,41 @@ export function paystackSecret() {
   return { ok: true as const, secret };
 }
 
+export async function paystackVerifyTransaction(reference: string) {
+  const sec = paystackSecret();
+  if (!sec.ok) return { ok: false as const, status: 500, error: sec.error };
+
+  const res = await fetch(
+    `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${sec.secret}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    }
+  );
+  const raw = await res.text().catch(() => "");
+  let json: any = null;
+  try {
+    json = raw ? JSON.parse(raw) : null;
+  } catch {
+    json = null;
+  }
+
+  if (!res.ok || !json?.status || !json?.data) {
+    return {
+      ok: false as const,
+      status: res.status || 400,
+      error: String(json?.message || raw || "Paystack verification failed"),
+    };
+  }
+
+  return { ok: true as const, data: json.data };
+}
+
 export function verifyPaystackSignature(rawBody: string, signature: string) {
   const sec = paystackSecret();
   if (!sec.ok) return { ok: false as const, error: sec.error };

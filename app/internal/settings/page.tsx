@@ -23,6 +23,9 @@ type ManualHandoffResponse =
       handoff_type: string;
       total_due: number | null;
       currency: string;
+      payment_source: PaymentSource;
+      payment_amount: number;
+      payment_currency: string;
     }
   | { ok: false; error: string };
 
@@ -63,6 +66,24 @@ type UserSearchItem = {
   display_currency_code?: string | null;
   payment_provider?: string | null;
 };
+
+type PaymentSource = "paystack" | "paypal" | "bank_transfer" | "cash" | "other";
+
+function generateManualPaymentReference(paymentSource: PaymentSource) {
+  const method =
+    paymentSource === "bank_transfer"
+      ? "BANK"
+      : paymentSource === "cash"
+        ? "CASH"
+        : "OTHER";
+  const date = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const randomBytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(randomBytes);
+  const random = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
+  return `LS-${method}-${date}-${random}`;
+}
 
 type SettingsItem = {
   id: number;
@@ -436,11 +457,12 @@ export default function InternalSettingsPage() {
   const [notes, setNotes] = useState("");
 
   // Handoff defaults
-  const [status, setStatus] = useState("pending");
   const [currency, setCurrency] = useState("NGN");
-  const [paymentSource, setPaymentSource] = useState<"paystack" | "paypal">("paystack");
+  const [paymentSource, setPaymentSource] = useState<PaymentSource>("bank_transfer");
   const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>("");
   const [paymentRef, setPaymentRef] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
   const [reconcileProvider, setReconcileProvider] = useState<"paystack" | "paypal">("paystack");
   const [reconcilePurpose, setReconcilePurpose] = useState<"sourcing" | "reorder" | "business_plan">("sourcing");
   const [reconcileReference, setReconcileReference] = useState("");
@@ -468,7 +490,7 @@ export default function InternalSettingsPage() {
       setCurrency("NGN");
       return;
     }
-    const next = userDisplayCurrency || "GBP";
+    const next = userDisplayCurrency || (paymentSource === "paypal" ? "GBP" : "NGN");
     setCurrency(next);
   }, [paymentSource, userDisplayCurrency]);
 
@@ -1473,14 +1495,19 @@ export default function InternalSettingsPage() {
   const canSubmit = useMemo(() => {
     const nameOk = customerName.trim().length > 0;
     const emailOk = customerEmail.trim().includes("@");
-    const statusOk = status.trim().length > 0;
-    const sourceOk = paymentSource === "paystack" || paymentSource === "paypal";
-    const refOk = paymentRef.trim().length > 0;
-    const paypalCurrency = currency.toUpperCase();
-    const paypalCurrencyOk =
-      paymentSource === "paystack" || (paypalCurrency.length > 0 && paypalCurrency !== "NGN");
+    const sourceOk = ["paystack", "paypal", "bank_transfer", "cash", "other"].includes(
+      paymentSource
+    );
+    const refOk = paymentRef.trim().length > 0 && paymentRef.trim().length <= 120;
+    const externalPayment = !["paystack", "paypal"].includes(paymentSource);
+    const amount = Number(paymentAmount);
+    const amountOk = !externalPayment || (Number.isFinite(amount) && amount > 0);
+    const currencyOk = !externalPayment || /^[A-Z]{3,8}$/.test(currency.trim().toUpperCase());
+    const noteOk = paymentSource !== "other" || paymentNote.trim().length > 0;
 
-    if (!nameOk || !emailOk || !statusOk || !sourceOk || !paypalCurrencyOk || !refOk) return false;
+    if (!nameOk || !emailOk || !sourceOk || !refOk || !amountOk || !currencyOk || !noteOk) {
+      return false;
+    }
     if (!selectedUserId) return false;
 
     if (totalDue.trim()) {
@@ -1492,11 +1519,12 @@ export default function InternalSettingsPage() {
   }, [
     customerName,
     customerEmail,
-    status,
     totalDue,
     paymentSource,
     currency,
     paymentRef,
+    paymentAmount,
+    paymentNote,
     selectedUserId,
   ]);
 
@@ -1724,11 +1752,12 @@ export default function InternalSettingsPage() {
     setCustomerPhone("");
     setWhatsApp("");
     setNotes("");
-    setStatus("pending");
     setCurrency("NGN");
-    setPaymentSource("paystack");
+    setPaymentSource("bank_transfer");
     setUserDisplayCurrency("");
     setPaymentRef("");
+    setPaymentAmount("");
+    setPaymentNote("");
     setRouteType("machine_sourcing");
     setTotalDue("");
     setResult(null);
@@ -1751,12 +1780,13 @@ export default function InternalSettingsPage() {
         customer_phone: customerPhone.trim() || null,
         whatsapp_number: whatsApp.trim() || null,
         notes: notes.trim() || null,
-        status: status.trim() || "pending",
         currency: currency.trim() || "NGN",
         route_type: routeType,
         total_due: totalDue.trim() ? Number(totalDue) : null,
         payment_source: paymentSource,
         payment_ref: paymentRef.trim(),
+        payment_amount: paymentAmount.trim() ? Number(paymentAmount) : null,
+        payment_note: paymentNote.trim() || null,
       };
       if (selectedUserId) payload.user_id = selectedUserId;
 
@@ -3816,9 +3846,9 @@ export default function InternalSettingsPage() {
           <div>
             <h3 className="text-base font-semibold text-neutral-100">Manual onboarding</h3>
             <p className="mt-1 text-sm text-neutral-400">
-              For customers who already paid in-app (Paystack or PayPal) but the project did not
-              create automatically. This creates the sourcing token (SRC-...) and handoff record,
-              and records the commitment payment in history.
+              Start a sourcing project after confirming payment received by bank transfer, cash,
+              another external method, Paystack, or PayPal. Gateway payments are verified before
+              creation; external payments are recorded against the admin-provided receipt.
             </p>
           </div>
           <button
@@ -3828,7 +3858,7 @@ export default function InternalSettingsPage() {
             }}
             className="inline-flex shrink-0 whitespace-nowrap items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white active:scale-[0.99]"
           >
-            Create manual handoff
+            Start customer project
           </button>
         </div>
       </div>
@@ -4094,10 +4124,10 @@ export default function InternalSettingsPage() {
             {/* Modal header */}
             <div className="flex items-start justify-between gap-3 border-b border-neutral-800 p-4">
               <div>
-                <h3 className="text-lg font-semibold text-neutral-100">Create manual handoff</h3>
+                <h3 className="text-lg font-semibold text-neutral-100">Start customer sourcing project</h3>
                 <p className="mt-1 text-sm text-neutral-400">
-                  This will generate a Request ID token, create the project, and record the
-                  commitment payment from Paystack or PayPal.
+                  Confirm the customer and payment details. This creates the paid project, chat,
+                  Request ID, and auditable payment record.
                 </p>
               </div>
 
@@ -4134,6 +4164,10 @@ export default function InternalSettingsPage() {
                         <p>Status: {result.status}</p>
                         <p>Type: {result.handoff_type}</p>
                         <p>Email: {result.customer_email}</p>
+                        <p>
+                          Payment: {result.payment_currency} {Number(result.payment_amount).toLocaleString()} via{" "}
+                          {result.payment_source.replaceAll("_", " ")}
+                        </p>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
                         <a
@@ -4325,14 +4359,11 @@ export default function InternalSettingsPage() {
 
                 <div>
                   <label className="text-xs font-medium text-neutral-300">Initial status</label>
-                  <input
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                    placeholder="pending"
-                  />
+                  <div className="mt-1 rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-300">
+                    Pending
+                  </div>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Default is pending. You can change it if you need.
+                    New projects always enter the normal pending/claim flow.
                   </p>
                 </div>
 
@@ -4340,10 +4371,16 @@ export default function InternalSettingsPage() {
                   <label className="text-xs font-medium text-neutral-300">Currency</label>
                   <input
                     value={currency}
+                    onChange={(e) => setCurrency(e.target.value.toUpperCase())}
                     className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
                     placeholder="NGN"
-                    disabled
+                    disabled={paymentSource === "paystack" || paymentSource === "paypal"}
                   />
+                  <p className="mt-1 text-xs text-neutral-500">
+                    {paymentSource === "paystack" || paymentSource === "paypal"
+                      ? "Read from the verified gateway transaction."
+                      : "Currency in which the payment was received."}
+                  </p>
                 </div>
 
                 <div>
@@ -4354,30 +4391,67 @@ export default function InternalSettingsPage() {
                     options={[
                       { value: "paystack", label: "Paystack" },
                       { value: "paypal", label: "PayPal" },
+                      { value: "bank_transfer", label: "Bank transfer" },
+                      { value: "cash", label: "Cash" },
+                      { value: "other", label: "Other" },
                     ]}
-                    onChange={(next) => setPaymentSource((next as any) || "paystack")}
+                    onChange={(next) => setPaymentSource((next as PaymentSource) || "bank_transfer")}
                   />
                   <p className="mt-1 text-xs text-neutral-500">
-                    Records the commitment payment source in history.
+                    Paystack and PayPal references are verified with the provider. Other methods
+                    rely on the admin-confirmed receipt details below.
                   </p>
-                  {paymentSource === "paypal" && currency && currency.toUpperCase() === "NGN" ? (
-                    <p className="mt-1 text-xs text-red-300">
-                      PayPal is not available for NGN. Use Paystack for Nigeria.
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="text-xs font-medium text-neutral-300">Payment reference</label>
-                  <input
-                    value={paymentRef}
-                    onChange={(e) => setPaymentRef(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-                    placeholder="Paystack reference or PayPal order ID"
-                  />
+                  <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={paymentRef}
+                      onChange={(e) => setPaymentRef(e.target.value)}
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                      placeholder="Gateway reference, transfer reference, or receipt number"
+                    />
+                    {paymentSource !== "paystack" && paymentSource !== "paypal" ? (
+                      <button
+                        type="button"
+                        onClick={() => setPaymentRef(generateManualPaymentReference(paymentSource))}
+                        className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-semibold text-neutral-200 hover:border-neutral-500 hover:bg-neutral-800"
+                      >
+                        Generate reference
+                      </button>
+                    ) : null}
+                  </div>
                   <p className="mt-1 text-xs text-neutral-500">
-                    Required. Used to reconcile the payment and prevent duplicates.
+                    Required. Enter the gateway reference, transfer reference, receipt number, or
+                    another unique internal reference. For external payments, you can generate one
+                    automatically. Each reference can be used only once.
                   </p>
+                </div>
+
+                {paymentSource !== "paystack" && paymentSource !== "paypal" ? (
+                  <div>
+                    <label className="text-xs font-medium text-neutral-300">Amount received</label>
+                    <input
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                      placeholder="e.g. 50000"
+                      inputMode="decimal"
+                    />
+                  </div>
+                ) : null}
+
+                <div className={paymentSource === "paystack" || paymentSource === "paypal" ? "sm:col-span-2" : ""}>
+                  <label className="text-xs font-medium text-neutral-300">
+                    Payment note {paymentSource === "other" ? "(required)" : "(optional)"}
+                  </label>
+                  <input
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
+                    placeholder="e.g. Confirmed in GTBank statement by Jane"
+                  />
                 </div>
 
                 <div>
@@ -4420,7 +4494,7 @@ export default function InternalSettingsPage() {
                   className="inline-flex items-center justify-center rounded-xl bg-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900 hover:bg-white disabled:opacity-60"
                   disabled={!canSubmit || submitting}
                 >
-                  {submitting ? "Creating..." : "Create handoff"}
+                  {submitting ? "Creating..." : "Start sourcing project"}
                 </button>
               </div>
             </div>
