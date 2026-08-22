@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { MessageCircle, SearchX } from "lucide-react";
 import {
   currencyForCode,
   formatCurrency,
@@ -131,6 +132,7 @@ export default function WhiteLabelCatalogClient({
   pricingFallbackLabel,
   pricingFallbackSubLabel,
   strictLanded = false,
+  emptySearchQuery = "",
 }: {
   items: ProductItem[];
   detailBase?: string;
@@ -142,6 +144,7 @@ export default function WhiteLabelCatalogClient({
   pricingFallbackLabel?: string;
   pricingFallbackSubLabel?: string;
   strictLanded?: boolean;
+  emptySearchQuery?: string;
 }) {
   const normalizedBase = detailBase.endsWith("/") ? detailBase.slice(0, -1) : detailBase;
   const currency = currencyForCode(currencyCode);
@@ -255,6 +258,11 @@ export default function WhiteLabelCatalogClient({
       })),
     [items, normalizedBase]
   );
+  const searchedProduct = emptySearchQuery.trim();
+  const sourcingMessage = searchedProduct
+    ? `Hello LineScout sourcing team, I searched for "${searchedProduct}" in the White Label Ideas catalogue but could not find it. Please help me source this product.`
+    : "Hello LineScout sourcing team, I could not find the product I need in the White Label Ideas catalogue. Please help me source it.";
+  const sourcingWhatsAppHref = `https://wa.me/2348037649956?text=${encodeURIComponent(sourcingMessage)}`;
 
   return (
     <>
@@ -495,8 +503,42 @@ export default function WhiteLabelCatalogClient({
             </div>
           ))
         ) : (
-          <div className="rounded-3xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600">
-            No ideas matched your search. Try a different keyword or category.
+          <div className="md:col-span-4">
+            {searchedProduct ? (
+              <div className="flex flex-col gap-5 rounded-[28px] border border-[rgba(45,52,97,0.18)] bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:justify-between sm:p-8">
+                <div className="flex max-w-2xl items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgba(45,52,97,0.08)] text-[var(--agent-blue)]">
+                    <SearchX className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                      Product not listed
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold text-neutral-900">
+                      Can&apos;t find &ldquo;{searchedProduct}&rdquo;?
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-neutral-600">
+                      Our catalogue is a starting point, not a limit. Tell our sourcing team what you need and we will
+                      help you assess the sourcing options from China.
+                    </p>
+                  </div>
+                </div>
+                <a
+                  href={sourcingWhatsAppHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.25)] transition hover:opacity-90"
+                  aria-label={`Ask the sourcing team about ${searchedProduct} on WhatsApp`}
+                >
+                  <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                  Ask the sourcing team
+                </a>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-neutral-200 bg-white p-6 text-sm text-neutral-600">
+                No ideas matched your filters. Try a different keyword or category.
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -560,6 +560,13 @@ export default async function WhiteLabelPage({
         <div className="absolute bottom-[-220px] left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.18),transparent_70%)]" />
       </div>
 
+      {(q || category) && (
+        <div
+          className="relative h-[86px] shrink-0 bg-[linear-gradient(110deg,#11153A_0%,#050817_56%,#2A1115_100%)]"
+          aria-hidden="true"
+        />
+      )}
+
       <div className="relative">
         {!category && !q && (
         <section className="si-hero mx-auto grid w-full max-w-[1600px] gap-10 px-4 pb-6 pt-10 sm:px-6 md:grid-cols-[1.1fr_0.9fr] md:pt-16 lg:px-8">
@@ -714,6 +721,7 @@ export default async function WhiteLabelPage({
             comparisonCtaHref="/sign-in?next=/white-label/ideas"
             comparisonCtaLabel="Sign in to compare Amazon prices"
             pricingFallbackLabel={pricingFallbackLabel}
+            emptySearchQuery={q}
           />
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">

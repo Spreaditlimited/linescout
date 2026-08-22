@@ -233,6 +233,7 @@ export default function WhiteLabelIdeasPageClient() {
             detailBase="/white-label/ideas"
             currencyCode={data.currencyCode}
             amazonComparisonEnabled={data.amazonComparisonEnabled}
+            emptySearchQuery={q}
           />
         ) : null}
 
