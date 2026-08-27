@@ -8,7 +8,7 @@ import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 import { ensureQuoteAddonTables } from "@/lib/quote-addons";
 import { paypalCreateOrder } from "@/lib/paypal";
-import { convertAmount, getFxRate } from "@/lib/fx";
+import { getFxRate } from "@/lib/fx";
 import { resolveQuotePaymentProvider, ensureQuotePaymentProviderTable } from "@/lib/quote-payment-provider";
 import { ensureCountryConfig, ensureShippingRateCountryColumn, getNigeriaDefaults, resolveCountryCurrency } from "@/lib/country-config";
 import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
@@ -16,6 +16,7 @@ import { computeGrossFromBaseWithPaypalFee, resolvePaypalQuoteFeeRule } from "@/
 import { resolveCommitmentPaymentForQuote } from "@/lib/commitment-fee";
 import { ensureQuoteShippingControlColumns } from "@/lib/quote-shipping-controls";
 import { ensureBankAccountCountryColumns } from "@/lib/bank-accounts";
+import { computeQuoteDisplayPayment, convertQuoteAmountToDisplay } from "@/lib/quote-display-payment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -468,8 +469,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
       const isDirectBankTransfer =
         paymentMeta?.direct_bank_transfer === true ||
         String(row?.provider_ref || "").trim().toUpperCase().startsWith("DBT_");
+      const recordedBaseAmountNgn = num(paymentMeta?.base_amount_ngn, 0);
       let amountNgn = 0;
-      if (isDirectBankTransfer && baseAmount > 0) {
+      if (recordedBaseAmountNgn > 0) {
+        amountNgn = recordedBaseAmountNgn;
+      } else if (isDirectBankTransfer && baseAmount > 0) {
         amountNgn = baseAmount;
       } else if (currency === "NGN") {
         amountNgn = baseAmount > 0 ? baseAmount : amount;
@@ -754,39 +758,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           addonTotalDisplay += converted;
         }
 
-        const commitmentDisplay =
-          commitmentPayment.amount > 0
-            ? await convertCurrency(
-                conn,
-                num(commitmentPayment.amount, 0),
-                String(commitmentPayment.currency || "NGN"),
-                bankCurrency
-              )
-            : commitmentDue * ngnFx;
-        if (commitmentDisplay == null) {
-          return NextResponse.json(
-            { ok: false, error: `Commitment payment exchange rate for ${bankCurrency} is not configured.` },
-            { status: 500 }
-          );
-        }
-
         let depositPaidDisplay = 0;
         let productPaidDisplay = 0;
         let shippingPaidDisplay = 0;
         for (const row of paidRows || []) {
           if (String(row?.status || "") !== "paid") continue;
-          const paidDisplay = await convertCurrency(
-            conn,
-            num(row?.amount, 0),
-            String(row?.currency || "NGN"),
-            bankCurrency
-          );
-          if (paidDisplay == null) {
-            return NextResponse.json(
-              { ok: false, error: `Paid payment exchange rate for ${bankCurrency} is not configured.` },
-              { status: 500 }
-            );
-          }
+          const paidDisplay = convertQuoteAmountToDisplay({
+            amount: num(row?.amount, 0),
+            currency: String(row?.currency || "NGN"),
+            displayCurrency: bankCurrency,
+            ngnToDisplay: ngnFx,
+            usdToDisplay: shippingFx,
+          });
           const paidPurpose = String(row?.purpose || "");
           if (paidPurpose === "deposit") depositPaidDisplay += paidDisplay;
           else if (paidPurpose === "shipping_payment") shippingPaidDisplay += paidDisplay;
@@ -795,26 +778,27 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
           }
         }
 
-        const walletAppliedDisplay = walletApplied > 0 ? walletApplied * ngnFx : 0;
-        if (purpose === "deposit") {
-          const depositAmountNgn = computeDepositAmount(productTotalWithAddons, depositPercent);
-          transferAmount = depositAmountNgn * ngnFx - depositPaidDisplay - walletAppliedDisplay;
-        } else if (purpose === "shipping_payment") {
-          transferAmount = totals.totalShippingUsd * shippingFx - shippingPaidDisplay - walletAppliedDisplay;
-        } else {
-          const productTotalDisplay =
-            totals.totalProductRmbWithAgent * productFx +
-            totals.totalMarkupNgn * ngnFx +
-            addonTotalDisplay +
-            totalVatNgn * ngnFx;
-          transferAmount =
-            productTotalDisplay -
-            commitmentDisplay -
-            depositPaidDisplay -
-            productPaidDisplay -
-            walletAppliedDisplay;
-        }
-        transferAmount = Number(Math.max(0, transferAmount).toFixed(2));
+        transferAmount = computeQuoteDisplayPayment({
+          purpose,
+          displayCurrency: bankCurrency,
+          productTotalNgn: productTotalWithAddons,
+          totalProductRmbWithAgent: totals.totalProductRmbWithAgent,
+          totalShippingUsd: totals.totalShippingUsd,
+          totalMarkupNgn: totals.totalMarkupNgn,
+          totalVatNgn,
+          addonTotalDisplay,
+          depositPercent,
+          commitmentAmount: num(commitmentPayment.amount, 0),
+          commitmentCurrency: String(commitmentPayment.currency || "NGN"),
+          commitmentAmountNgn: commitmentDue,
+          depositPaidDisplay,
+          productPaidDisplay,
+          shippingPaidDisplay,
+          walletAppliedDisplay: walletApplied * ngnFx,
+          ngnToDisplay: ngnFx,
+          rmbToDisplay: productFx,
+          usdToDisplay: shippingFx,
+        }).remainingDisplay;
       }
       if (!transferAmount || !Number.isFinite(transferAmount) || transferAmount <= 0) {
         return NextResponse.json(
@@ -914,7 +898,70 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
 
     if (provider === "paypal") {
       const paypalCurrency = displayCurrencyCode || "GBP";
-      const convertedBase = await convertAmount(conn, remaining, "NGN", paypalCurrency);
+      const ngnFx = await convertCurrency(conn, 1, "NGN", paypalCurrency);
+      const productFx = await convertCurrency(conn, 1, "RMB", paypalCurrency);
+      const shippingFx = await convertCurrency(conn, 1, "USD", paypalCurrency);
+      if (!ngnFx || !productFx || !shippingFx) {
+        return NextResponse.json(
+          { ok: false, error: `${paypalCurrency} exchange rates are not configured.` },
+          { status: 500 }
+        );
+      }
+
+      let addonTotalDisplay = 0;
+      for (const row of addonRows || []) {
+        if (excludedAddonIds.includes(Number(row.id || 0))) continue;
+        addonTotalDisplay += convertQuoteAmountToDisplay({
+          amount: num(row.amount, 0),
+          currency: String(row.currency_code || "NGN"),
+          displayCurrency: paypalCurrency,
+          ngnToDisplay: ngnFx,
+          usdToDisplay: shippingFx,
+        });
+      }
+
+      let depositPaidDisplay = 0;
+      let productPaidDisplay = 0;
+      let shippingPaidDisplay = 0;
+      for (const row of paidRows || []) {
+        if (String(row?.status || "") !== "paid") continue;
+        const paidDisplay = convertQuoteAmountToDisplay({
+          amount: num(row?.amount, 0),
+          currency: String(row?.currency || "NGN"),
+          displayCurrency: paypalCurrency,
+          ngnToDisplay: ngnFx,
+          usdToDisplay: shippingFx,
+        });
+        const paidPurpose = String(row?.purpose || "");
+        if (paidPurpose === "deposit") depositPaidDisplay += paidDisplay;
+        else if (paidPurpose === "shipping_payment") shippingPaidDisplay += paidDisplay;
+        else if (paidPurpose === "product_balance" || paidPurpose === "full_product_payment") {
+          productPaidDisplay += paidDisplay;
+        }
+      }
+
+      const displayPayment = computeQuoteDisplayPayment({
+        purpose,
+        displayCurrency: paypalCurrency,
+        productTotalNgn: productTotalWithAddons,
+        totalProductRmbWithAgent: totals.totalProductRmbWithAgent,
+        totalShippingUsd: totals.totalShippingUsd,
+        totalMarkupNgn: totals.totalMarkupNgn,
+        totalVatNgn,
+        addonTotalDisplay,
+        depositPercent,
+        commitmentAmount: num(commitmentPayment.amount, 0),
+        commitmentCurrency: String(commitmentPayment.currency || "NGN"),
+        commitmentAmountNgn: commitmentDue,
+        depositPaidDisplay,
+        productPaidDisplay,
+        shippingPaidDisplay,
+        walletAppliedDisplay: walletApplied * ngnFx,
+        ngnToDisplay: ngnFx,
+        rmbToDisplay: productFx,
+        usdToDisplay: shippingFx,
+      });
+      const convertedBase = displayPayment.remainingDisplay;
       if (!convertedBase || !Number.isFinite(convertedBase) || convertedBase <= 0) {
         return NextResponse.json(
           { ok: false, error: `${paypalCurrency} exchange rate is not configured.` },
@@ -967,6 +1014,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ token: string 
             percent: feeRule.percent,
             fixed: feeRule.fixed,
             charged_total: feeResult.gross,
+            base_amount_ngn: remaining,
+            display_base_amount: feeResult.base,
           }),
           paypalCurrency,
           order.id,

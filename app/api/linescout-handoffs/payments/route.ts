@@ -356,13 +356,16 @@ export async function GET(req: Request) {
         Math.round(
           Number(latestQuote.total_product_ngn || 0) +
             Number(latestQuote.total_markup_ngn || 0) -
-            commitmentDueNgn
+            commitmentDueNgn +
+            addonsNgn +
+            vatNgn
         )
       );
       const shippingDue = Math.max(0, Math.round(Number(latestQuote.total_shipping_ngn || 0)));
 
       const [quotePaymentRows]: any = await conn.query(
-        `SELECT purpose, status, amount, COALESCE(base_amount, amount) AS base_amount, currency
+        `SELECT purpose, status, amount, COALESCE(base_amount, amount) AS base_amount,
+                processing_fee_meta_json, currency
          FROM linescout_quote_payments
          WHERE quote_id = ?
            AND status = 'paid'`,
@@ -375,11 +378,14 @@ export async function GET(req: Request) {
       for (const row of quotePaymentRows || []) {
         const amount = Number(row?.amount || 0);
         const baseAmount = Number(row?.base_amount || 0);
+        const paymentMeta = parseJsonSafe(row?.processing_fee_meta_json);
+        const baseAmountNgn = Number(paymentMeta?.base_amount_ngn || 0);
         const cur = normalizeCurrency(row?.currency, "NGN");
         if (!Number.isFinite(amount) || amount <= 0) continue;
 
         const toNgn = resolveFxRate(fxLookup, cur, "NGN");
-        const asNgn = baseAmount > 0 ? baseAmount : toNgn > 0 ? amount * toNgn : 0;
+        const asNgn =
+          baseAmountNgn > 0 ? baseAmountNgn : baseAmount > 0 ? baseAmount : toNgn > 0 ? amount * toNgn : 0;
         const asDisplay = convertToDisplay(amount, cur, displayCurrencyCode, fxLookup);
         const disp = asDisplay.amount != null ? asDisplay.amount : 0;
 
@@ -716,6 +722,8 @@ export async function POST(req: Request) {
          q.shipping_type_id,
          q.total_product_ngn,
          q.total_markup_ngn,
+         q.total_addons_ngn,
+         q.total_vat_ngn,
          q.commitment_due_ngn
        FROM linescout_quotes q
        WHERE q.handoff_id = ?
@@ -791,12 +799,19 @@ export async function POST(req: Request) {
 
     // Auto-sync status only for the standard milestone edge: manufacturer_found -> paid.
     if (previousStatus === "manufacturer_found") {
+      const actualCommitment = await resolveCommitmentPaymentForQuote(conn, {
+        handoffId: hid,
+        quoteId: Number(latestQuote.id || 0),
+        fallbackNgn: Number(latestQuote.commitment_due_ngn || 0),
+      });
       const productDue = Math.max(
         0,
         Math.round(
           Number(latestQuote.total_product_ngn || 0) +
             Number(latestQuote.total_markup_ngn || 0) -
-            Number(latestQuote.commitment_due_ngn || 0)
+            Number(actualCommitment.amountNgn || 0) +
+            Number(latestQuote.total_addons_ngn || 0) +
+            Number(latestQuote.total_vat_ngn || 0)
         )
       );
       const [productPayRows]: any = await conn.query(
@@ -805,7 +820,11 @@ export async function POST(req: Request) {
               CASE
                 WHEN purpose IN ('deposit','product_balance','full_product_payment')
                   AND status = 'paid'
-                THEN COALESCE(base_amount, amount)
+                THEN COALESCE(
+                  CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+                  base_amount,
+                  amount
+                )
                 ELSE 0
               END
             ),

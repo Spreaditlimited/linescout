@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import SearchableSelect from "@/app/internal/_components/SearchableSelect";
+import { computeQuoteDisplayPayment } from "@/lib/quote-display-payment";
 
 type ShippingRate = {
   id: number;
@@ -684,20 +685,6 @@ export default function QuoteClient({
       ? totals.totalProductNgn
       : totals.totalProductRmbWithAgent * productFx;
   const productTotalDisplay = baseProductDisplay + (shippingOnly ? 0 : serviceChargeDisplay + addonTotalDisplay + totalVatDisplay);
-  const commitmentDiscountDisplay = useMemo(() => {
-    const paidAmount = Number(commitmentPaidAmount || 0);
-    const paidCurrency = String(commitmentPaidCurrency || "").toUpperCase();
-    if (paidAmount > 0 && paidCurrency && paidCurrency === effectiveDisplayCurrency) {
-      return paidAmount;
-    }
-    return commitmentDueNgn * effectiveDisplayRate;
-  }, [commitmentPaidAmount, commitmentPaidCurrency, effectiveDisplayCurrency, commitmentDueNgn, effectiveDisplayRate]);
-  const productTargetDisplay =
-    effectiveDisplayCurrency === "NGN"
-      ? productTargetNgn
-      : Number(Math.max(0, productTotalDisplay - commitmentDiscountDisplay).toFixed(2));
-  const depositAmountDisplay =
-    effectiveDisplayCurrency === "NGN" ? depositAmountNgn : depositAmountNgn * effectiveDisplayRate;
   const productPaidTotalDisplay =
     effectiveDisplayCurrency === "NGN"
       ? productPaidTotalNgn * effectiveDisplayRate
@@ -710,10 +697,33 @@ export default function QuoteClient({
     effectiveDisplayCurrency === "NGN"
       ? paidTotals.shipping_paid * effectiveDisplayRate
       : paymentDisplayTotals.shipping;
-  const depositRemainingDisplay = Number(Math.max(0, depositAmountDisplay - depositPaidDisplay).toFixed(2));
-  const productRemainingDisplay = Number(Math.max(0, productTargetDisplay - productPaidTotalDisplay).toFixed(2));
-  const shippingTotalDisplay = totals.totalShippingUsd * shippingDisplayRate;
-  const shippingRemainingDisplay = Number(Math.max(0, shippingTotalDisplay - shippingPaidDisplay).toFixed(2));
+  const displayPayment = computeQuoteDisplayPayment({
+    purpose: paymentOption === "deposit" ? "deposit" : paymentOption === "shipping" ? "shipping_payment" : "full_product_payment",
+    displayCurrency: effectiveDisplayCurrency,
+    productTotalNgn,
+    totalProductRmbWithAgent: totals.totalProductRmbWithAgent,
+    totalShippingUsd: totals.totalShippingUsd,
+    totalMarkupNgn: totals.totalMarkupNgn,
+    totalVatNgn,
+    addonTotalDisplay,
+    depositPercent,
+    commitmentAmount: Number(commitmentPaidAmount || 0),
+    commitmentCurrency: String(commitmentPaidCurrency || "NGN"),
+    commitmentAmountNgn: commitmentDueNgn,
+    depositPaidDisplay,
+    productPaidDisplay: paymentDisplayTotals.product,
+    shippingPaidDisplay,
+    ngnToDisplay: effectiveDisplayRate,
+    rmbToDisplay: effectiveDisplayCurrency === "NGN" ? exchangeRmb : productFx,
+    usdToDisplay: shippingDisplayRate,
+  });
+  const commitmentDiscountDisplay = displayPayment.commitmentDisplay;
+  const productTargetDisplay = displayPayment.productTargetDisplay;
+  const depositAmountDisplay = displayPayment.depositTargetDisplay;
+  const depositRemainingDisplay = displayPayment.depositRemainingDisplay;
+  const productRemainingDisplay = displayPayment.productRemainingDisplay;
+  const shippingTotalDisplay = displayPayment.shippingTargetDisplay;
+  const shippingRemainingDisplay = displayPayment.shippingRemainingDisplay;
   const localTransportDisplay = totalLocalTransportDisplay;
 
   const totalDueNgn = useMemo(() => {

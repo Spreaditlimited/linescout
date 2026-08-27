@@ -436,17 +436,29 @@ export async function GET(req: Request) {
          LEFT JOIN (
            SELECT
              quote_id,
-             SUM(CASE WHEN status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END) AS total_paid_ngn,
+             SUM(CASE WHEN status = 'paid' THEN COALESCE(
+               CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+               base_amount,
+               amount
+             ) ELSE 0 END) AS total_paid_ngn,
              SUM(
                CASE
-                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(base_amount, amount)
+                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(
+                   CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+                   base_amount,
+                   amount
+                 )
                  ELSE 0
                END
              ) AS shipping_paid_ngn,
              SUM(
                CASE
                  WHEN status = 'paid' AND purpose IN ('deposit','product_balance','full_product_payment')
-                 THEN COALESCE(base_amount, amount)
+                 THEN COALESCE(
+                   CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+                   base_amount,
+                   amount
+                 )
                  ELSE 0
                END
              ) AS product_paid_ngn
@@ -472,17 +484,29 @@ export async function GET(req: Request) {
          LEFT JOIN (
            SELECT
              quote_id,
-             SUM(CASE WHEN status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END) AS total_paid_ngn,
+             SUM(CASE WHEN status = 'paid' THEN COALESCE(
+               CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+               base_amount,
+               amount
+             ) ELSE 0 END) AS total_paid_ngn,
              SUM(
                CASE
-                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(base_amount, amount)
+                 WHEN status = 'paid' AND purpose = 'shipping_payment' THEN COALESCE(
+                   CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+                   base_amount,
+                   amount
+                 )
                  ELSE 0
                END
              ) AS shipping_paid_ngn,
              SUM(
                CASE
                  WHEN status = 'paid' AND purpose IN ('deposit','product_balance','full_product_payment')
-                 THEN COALESCE(base_amount, amount)
+                 THEN COALESCE(
+                   CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+                   base_amount,
+                   amount
+                 )
                  ELSE 0
                END
              ) AS product_paid_ngn

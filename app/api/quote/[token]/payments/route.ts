@@ -37,9 +37,24 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string 
     const handoffStatus = String(rows[0].handoff_status || "").trim() || null;
     const [sumRows]: any = await conn.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN purpose = 'deposit' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS deposit_paid,
-         COALESCE(SUM(CASE WHEN purpose IN ('product_balance','full_product_payment') AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS product_paid,
-         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN COALESCE(base_amount, amount) ELSE 0 END), 0) AS shipping_paid
+         COALESCE(SUM(CASE WHEN purpose = 'deposit' AND status = 'paid' THEN
+           COALESCE(
+             CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+             base_amount,
+             amount
+           ) ELSE 0 END), 0) AS deposit_paid,
+         COALESCE(SUM(CASE WHEN purpose IN ('product_balance','full_product_payment') AND status = 'paid' THEN
+           COALESCE(
+             CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+             base_amount,
+             amount
+           ) ELSE 0 END), 0) AS product_paid,
+         COALESCE(SUM(CASE WHEN purpose = 'shipping_payment' AND status = 'paid' THEN
+           COALESCE(
+             CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(processing_fee_meta_json, '$.base_amount_ngn')), '') AS DECIMAL(18,2)),
+             base_amount,
+             amount
+           ) ELSE 0 END), 0) AS shipping_paid
        FROM linescout_quote_payments
        WHERE quote_id = ?`,
       [quoteId]
