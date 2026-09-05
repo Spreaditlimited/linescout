@@ -57,3 +57,20 @@ test("the customer Projects navigation and authorization redirect target the pro
   assert.doesNotMatch(projects, /router\.replace\("\/sign-in"\)/);
   assert.match(projects, /\/sign-in\?next=\$\{encodeURIComponent\("\/projects"\)\}/);
 });
+
+test("customer authorization provisions a missing personal account context", async () => {
+  const [auth, accounts] = await Promise.all([
+    source("lib/auth.ts"),
+    source("lib/accounts.ts"),
+  ]);
+
+  assert.match(auth, /ensureAccountContextForUser\(Number\(user\.id\)\)/);
+  assert.match(auth, /s\.revoked_at IS NULL/);
+  assert.match(auth, /s\.expires_at > NOW\(\)/);
+  assert.match(accounts, /export async function ensureAccountContextForUser/);
+  assert.match(accounts, /INSERT INTO linescout_accounts/);
+  assert.match(accounts, /INSERT INTO linescout_account_members/);
+  assert.match(accounts, /INSERT INTO linescout_account_user_contexts/);
+  assert.match(accounts, /beginTransaction\(\)/);
+  assert.match(accounts, /await conn\.commit\(\)/);
+});

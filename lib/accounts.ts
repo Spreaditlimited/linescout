@@ -419,6 +419,82 @@ export async function getAccountContextForUser(
   }
 }
 
+export async function ensureAccountContextForUser(
+  userId: number
+): Promise<AccountContext | null> {
+  const existing = await getAccountContextForUser(userId);
+  if (existing) return existing;
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [userRows]: any = await conn.query<RowDataPacket[]>(
+      `SELECT id, display_name FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    const user = userRows?.[0];
+    if (!user) {
+      await conn.rollback();
+      return null;
+    }
+
+    await conn.query(
+      `
+      INSERT INTO linescout_accounts (owner_user_id, name, created_at, updated_at)
+      VALUES (?, COALESCE(NULLIF(TRIM(?), ''), CONCAT('Account ', ?)), NOW(), NOW())
+      ON DUPLICATE KEY UPDATE owner_user_id = VALUES(owner_user_id)
+      `,
+      [userId, user.display_name || "", userId]
+    );
+
+    const [accountRows]: any = await conn.query<RowDataPacket[]>(
+      `SELECT id FROM linescout_accounts WHERE owner_user_id = ? LIMIT 1`,
+      [userId]
+    );
+    const accountId = Number(accountRows?.[0]?.id || 0);
+    if (!accountId) throw new Error("Failed to provision LineScout account");
+
+    await conn.query(
+      `
+      INSERT INTO linescout_account_members
+        (account_id, user_id, role, status, invited_by_user_id, joined_at, created_at, updated_at)
+      VALUES (?, ?, 'owner', 'active', ?, NOW(), NOW(), NOW())
+      ON DUPLICATE KEY UPDATE
+        role = 'owner',
+        status = 'active',
+        invited_by_user_id = VALUES(invited_by_user_id),
+        joined_at = COALESCE(joined_at, NOW()),
+        removed_at = NULL,
+        updated_at = NOW()
+      `,
+      [accountId, userId, userId]
+    );
+
+    await conn.query(
+      `
+      INSERT INTO linescout_account_user_contexts
+        (user_id, active_account_id, created_at, updated_at)
+      VALUES (?, ?, NOW(), NOW())
+      ON DUPLICATE KEY UPDATE
+        active_account_id = VALUES(active_account_id),
+        updated_at = NOW()
+      `,
+      [userId, accountId]
+    );
+
+    await conn.commit();
+    return { accountId, role: "owner" };
+  } catch (error) {
+    try {
+      await conn.rollback();
+    } catch {}
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 export async function setActiveAccountForUser(userId: number, accountId: number) {
   await ensureLinescoutAccountInfraOnce();
 

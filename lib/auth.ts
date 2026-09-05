@@ -1,7 +1,7 @@
 // lib/auth.ts
 import { queryOne } from "./db";
 import type { RowDataPacket } from "mysql2/promise";
-import { getAccountContextForUser } from "./accounts";
+import { ensureAccountContextForUser } from "./accounts";
 
 type UserRow = RowDataPacket & { id: number; email: string };
 
@@ -42,6 +42,8 @@ export async function requireUser(req: Request) {
      FROM users u
      JOIN linescout_user_sessions s ON s.user_id = u.id
      WHERE s.refresh_token_hash = SHA2(?, 256)
+       AND s.revoked_at IS NULL
+       AND s.expires_at > NOW()
      LIMIT 1`,
     [token]
   );
@@ -52,7 +54,7 @@ export async function requireUser(req: Request) {
 
 export async function requireAccountUser(req: Request) {
   const user = await requireUser(req);
-  const ctx = await getAccountContextForUser(Number(user.id));
+  const ctx = await ensureAccountContextForUser(Number(user.id));
   if (!ctx?.accountId) throw new Error("Unauthorized");
   return {
     id: Number(user.id),
