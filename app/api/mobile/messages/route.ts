@@ -511,7 +511,7 @@ export async function POST(req: Request) {
             .filter(Boolean);
 
           for (const email of emails) {
-            const chatUrl = `https://linescout.sureimports.com/conversations/${conversationId}`;
+            const chatUrl = `https://linescout.sureimports.com/agent-app/inbox/${conversationId}?kind=quick`;
             await sendNoticeEmail({
               to: email,
               subject: "New quick chat message",

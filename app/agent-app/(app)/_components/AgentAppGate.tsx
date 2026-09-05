@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { fetchAgentOtpMode } from "../../lib/otp";
 
@@ -13,11 +13,6 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
 
   const CACHE_KEY = "linescout_agent_gate_v1";
   const CACHE_TTL_MS = 10 * 60 * 1000;
-
-  const nextParam = useMemo(() => {
-    const safe = pathname || "/agent-app/inbox";
-    return encodeURIComponent(safe);
-  }, [pathname]);
 
   useEffect(() => {
     let live = true;
@@ -59,6 +54,12 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
         const res = await fetch("/api/internal/auth/me", { cache: "no-store", credentials: "include" });
         const data = await res.json().catch(() => null);
 
+        const nextPath =
+          typeof window !== "undefined"
+            ? `${window.location.pathname}${window.location.search}`
+            : pathname || "/agent-app/inbox";
+        const nextParam = encodeURIComponent(nextPath);
+
         if (!res.ok || !data?.ok) {
           router.replace(`/agent-app/sign-in?next=${nextParam}`);
           return;
@@ -80,7 +81,7 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
         if (role === "agent" && !otpVerified && userId > 0) {
           const target = otpMode === "email" ? "email-verify" : "phone-verify";
           const emailParam = email ? `&email=${encodeURIComponent(email)}` : "";
-          router.replace(`/agent-app/${target}?user_id=${userId}&post=app${emailParam}`);
+          router.replace(`/agent-app/${target}?user_id=${userId}&post=app&next=${nextParam}${emailParam}`);
           return;
         }
 
@@ -116,7 +117,7 @@ export default function AgentAppGate({ children }: { children: ReactNode }) {
       live = false;
       if (restoreFetch) restoreFetch();
     };
-  }, [router, nextParam]);
+  }, [router, pathname]);
 
   return (
     <div className="min-h-screen bg-white text-neutral-900">

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AuthShell from "../_components/AuthShell";
 import { fetchAgentOtpMode } from "../lib/otp";
+import { getSafeNextPath } from "@/lib/safe-next-path";
 
 function clean(v: unknown) {
   return String(v ?? "").trim();
@@ -20,6 +21,7 @@ export default function AgentAppSignInClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
+  const safeNext = getSafeNextPath(nextParam);
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -81,12 +83,13 @@ export default function AgentAppSignInClient() {
       if (role === "agent" && !otpVerified && userId > 0) {
         const target = otpMode === "email" ? "email-verify" : "phone-verify";
         const emailParam = email ? `&email=${encodeURIComponent(email)}` : "";
-        router.replace(`/agent-app/${target}?user_id=${userId}&post=app${emailParam}`);
+        const nextSuffix = safeNext ? `&next=${encodeURIComponent(safeNext)}` : "";
+        router.replace(`/agent-app/${target}?user_id=${userId}&post=app${nextSuffix}${emailParam}`);
         return;
       }
 
       if (role === "agent") {
-        router.replace(nextParam || "/agent-app/inbox");
+        router.replace(safeNext || "/agent-app/inbox");
         return;
       }
 

@@ -123,7 +123,7 @@ export default function ProjectsPage() {
 
       if (!res.ok) {
         if (res.status === 401) {
-          router.replace("/sign-in");
+          router.replace(`/sign-in?next=${encodeURIComponent("/projects")}`);
           return;
         }
         if (active) {

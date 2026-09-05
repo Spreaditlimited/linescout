@@ -471,7 +471,7 @@ export async function POST(req: Request) {
 
           const preview = (hasText ? messageText : "Attachment").trim().slice(0, 120);
           for (const email of emails) {
-            const chatUrl = `https://linescout.sureimports.com/conversations/${conversationId}`;
+            const chatUrl = `https://linescout.sureimports.com/agent-app/inbox/${conversationId}`;
             await sendNoticeEmail({
               to: email,
               subject: "New paid chat message",

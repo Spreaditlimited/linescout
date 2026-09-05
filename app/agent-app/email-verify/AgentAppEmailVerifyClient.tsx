@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthShell from "../_components/AuthShell";
+import { getSafeNextPath } from "@/lib/safe-next-path";
 
 function clean(v: unknown) {
   return String(v ?? "").trim();
@@ -14,6 +15,7 @@ export default function AgentAppEmailVerifyClient() {
   const searchParams = useSearchParams();
   const userId = Number(searchParams.get("user_id") || 0);
   const post = searchParams.get("post");
+  const safeNext = getSafeNextPath(searchParams.get("next"));
   const emailParam = searchParams.get("email") || "";
 
   const [email, setEmail] = useState(emailParam);
@@ -73,7 +75,7 @@ export default function AgentAppEmailVerifyClient() {
       }
 
       if (post === "app") {
-        router.replace("/agent-app/inbox");
+        router.replace(safeNext || "/agent-app/inbox");
       } else {
         router.replace("/agent-app/sign-in");
       }

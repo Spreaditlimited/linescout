@@ -177,7 +177,9 @@ export default function ConversationThreadPage() {
       const convJson = await convRes.json().catch(() => ({}));
       if (!convRes.ok) {
         if (convRes.status === 401) {
-          router.replace("/sign-in");
+          router.replace(
+            `/sign-in?next=${encodeURIComponent(`/conversations/${conversationId}`)}`
+          );
           return;
         }
       } else {
@@ -195,7 +197,9 @@ export default function ConversationThreadPage() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
-          router.replace("/sign-in");
+          router.replace(
+            `/sign-in?next=${encodeURIComponent(`/conversations/${conversationId}`)}`
+          );
           return;
         }
         if (res.status === 403 && json?.code === "PROJECT_LOCKED") {
