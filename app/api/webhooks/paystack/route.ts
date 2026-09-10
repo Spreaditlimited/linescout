@@ -28,19 +28,36 @@ async function triggerSourcingVerify(req: Request, reference: string, purpose: s
 async function forwardSureImportsPaystackWebhook(rawBody: string, signature: string) {
   const url = (
     process.env.SUREIMPORTS_PAYSTACK_WEBHOOK_URL ||
-    "https://www.sureimports.com/api/intelligence/paystack-webhook"
+    "https://www.sureimports.com/api/webhooks/paystack"
   ).trim();
 
-  if (!rawBody || !signature || !url) return;
+  if (!rawBody || !signature || !url) return false;
 
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-paystack-signature": signature,
-    },
-    body: rawBody,
-  }).catch(() => {});
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-paystack-signature": signature,
+      },
+      body: rawBody,
+      cache: "no-store",
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function shouldForwardToSureImports(event: string) {
+  return (
+    event === "charge.success" ||
+    event.startsWith("subscription.") ||
+    event.startsWith("transfer.") ||
+    event.startsWith("refund.") ||
+    event.startsWith("charge.dispute.")
+  );
 }
 
 function toNaira(amount: any) {
@@ -128,8 +145,14 @@ export async function POST(req: Request) {
   const event = String(payload?.event || "").trim();
   const data = payload?.data || {};
 
-  if (event === "charge.success" || event.startsWith("subscription.")) {
-    await forwardSureImportsPaystackWebhook(rawBody, signature);
+  if (shouldForwardToSureImports(event)) {
+    const forwarded = await forwardSureImportsPaystackWebhook(rawBody, signature);
+    if (!forwarded) {
+      return NextResponse.json(
+        { ok: false, error: "Sure Imports webhook forwarding failed" },
+        { status: 502 },
+      );
+    }
   }
 
   if (event === "transfer.success") {
