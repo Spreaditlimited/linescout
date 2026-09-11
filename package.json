@@ -13,7 +13,9 @@
     "seo:migrate": "node --env-file=.env.local scripts/white-label-seo/migrate.cjs",
     "seo:seed-approved": "node --env-file=.env.local scripts/white-label-seo/seed-approved.cjs",
     "seo:plan": "node --env-file=.env.local scripts/white-label-seo/plan.cjs",
-    "seo:import-drafts": "node --env-file=.env.local scripts/white-label-seo/import-drafts.cjs"
+    "seo:import-drafts": "node --env-file=.env.local scripts/white-label-seo/import-drafts.cjs",
+    "affiliate:migrate-outbox": "node --env-file=.env.local scripts/migrate-central-affiliate-outbox.mjs",
+    "affiliate:migrate-accounts": "node --env-file=.env.local scripts/migrate-affiliates-to-sureimports.mjs"
   },
   "dependencies": {
     "@next/third-parties": "^16.0.7",

@@ -24,6 +24,10 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 Admin API routes under `/api/internal/admin/*` rely on browser cookies. Avoid rewriting or stripping cookies in middleware/proxy handling for those paths.
 
+## Central affiliate and payment ledger
+
+LineScout sends idempotent payment and referral events to the Sure Imports ledger. Configure the same `LINESCOUT_LEDGER_SECRET` in both applications. It also verifies the signed, 30-day cross-subdomain attribution bridge created by the main Sure Imports referral link. `SUREIMPORTS_LEDGER_ENDPOINT` may be set for local testing; production defaults to the canonical Sure Imports endpoint. Apply `npm run affiliate:migrate-outbox` before enabling the cron. The one-time account migration additionally requires `AFFILIATE_DATABASE_URL` and `AFFILIATE_SECURITY_KEY`, then runs with `npm run affiliate:migrate-accounts`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

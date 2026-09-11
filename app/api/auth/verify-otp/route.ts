@@ -9,6 +9,10 @@ import {
   getNigeriaDefaults,
 } from "@/lib/country-config";
 import { attachAffiliateReferral } from "@/lib/affiliates";
+import {
+  parseCentralAffiliateAttribution,
+  SUREIMPORTS_ATTRIBUTION_COOKIE,
+} from "@/lib/central-affiliate-attribution";
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -58,7 +62,12 @@ export async function POST(req: Request) {
     const userAgent = req.headers.get("user-agent");
     const cookieHeader = req.headers.get("cookie");
     const cookieAffiliate = readCookie(cookieHeader, "linescout_affiliate_ref");
-    const affiliateCodeRaw = String(body?.affiliate_code || cookieAffiliate || "").trim();
+    const centralAttribution = parseCentralAffiliateAttribution(
+      readCookie(cookieHeader, SUREIMPORTS_ATTRIBUTION_COOKIE),
+    );
+    const affiliateCodeRaw = String(
+      body?.affiliate_code || cookieAffiliate || centralAttribution?.referralCode || "",
+    ).trim();
 
     conn = await getDb();
     await ensureCountryConfig(conn);

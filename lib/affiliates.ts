@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import type { PoolConnection } from "mysql2/promise";
 import { buildOtpEmail } from "@/lib/otp-email";
+import { enqueueCentralAffiliateEvent } from "@/lib/central-affiliate-events";
+import { getHistoricalUsdRate } from "@/lib/fx";
 
 export type AffiliateCommissionType =
   | "commitment_fee"
@@ -31,7 +33,13 @@ export function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-export async function ensureAffiliateTables(conn: PoolConnection) {
+export async function ensureAffiliateTables(_conn: PoolConnection) {
+  // The legacy schema is migration-managed. Request paths must never run DDL.
+  void _conn;
+  return;
+}
+
+export async function ensureLegacyAffiliateTables(conn: PoolConnection) {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS linescout_affiliates (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -277,26 +285,55 @@ export async function attachAffiliateReferral(conn: PoolConnection, params: {
 
   await ensureAffiliateTables(conn);
 
+  const [existingClaims]: any = await conn.query(
+    `SELECT referral_code FROM linescout_central_affiliate_referrals WHERE referred_user_id = ? LIMIT 1`,
+    [params.referred_user_id]
+  );
+  if (existingClaims?.length) {
+    const existingCode = String(existingClaims[0].referral_code || "").trim().toUpperCase();
+    if (existingCode) {
+      await enqueueCentralAffiliateEvent(conn, {
+        eventId: `linescout:referral:${params.referred_user_id}`,
+        eventType: "REFERRAL_CLAIMED",
+        occurredAt: new Date().toISOString(),
+        customerReference: `linescout:user:${params.referred_user_id}`,
+        referralCode: existingCode,
+        metadata: { source: params.source || null },
+      });
+    }
+    return { ok: true as const, affiliate_id: null };
+  }
+
   const [aRows]: any = await conn.query(
     `SELECT id FROM linescout_affiliates WHERE referral_code = ? LIMIT 1`,
     [code]
   );
-  if (!aRows?.length) return { ok: false as const, reason: "not_found" };
-  const affiliateId = Number(aRows[0].id || 0);
-  if (!affiliateId) return { ok: false as const, reason: "not_found" };
+  const affiliateId = Number(aRows?.[0]?.id || 0) || null;
 
   try {
+    if (affiliateId) {
+      await conn.query(
+        `INSERT INTO linescout_affiliate_referrals (affiliate_id, referred_user_id, source) VALUES (?, ?, ?)`,
+        [affiliateId, params.referred_user_id, params.source || null]
+      );
+    }
     await conn.query(
-      `
-      INSERT INTO linescout_affiliate_referrals (affiliate_id, referred_user_id, source)
-      VALUES (?, ?, ?)
-      `,
-      [affiliateId, params.referred_user_id, params.source || null]
+      `INSERT INTO linescout_central_affiliate_referrals (referred_user_id, referral_code, source) VALUES (?, ?, ?)`,
+      [params.referred_user_id, code, params.source || null]
     );
   } catch (e: any) {
     const msg = String(e?.message || "");
-    if (!msg.includes("uniq_affiliate_ref_user")) throw e;
+    if (!msg.includes("uniq_affiliate_ref_user") && !msg.includes("uniq_central_affiliate_ref_user")) throw e;
   }
+
+  await enqueueCentralAffiliateEvent(conn, {
+    eventId: `linescout:referral:${params.referred_user_id}`,
+    eventType: "REFERRAL_CLAIMED",
+    occurredAt: new Date().toISOString(),
+    customerReference: `linescout:user:${params.referred_user_id}`,
+    referralCode: code,
+    metadata: { source: params.source || null },
+  });
 
   return { ok: true as const, affiliate_id: affiliateId };
 }
@@ -313,71 +350,99 @@ export async function creditAffiliateEarning(conn: PoolConnection, params: {
   if (!userId) return { ok: false as const, reason: "no_user" };
 
   const [refRows]: any = await conn.query(
-    `SELECT affiliate_id FROM linescout_affiliate_referrals WHERE referred_user_id = ? LIMIT 1`,
-    [userId]
+    `SELECT c.referral_code
+     FROM linescout_central_affiliate_referrals c
+     WHERE c.referred_user_id = ?
+     UNION ALL
+     SELECT a.referral_code
+     FROM linescout_affiliate_referrals r
+     JOIN linescout_affiliates a ON a.id = r.affiliate_id
+     WHERE r.referred_user_id = ?
+     LIMIT 1`,
+    [userId, userId]
   );
   if (!refRows?.length) return { ok: false as const, reason: "no_affiliate" };
-  const affiliateId = Number(refRows[0].affiliate_id || 0);
-  if (!affiliateId) return { ok: false as const, reason: "no_affiliate" };
-
-  const [ruleRows]: any = await conn.query(
-    `
-    SELECT mode, value, currency
-    FROM linescout_affiliate_commission_rules
-    WHERE transaction_type = ? AND is_active = 1
-    ORDER BY id DESC
-    LIMIT 1
-    `,
-    [params.transaction_type]
-  );
-  if (!ruleRows?.length) return { ok: false as const, reason: "no_rule" };
-
-  const rule = ruleRows[0];
-  const mode = String(rule.mode || "percent").toLowerCase();
-  const value = Number(rule.value || 0);
-  if (!Number.isFinite(value) || value <= 0) return { ok: false as const, reason: "bad_rule" };
-
-  const baseAmount = Number(params.base_amount || 0);
-  if (!Number.isFinite(baseAmount) || baseAmount <= 0) return { ok: false as const, reason: "bad_amount" };
-
-  let commission = 0;
-  if (mode === "flat") {
-    commission = value;
-  } else {
-    commission = (baseAmount * value) / 100;
-  }
-
-  commission = Math.max(0, Number(commission.toFixed(2)));
-  if (commission <= 0) return { ok: false as const, reason: "zero" };
+  const referralCode = String(refRows[0].referral_code || "").trim().toUpperCase();
+  if (!referralCode) return { ok: false as const, reason: "no_affiliate" };
 
   const sourceId = String(params.source_id || "");
   if (!sourceId) return { ok: false as const, reason: "bad_source" };
-
-  try {
-    await conn.query(
-      `
-      INSERT INTO linescout_affiliate_earnings
-        (affiliate_id, referred_user_id, transaction_type, source_table, source_id, base_amount, commission_amount, currency, status)
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, 'approved')
-      `,
-      [
-        affiliateId,
-        userId,
-        params.transaction_type,
-        params.source_table,
-        sourceId,
-        baseAmount,
-        commission,
-        String(params.currency || "").toUpperCase() || "NGN",
-      ]
-    );
-  } catch (e: any) {
-    const msg = String(e?.message || "");
-    if (!msg.includes("uniq_affiliate_earning_source")) throw e;
+  const currency = String(params.currency || "NGN").trim().toUpperCase();
+  let settlementAmount: number | null = null;
+  let fxRate: number | null = null;
+  let fxSource: string | null = null;
+  if (currency !== "NGN" && currency !== "USD") {
+    const snapshot = await getHistoricalUsdRate(conn, currency, new Date());
+    fxRate = snapshot?.rate || null;
+    fxSource = snapshot?.source || null;
+    if (!fxRate) return { ok: false as const, reason: "missing_fx" };
+    settlementAmount = fxRate ? Number((Number(params.base_amount || 0) * fxRate).toFixed(2)) : null;
   }
 
-  return { ok: true as const, affiliate_id: affiliateId, commission };
+  let shipping: { billingUnit: "KG" | "CBM"; eligibleQuantity: number; destinationCountry: string; shippingMode: "AIR" | "SEA" } | null = null;
+  if (params.transaction_type === "shipping_payment" && params.source_table === "linescout_quote_payments") {
+    const [shippingRows]: any = await conn.query(
+      `SELECT q.shipping_actual_rate_unit, q.shipping_actual_weight_kg, q.shipping_actual_cbm,
+              COALESCE(c.name, 'NIGERIA') AS destination_country,
+              COALESCE(st.name, 'AIR') AS shipping_mode
+       FROM linescout_quote_payments p
+       JOIN linescout_quotes q ON q.id = p.quote_id
+       LEFT JOIN linescout_countries c ON c.id = q.country_id
+       LEFT JOIN linescout_shipping_types st ON st.id = p.shipping_type_id
+       WHERE p.id = ? LIMIT 1`,
+      [sourceId]
+    );
+    const row = shippingRows?.[0];
+    const billingUnit = String(row?.shipping_actual_rate_unit || "").toLowerCase() === "per_cbm" ? "CBM" : "KG";
+    const quantity = Number(billingUnit === "CBM" ? row?.shipping_actual_cbm : row?.shipping_actual_weight_kg);
+    if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false as const, reason: "missing_shipping_quantity" };
+    shipping = { billingUnit, eligibleQuantity: quantity, destinationCountry: String(row?.destination_country || "NIGERIA").toUpperCase(), shippingMode: String(row?.shipping_mode || "AIR").toUpperCase().includes("SEA") ? "SEA" : "AIR" };
+  } else if (params.transaction_type === "shipping_payment" && params.source_table === "linescout_shipping_quote_payments") {
+    const [shippingRows]: any = await conn.query(
+      `SELECT q.shipping_rate_unit, q.total_weight_kg, q.total_cbm,
+              COALESCE(c.name, 'NIGERIA') AS destination_country,
+              COALESCE(st.name, 'AIR') AS shipping_mode
+       FROM linescout_shipping_quote_payments p
+       JOIN linescout_shipping_quotes q ON q.id = p.shipping_quote_id
+       LEFT JOIN linescout_countries c ON c.id = q.country_id
+       LEFT JOIN linescout_shipping_types st ON st.id = q.shipping_type_id
+       WHERE p.id = ? LIMIT 1`,
+      [sourceId]
+    );
+    const row = shippingRows?.[0];
+    const billingUnit = String(row?.shipping_rate_unit || "").toLowerCase() === "per_cbm" ? "CBM" : "KG";
+    const quantity = Number(billingUnit === "CBM" ? row?.total_cbm : row?.total_weight_kg);
+    if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false as const, reason: "missing_shipping_quantity" };
+    shipping = { billingUnit, eligibleQuantity: quantity, destinationCountry: String(row?.destination_country || "NIGERIA").toUpperCase(), shippingMode: String(row?.shipping_mode || "AIR").toUpperCase().includes("SEA") ? "SEA" : "AIR" };
+  }
+
+  await enqueueCentralAffiliateEvent(conn, {
+    eventId: `linescout:payment:${params.source_table}:${sourceId}:paid`,
+    eventType: "PAYMENT_STATUS_CHANGED",
+    occurredAt: new Date().toISOString(),
+    customerReference: `linescout:user:${userId}`,
+    referralCode,
+    payment: {
+      type: params.source_table,
+      id: sourceId,
+      orderReference: `${params.source_table}:${sourceId}`,
+      purpose: params.transaction_type === "commitment_fee" ? "COMMITMENT_FEE" : params.transaction_type === "shipping_payment" ? "SHIPPING_PAYMENT" : "PROJECT_PAYMENT",
+      status: "COMPLETED",
+      currency,
+      amount: Number(params.base_amount || 0),
+      eligibleAmount: Number(params.base_amount || 0),
+      settlementCurrency: currency === "NGN" ? "NGN" : "USD",
+      settlementAmount: currency === "NGN" || currency === "USD" ? Number(params.base_amount || 0) : settlementAmount,
+      fxRate,
+      fxSource,
+      fxCapturedAt: fxRate ? new Date().toISOString() : null,
+      billingUnit: shipping?.billingUnit || null,
+      eligibleQuantity: shipping?.eligibleQuantity || null,
+      destinationCountry: shipping?.destinationCountry || null,
+      shippingMode: shipping?.shippingMode || null,
+    },
+  });
+  return { ok: true as const, queued: true };
 }
 
 export async function getAffiliateEarningsSnapshot(conn: PoolConnection, affiliateId: number) {

@@ -13,6 +13,7 @@ export const config = {
     "/api/internal/:path*",
     "/affiliates",
     "/affiliates/:path*",
+    "/api/affiliates/:path*",
     "/white-label-webinar",
     "/machine-sourcing-webinar-video",
     "/agent-app/:path*",
@@ -31,6 +32,28 @@ type InternalAccessRow = RowDataPacket & {
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (pathname === "/affiliates") {
+    return NextResponse.redirect("https://affiliate.sureimports.com/", 308);
+  }
+
+  if (pathname.startsWith("/api/affiliates/")) {
+    return NextResponse.json(
+      { error: "The LineScout affiliate portal has moved to affiliate.sureimports.com." },
+      { status: 410 },
+    );
+  }
+
+  if (pathname.startsWith("/internal/admin/affiliate")) {
+    return NextResponse.redirect("https://admin.sureimports.com/dashboard/affiliate-program", 308);
+  }
+
+  if (pathname.startsWith("/api/internal/admin/affiliate")) {
+    return NextResponse.json(
+      { error: "LineScout affiliate administration is read-only after the Sure Imports consolidation." },
+      { status: 410 },
+    );
+  }
 
   if (pathname === "/agents" || pathname === "/agent-app" || pathname.startsWith("/agent-app/")) {
     const response = NextResponse.next();
@@ -57,6 +80,10 @@ export default async function proxy(req: NextRequest) {
       "payouts",
       "payout-history",
     ]);
+
+    if (segments.length === 2 && reserved.has(slug)) {
+      return NextResponse.redirect("https://affiliate.sureimports.com/sign-in", 308);
+    }
 
     if (segments.length === 2 && slug && !reserved.has(slug)) {
       const referral = slug.trim().toUpperCase();
