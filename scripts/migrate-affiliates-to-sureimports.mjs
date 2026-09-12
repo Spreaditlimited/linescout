@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
+import { reserveAffiliateMembership } from "./affiliate-membership.mjs";
 
 const centralUrl = process.env.AFFILIATE_DATABASE_URL?.trim();
 const encodedKey = process.env.AFFILIATE_SECURITY_KEY?.trim();
@@ -50,6 +51,7 @@ try {
       } else {
         merged += 1;
       }
+      await reserveAffiliateMembership(central, emailHash, affiliateId);
       await central.query(`INSERT IGNORE INTO affiliate_external_identities (pidIdentity, affiliateId, sourceSystem, externalAffiliateId, createdAt) VALUES (?, ?, 'LINESCOUT', ?, NOW(3))`, [`afext_${token()}`, affiliateId, String(affiliate.id)]);
       const [aliasResult] = await central.query(`INSERT IGNORE INTO affiliate_referral_code_aliases (pidAlias, affiliateId, sourceSystem, aliasCode, active, createdAt) VALUES (?, ?, 'LINESCOUT', ?, true, NOW(3))`, [`afalias_${token()}`, affiliateId, String(affiliate.referral_code || "").toUpperCase()]);
       aliases += Number(aliasResult.affectedRows || 0);

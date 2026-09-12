@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { verifyPaystackSignature } from "@/lib/paystack";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
+import { shouldForwardPaystackEventToSureImports } from "@/lib/paystack-webhook-routing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,16 +14,38 @@ function internalSecret() {
 
 async function triggerSourcingVerify(req: Request, reference: string, purpose: string) {
   const secret = internalSecret();
-  if (!secret || !reference) return;
+  if (!secret) {
+    return { ok: false as const, error: "Missing payment reconciliation secret" };
+  }
+  if (!reference) {
+    return { ok: false as const, error: "Missing Paystack reference" };
+  }
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
-  await fetch(`${baseUrl}/api/payments/paystack/verify`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-cron-secret": secret,
-    },
-    body: JSON.stringify({ reference, purpose }),
-  }).catch(() => {});
+  try {
+    const response = await fetch(`${baseUrl}/api/payments/paystack/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-cron-secret": secret,
+      },
+      body: JSON.stringify({ reference, purpose }),
+      cache: "no-store",
+    });
+    const result: any = await response.json().catch(() => null);
+    if (!response.ok || result?.ok === false) {
+      return {
+        ok: false as const,
+        error: String(result?.error || `Payment verification failed (HTTP ${response.status})`),
+        status: response.status,
+      };
+    }
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Payment verification request failed",
+    };
+  }
 }
 
 async function forwardSureImportsPaystackWebhook(rawBody: string, signature: string) {
@@ -48,16 +71,6 @@ async function forwardSureImportsPaystackWebhook(rawBody: string, signature: str
   } catch {
     return false;
   }
-}
-
-function shouldForwardToSureImports(event: string) {
-  return (
-    event === "charge.success" ||
-    event.startsWith("subscription.") ||
-    event.startsWith("transfer.") ||
-    event.startsWith("refund.") ||
-    event.startsWith("charge.dispute.")
-  );
 }
 
 function toNaira(amount: any) {
@@ -145,7 +158,9 @@ export async function POST(req: Request) {
   const event = String(payload?.event || "").trim();
   const data = payload?.data || {};
 
-  if (shouldForwardToSureImports(event)) {
+  // Sure Imports routes LineScout references back here. Never forward those
+  // events again, or the two webhook endpoints recurse until both return 502.
+  if (shouldForwardPaystackEventToSureImports(event, payload)) {
     const forwarded = await forwardSureImportsPaystackWebhook(rawBody, signature);
     if (!forwarded) {
       return NextResponse.json(
@@ -287,7 +302,19 @@ export async function POST(req: Request) {
     .toLowerCase();
   if (metadataPurpose === "sourcing" || metadataPurpose === "business_plan" || metadataPurpose === "reorder") {
     const reference = String(data?.reference || data?.transaction_reference || data?.id || "").trim();
-    await triggerSourcingVerify(req, reference, metadataPurpose);
+    const verification = await triggerSourcingVerify(req, reference, metadataPurpose);
+    if (!verification.ok) {
+      console.error("Paystack project-start verification failed", {
+        reference,
+        purpose: metadataPurpose,
+        status: "status" in verification ? verification.status : undefined,
+        error: verification.error,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Payment verification could not be completed" },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ ok: true, queued: true, reason: "project_start_payment" });
   }
 
