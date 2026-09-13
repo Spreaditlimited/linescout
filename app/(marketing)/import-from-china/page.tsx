@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BadgeCheck, Ship, Factory, Handshake, ArrowRight, Star, ChevronDown } from "lucide-react";
+import { BadgeCheck, Ship, Factory, Handshake, Star, ChevronDown } from "lucide-react";
 import InlineEmailOtpForm from "@/components/marketing/InlineEmailOtpForm";
 
 export const metadata: Metadata = {
@@ -147,12 +147,12 @@ export default function ImportFromChinaPage() {
                 Expert Sourcing Support
               </span>
             </div>
-            
+
             <h1 className="mt-6 text-4xl font-bold leading-[1.15] tracking-tight text-neutral-900 sm:text-5xl lg:text-6xl">
               Import from China <br />
               <span className="text-[var(--agent-blue)]">Without the Guesswork</span>
             </h1>
-            
+
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-neutral-600">
               Source machines, build your brand, and buy products in bulk. We connect you to
               trusted specialists on the ground in China who help you find the right manufacturer,
@@ -207,7 +207,7 @@ export default function ImportFromChinaPage() {
                 className="mt-10 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--agent-blue)] p-4 text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[#22274A] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--agent-blue)] focus:ring-offset-2 md:hidden"
               >
                 <span className="text-sm font-semibold">Ready to see our process?</span>
-                <ArrowRight className="h-4 w-4" />
+
               </Link>
             </div>
           </div>
@@ -277,7 +277,7 @@ export default function ImportFromChinaPage() {
               className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[#22274A] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--agent-blue)] focus:ring-offset-2"
             >
               Start sourcing safely
-              <ArrowRight className="h-4 w-4" />
+
             </Link>
           </div>
         </section>
@@ -320,7 +320,7 @@ export default function ImportFromChinaPage() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-8 py-4 text-base font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[#22274A] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--agent-blue)] focus:ring-offset-2"
               >
                 Get Started Now
-                <ArrowRight className="h-5 w-5" />
+
               </Link>
             </div>
           </div>

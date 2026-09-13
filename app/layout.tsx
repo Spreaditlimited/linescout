@@ -4,6 +4,8 @@ import type { Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import "./theme-tokens.css";
+import "./refinement.css";
 
 import MetaPixel from "./MetaPixel";
 import InstallPrompt from "@/components/InstallPrompt";
@@ -85,6 +87,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
+              if (window.location.pathname !== '/set-password') {
               !function(f,b,e,v,n,t,s)
               {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
               n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -96,6 +99,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               fbq('init', '${pixelId}', {}, { autoConfig: false });
               fbq('set', 'autoConfig', false, '${pixelId}');
               fbq('track', 'PageView');
+              }
             `,
           }}
         />

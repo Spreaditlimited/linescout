@@ -41,7 +41,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/track");
   const isPublicQuote = pathname.startsWith("/quote/") || pathname.startsWith("/shipping-quote/");
   const isAgentApp = pathname.startsWith("/agent-app");
-  const isAuth = pathname.startsWith("/sign-in") || pathname.startsWith("/onboarding");
+  const isAuth = ["/sign-in", "/sign-up", "/set-up-password", "/forgot-password", "/set-password", "/onboarding"].some(path => pathname === path || pathname.startsWith(path + "/"));
   const isAccountDeletion = pathname.startsWith("/account-deletion");
   const isTracking = pathname.startsWith("/track");
   const isApp =
@@ -106,7 +106,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className={`${shellClass}${isPublicSite ? " public-site" : ""}`}>
       {isPublicSite ? (
-        <MarketingTopNav forceLightNavbar={isTracking || isWhiteLabelLeads || isMachineSourcingLeads} />
+        <MarketingTopNav forceLightNavbar />
       ) : !isInternal &&
       !isLanding &&
       !isAgents &&
@@ -126,12 +126,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
       {isPublicSite || isLanding ? children : (
-        <main className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</main>
+        <div className={isNoStretch ? "min-h-0" : "flex-1 min-h-0"}>{children}</div>
       )}
       {isPublicSite ? <Footer /> : null}
       {isPublicSite && !isWebinarViewer ? <LeadCapturePopup /> : null}
-      <CookieNotice />
-      <FloatingWhatsAppButton />
+      {!isAuth ? <><CookieNotice /><FloatingWhatsAppButton /></> : null}
     </div>
   );
 }

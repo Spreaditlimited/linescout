@@ -1,23 +1,5 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  BadgeCheck,
-  BellRing,
-  BriefcaseBusiness,
-  Check,
-  CheckCircle2,
-  CircleDollarSign,
-  ClipboardCheck,
-  FileText,
-  Headphones,
-  MessageSquareText,
-  PackageCheck,
-  RefreshCcw,
-  ShieldCheck,
-  UserCheck,
-  WalletCards,
-  type LucideIcon,
-} from "lucide-react";
+import { BadgeCheck, BellRing, BriefcaseBusiness, Check, CheckCircle2, CircleDollarSign, ClipboardCheck, FileText, Headphones, MessageSquareText, PackageCheck, RefreshCcw, ShieldCheck, UserCheck, WalletCards, type LucideIcon } from "lucide-react";
 
 type Capability = {
   title: string;
@@ -137,7 +119,7 @@ export default function AgentAppLandingPage() {
                 href="/agent-app/sign-in"
                 className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-xl shadow-orange-950/30 transition hover:bg-orange-600 sm:w-auto"
               >
-                Sign in to workspace <ArrowRight className="h-4 w-4" />
+                Sign in to workspace
               </Link>
               <Link
                 href="/agent-app/sign-up"
@@ -246,7 +228,7 @@ export default function AgentAppLandingPage() {
               The workspace follows the real work an agent performs. It keeps ownership clear and gives every customer interaction a project context.
             </p>
             <Link href="/agent-app/sign-in" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
-              Enter the agent workspace <ArrowRight className="h-4 w-4" />
+              Enter the agent workspace
             </Link>
           </div>
 
@@ -325,7 +307,7 @@ export default function AgentAppLandingPage() {
             </p>
           </div>
           <Link href="/agent-app/sign-in" className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
-            View your earnings <ArrowRight className="h-4 w-4" />
+            View your earnings
           </Link>
         </div>
       </section>
@@ -343,7 +325,7 @@ export default function AgentAppLandingPage() {
           </div>
           <div className="flex shrink-0 flex-wrap gap-3">
             <Link href="/agent-app/sign-in" className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600">
-              Sign in <ArrowRight className="h-4 w-4" />
+              Sign in
             </Link>
             <Link href="/agents" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white hover:bg-white/15">
               Review agent agreement

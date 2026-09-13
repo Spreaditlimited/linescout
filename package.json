@@ -15,10 +15,13 @@
     "seo:plan": "node --env-file=.env.local scripts/white-label-seo/plan.cjs",
     "seo:import-drafts": "node --env-file=.env.local scripts/white-label-seo/import-drafts.cjs",
     "affiliate:migrate-outbox": "node --env-file=.env.local scripts/migrate-central-affiliate-outbox.mjs",
-    "affiliate:migrate-accounts": "node --env-file=.env.local scripts/migrate-affiliates-to-sureimports.mjs"
+    "affiliate:migrate-accounts": "node --env-file=.env.local scripts/migrate-affiliates-to-sureimports.mjs",
+    "auth:migrate": "node --env-file=.env.local scripts/migrate-customer-password-auth.mjs",
+    "test:customer-auth": "node --test tests/customer-password-auth.test.mjs"
   },
   "dependencies": {
     "@next/third-parties": "^16.0.7",
+    "@node-rs/argon2": "^2.2.1",
     "@radix-ui/react-accordion": "^1.2.20",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-navigation-menu": "^1.2.22",

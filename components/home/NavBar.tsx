@@ -404,7 +404,7 @@ export default function Navbar({ forceLightNavbar = false }: NavbarProps) {
                           }`}
                         >
                           <ul
-                            className={`grid ${item.panelClassName} grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl`}
+                            className={`ls-menu ls-desktop-menu grid ${item.panelClassName} grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl`}
                           >
                             {item.items.map((child) => (
                               <ListItem
@@ -497,25 +497,29 @@ export default function Navbar({ forceLightNavbar = false }: NavbarProps) {
                   size="icon"
                   className={`border-0 ${useLightNavbar ? 'text-slate-800 hover:bg-slate-100 dark:text-white dark:hover:bg-white/10' : 'text-white hover:bg-white/10'}`}
                 >
+                  <span className="sr-only">Open navigation menu</span>
                   <Menu className="h-6 w-6" />
                 </Button>
               </SheetTrigger>
               <SheetContent
                 side="right"
-                className="w-full overflow-y-auto border-slate-800 bg-slate-950 p-0 sm:max-w-md"
+                className="ls-menu ls-mobile-menu w-full overflow-y-auto border-slate-800 bg-slate-950 p-0 sm:max-w-md"
+                aria-describedby={undefined}
               >
                 <SheetTitle className="sr-only">
                   Main Navigation Menu
                 </SheetTitle>
                 <div className="p-6">
-                  <div className="mb-8 flex items-center gap-4">
+                  <div className="mb-6 flex min-h-11 items-center gap-4 pr-12">
                     <div className="flex flex-col items-start">
                       <Image
                         src="/images/svg-logo-white.svg"
                         alt="Sure Imports"
                         width={140}
                         height={30}
+                        className="hidden dark:block"
                       />
+                      <Image src="/images/svg-logo.svg" alt="Sure Imports" width={140} height={30} className="dark:hidden" />
                       <span className="mt-1 text-[10px] font-bold uppercase leading-none tracking-[0.32em] text-slate-300">
                         LineScout
                       </span>

@@ -1,0 +1,39 @@
+/* LineScout visual source of truth. Tokens do not style unrelated apps until consumed. */
+:root {
+  --ls-theme-canvas: #f6f8fc;
+  --ls-theme-surface: #ffffff;
+  --ls-theme-chrome: #ffffff;
+  --ls-theme-raised: #ffffff;
+  --ls-theme-inset: #f1f3f8;
+  --ls-theme-soft: #eeedf7;
+  --ls-theme-ink: #18243b;
+  --ls-theme-muted: #526078;
+  --ls-theme-border: #e3e8f0;
+  --ls-theme-accent: #48439b;
+  --ls-theme-primary: #48439b;
+  --ls-theme-on-primary: #ffffff;
+  --ls-theme-glow: #eeecfc;
+  --ls-theme-shadow: 0 8px 24px -16px rgb(24 36 59 / 18%);
+  --ls-charcoal-deep: #0b0c10;
+  --ls-charcoal-chrome: #15171c;
+  --ls-charcoal-surface: #191b21;
+  --ls-charcoal-raised: #21242c;
+  --ls-purple-readable-dark: #b8b2ff;
+  --ls-purple-readable-light: #48439b;
+}
+html.dark {
+  --ls-theme-canvas: #101114;
+  --ls-theme-surface: var(--ls-charcoal-surface);
+  --ls-theme-chrome: var(--ls-charcoal-chrome);
+  --ls-theme-raised: var(--ls-charcoal-raised);
+  --ls-theme-inset: #13151a;
+  --ls-theme-soft: #292539;
+  --ls-theme-ink: #f2f3f7;
+  --ls-theme-muted: #adb2c0;
+  --ls-theme-border: #30333e;
+  --ls-theme-accent: var(--ls-purple-readable-dark);
+  --ls-theme-primary: #b0a7f5;
+  --ls-theme-on-primary: #19152d;
+  --ls-theme-glow: #201e2b;
+  --ls-theme-shadow: 0 8px 24px -16px rgb(0 0 0 / 45%);
+}

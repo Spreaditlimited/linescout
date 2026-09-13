@@ -1,19 +1,3 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import EmailOtpForm from "@/components/auth/EmailOtpForm";
-
-export default function SignInPage() {
-  return (
-    <div className="flex w-full flex-col items-center gap-6">
-      <Link
-        href="/"
-        className="btn btn-ghost text-xs"
-      >
-        ← Back to home
-      </Link>
-      <Suspense fallback={null}>
-        <EmailOtpForm />
-      </Suspense>
-    </div>
-  );
-}
+import PasswordAuthForm from "@/components/auth/PasswordAuthForm";
+export default function Page() { return <Suspense fallback={<p>Loading account form…</p>}><PasswordAuthForm mode="signin" /></Suspense>; }

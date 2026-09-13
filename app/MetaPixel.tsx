@@ -13,6 +13,7 @@ export default function MetaPixel() {
   const pathname = usePathname();
 
   useEffect(() => {
+    if (pathname === "/set-password") return;
     if (typeof window !== "undefined" && typeof window.fbq === "function") {
       window.fbq("track", "PageView");
     }

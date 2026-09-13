@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import PasswordAuthForm from "@/components/auth/PasswordAuthForm";
 import { authFetch } from "@/lib/auth-client";
 import SearchableSelect from "../../internal/_components/SearchableSelect";
 
@@ -501,6 +502,7 @@ export default function ProfilePage() {
         ) : null}
       </div>
 
+      <div className="mt-8 mb-8 max-w-xl rounded-2xl border border-neutral-200 bg-white p-6"><PasswordAuthForm mode="change" /></div>
       <div className="mt-6 w-full max-w-6xl">
         <div className="grid gap-6 xl:grid-cols-12">
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm xl:col-span-7">

@@ -1,12 +1,6 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Clock3,
-  LockKeyhole,
-  PlayCircle,
-} from "lucide-react";
+import { CheckCircle2, Clock3, LockKeyhole, PlayCircle } from "lucide-react";
 
 type ViewingPoint = {
   title: string;
@@ -163,7 +157,7 @@ export default function WebinarViewingPage({
                 >
                   <PrimaryIcon className="h-4 w-4" aria-hidden="true" />
                   {primaryAction.label}
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+
                 </Link>
                 {secondaryAction ? (
                   <Link

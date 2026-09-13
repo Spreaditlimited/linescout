@@ -8,7 +8,7 @@ const GA_ID = process.env.NEXT_PUBLIC_GA_TRACKING_ID || "G-CMGHVCHW1D";
 export default function GA4() {
   const pathname = usePathname();
 
-  if (pathname.startsWith("/internal")) return null;
+  if (pathname.startsWith("/internal") || pathname === "/set-password") return null;
 
   return <GoogleAnalytics gaId={GA_ID} />;
 }

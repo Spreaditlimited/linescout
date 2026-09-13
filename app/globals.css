@@ -265,14 +265,14 @@ button {
 .public-site {
   --public-content-width: 90rem;
   --agent-blue: #20459b;
-  --sure-orange: #f95a0e;
+  --sure-orange: var(--ls-primary);
   --sure-indigo: #20459b;
   background: #fcfcfd;
   color: #0f172a;
 }
 
 .public-site ::selection {
-  background: rgba(249, 115, 22, 0.22);
+  background: rgba(100, 88, 180, 0.22);
   color: #0f172a;
 }
 
@@ -317,36 +317,36 @@ button {
   z-index: -1;
   content: "";
   background:
-    radial-gradient(circle at 82% 18%, rgba(249, 90, 14, 0.2), transparent 30%),
+    radial-gradient(circle at 82% 18%, rgba(100, 88, 180, 0.2), transparent 30%),
     radial-gradient(circle at 12% 10%, rgba(79, 70, 229, 0.2), transparent 32%),
     linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(2, 6, 23, 0.75));
 }
 
 .public-site .si-hero > :first-child > h1,
 .public-site .si-hero > h1 {
-  color: white;
-  font-size: clamp(2.75rem, 6vw, 4.5rem);
-  font-weight: 900;
+  color: var(--ls-ink, #18243b);
+  font-size: clamp(2.5rem, 4.4vw, 4.5rem);
+  font-weight: 700;
   line-height: 1.08;
   letter-spacing: -0.045em;
 }
 
 .public-site .si-hero > :first-child > p,
 .public-site .si-hero > p {
-  color: #cbd5e1;
+  color: var(--ls-muted, #526078);
   font-size: clamp(1rem, 1.8vw, 1.25rem);
   line-height: 1.75;
 }
 
 .public-site .si-hero > .inline-flex,
 .public-site .si-hero > :first-child > .inline-flex {
-  border-color: rgba(249, 90, 14, 0.32);
-  background-color: rgba(249, 90, 14, 0.1);
-  color: #fb923c;
+  border-color: rgba(100, 88, 180, 0.32);
+  background-color: rgba(100, 88, 180, 0.1);
+  color: var(--ls-accent);
 }
 
 .public-site .si-hero h1 [class*="text-[var(--agent-blue)]"] {
-  color: #fb7b35;
+  color: var(--ls-accent);
 }
 
 .public-site .si-hero a[class*="px-"],
@@ -375,11 +375,11 @@ button {
 .public-site [class*="bg-[var(--agent-blue)]"] {
   border-radius: 9999px;
   background-color: var(--sure-orange) !important;
-  box-shadow: 0 12px 30px rgba(249, 90, 14, 0.24);
+  box-shadow: 0 12px 30px rgba(100, 88, 180, 0.24);
 }
 
 .public-site [class*="bg-[var(--agent-blue)]"]:hover {
-  background-color: #ea580c !important;
+  background-color: var(--ls-primary) !important;
 }
 
 .public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white,
@@ -412,7 +412,7 @@ button {
 .public-site :where(input, select, textarea):focus {
   border-color: var(--sure-orange);
   background-color: white;
-  box-shadow: 0 0 0 3px rgba(249, 90, 14, 0.14);
+  box-shadow: 0 0 0 3px rgba(100, 88, 180, 0.14);
 }
 
 .public-site #site-footer input {
@@ -428,9 +428,9 @@ button {
 }
 
 .public-site #site-footer input:focus {
-  border-color: #f97316;
+  border-color: var(--ls-accent);
   background-color: #0f172a;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+  box-shadow: 0 0 0 3px rgba(100, 88, 180, 0.2);
 }
 
 .public-site #lead-capture-popup input {
@@ -442,9 +442,9 @@ button {
 }
 
 .public-site #lead-capture-popup input:focus {
-  border-color: #f97316;
+  border-color: var(--ls-accent);
   background-color: #fff;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2);
+  box-shadow: 0 0 0 3px rgba(100, 88, 180, 0.2);
 }
 
 .dark .public-site #lead-capture-popup input,
@@ -455,7 +455,7 @@ button {
 }
 
 .dark .public-site #lead-capture-popup input:focus {
-  border-color: #f97316;
+  border-color: var(--ls-accent);
 }
 
 .public-site :where(.max-w-5xl, .max-w-6xl, .max-w-7xl, [class~="max-w-[1600px]"]) {
@@ -467,26 +467,26 @@ button {
 }
 
 .public-site .btn-primary {
-  border-color: #f95a0e;
-  background: #f95a0e;
-  box-shadow: 0 12px 30px rgba(249, 90, 14, 0.22);
+  border-color: var(--ls-primary);
+  background: var(--ls-primary);
+  box-shadow: 0 12px 30px rgba(100, 88, 180, 0.22);
 }
 
 .public-site .btn-primary:hover {
-  border-color: #ea580c;
-  background: #ea580c;
+  border-color: var(--ls-primary);
+  background: var(--ls-primary);
 }
 
 .public-site .bg-orange-500 {
-  background-color: #f95a0e;
+  background-color: var(--ls-primary);
 }
 
 .public-site .hover\:bg-orange-600:hover {
-  background-color: #ea4306;
+  background-color: var(--ls-primary);
 }
 
 .public-site :where(a, button, summary):focus-visible {
-  outline: 3px solid rgba(249, 115, 22, 0.3);
+  outline: 3px solid rgba(100, 88, 180, 0.3);
   outline-offset: 3px;
 }
 
@@ -500,7 +500,7 @@ button {
 }
 
 .dark .public-site ::selection {
-  background: rgba(249, 115, 22, 0.36);
+  background: rgba(100, 88, 180, 0.36);
   color: #fff7ed;
 }
 
@@ -588,7 +588,7 @@ button {
 .dark .public-site :where(input, select, textarea):focus {
   border-color: var(--sure-orange);
   background-color: #0f172a;
-  box-shadow: 0 0 0 3px rgba(249, 90, 14, 0.22);
+  box-shadow: 0 0 0 3px rgba(100, 88, 180, 0.22);
 }
 
 .dark .public-site :where(.rounded-3xl, [class~="rounded-[28px]"], [class~="rounded-[30px]"], [class~="rounded-[32px]"]).border.bg-white,

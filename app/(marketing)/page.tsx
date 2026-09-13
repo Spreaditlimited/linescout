@@ -6,29 +6,7 @@ import { cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2/promise";
-import {
-  ArrowRight,
-  BadgeCheck,
-  Bot,
-  Boxes,
-  Check,
-  ChevronDown,
-  CircleDollarSign,
-  ClipboardCheck,
-  FileText,
-  FolderKanban,
-  Headphones,
-  Lightbulb,
-  MessageCircle,
-  PackageCheck,
-  PackageSearch,
-  RefreshCcw,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Star,
-  WalletCards,
-} from "lucide-react";
+import { BadgeCheck, Bot, Boxes, Check, ChevronDown, CircleDollarSign, ClipboardCheck, FileText, FolderKanban, Headphones, Lightbulb, MessageCircle, PackageCheck, PackageSearch, RefreshCcw, Search, ShieldCheck, Sparkles, Star, WalletCards } from "lucide-react";
 
 import { db, queryOne } from "@/lib/db";
 
@@ -328,7 +306,7 @@ export default async function HomePage() {
                 href="/sign-in?next=/projects/new"
                 className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
               >
-                Start Sourcing <ArrowRight className="h-4 w-4" />
+                Start Sourcing
               </Link>
               <Link
                 href="/white-label"
@@ -418,7 +396,7 @@ export default async function HomePage() {
               designed around the real China sourcing process.
             </p>
             <Link href="/sign-in?next=/projects/new" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
-              Enter the sourcing workspace <ArrowRight className="h-4 w-4" />
+              Enter the sourcing workspace
             </Link>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -430,7 +408,7 @@ export default async function HomePage() {
                 <h3 className="mt-5 text-lg font-bold text-neutral-900">{item.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-neutral-600">{item.description}</p>
                 <Link href={item.href} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-orange-600">
-                  {item.cta} <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                  {item.cta}
                 </Link>
               </article>
             ))}
@@ -456,7 +434,7 @@ export default async function HomePage() {
                 href="/white-label"
                 className="inline-flex shrink-0 items-center gap-2 text-sm font-bold text-orange-600"
               >
-                Browse all 1,000+ ideas <ArrowRight className="h-4 w-4" />
+                Browse all 1,000+ ideas
               </Link>
             </div>
 
@@ -490,7 +468,7 @@ export default async function HomePage() {
                     <div className="mt-4 flex items-center justify-between text-xs font-semibold text-neutral-500">
                       <span>{product.view_count.toLocaleString()} views</span>
                       <span className="inline-flex items-center gap-1 text-orange-600">
-                        View idea <ArrowRight className="h-3.5 w-3.5" />
+                        View idea
                       </span>
                     </div>
                   </div>
@@ -538,7 +516,7 @@ export default async function HomePage() {
                 <h2 className="mt-2 text-2xl font-bold">{route.title}</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-300">{route.description}</p>
                 <Link href={route.href} className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-white">
-                  {route.link} <ArrowRight className="h-4 w-4 text-orange-400" />
+                  {route.link}
                 </Link>
               </article>
             ))}
@@ -684,7 +662,7 @@ export default async function HomePage() {
               href="/sign-in?next=/projects/new"
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600"
             >
-              Start Sourcing <ArrowRight className="h-4 w-4" />
+              Start Sourcing
             </Link>
             <Link
               href="/white-label"

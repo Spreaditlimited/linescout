@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, Settings, Wrench } from "lucide-react";
+import { Settings, Wrench } from "lucide-react";
 import { db } from "@/lib/db";
 import {
   computeMachineLandedRange,
@@ -219,7 +219,7 @@ export default async function MachineDetailPage({
                 )}`}
                 className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600"
               >
-                Start sourcing <ArrowRight className="h-4 w-4" />
+                Start sourcing
               </Link>
               <Link
                 href="/sign-in"

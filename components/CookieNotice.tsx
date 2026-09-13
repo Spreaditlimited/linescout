@@ -48,7 +48,7 @@ export default function CookieNotice() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={acknowledge}
-            className="rounded-full bg-[#F95A0E] px-5 py-2 text-xs font-bold text-white shadow-lg shadow-orange-500/20 transition hover:bg-[#EA4306]"
+            className="rounded-full bg-[#48439B] dark:bg-[#B0A7F5] dark:text-[#19152D] px-5 py-2 text-xs font-bold text-white shadow-lg shadow-violet-500/10 transition hover:brightness-95"
           >
             Accept
           </button>

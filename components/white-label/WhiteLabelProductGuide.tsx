@@ -1,21 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  ArrowRight,
-  BadgeCheck,
-  Check,
-  ChevronDown,
-  CircleDollarSign,
-  ClipboardCheck,
-  Eye,
-  PackageCheck,
-  ShieldAlert,
-  Sparkles,
-  Target,
-  Truck,
-  Users,
-} from "lucide-react";
+import { ArrowLeft, BadgeCheck, Check, ChevronDown, CircleDollarSign, ClipboardCheck, Eye, PackageCheck, ShieldAlert, Sparkles, Target, Truck, Users } from "lucide-react";
 
 import DeferredSection from "@/components/white-label/DeferredSection";
 import WhiteLabelViewTracker from "@/components/white-label/WhiteLabelViewTracker";
@@ -83,7 +68,7 @@ function ProductLinkCard({ product }: { product: GuideProduct }) {
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-orange-600">{product.category}</p>
         <h3 className="mt-2 line-clamp-2 text-base font-bold text-neutral-900">{product.product_name}</h3>
         <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-orange-600">
-          View product <ArrowRight className="h-3.5 w-3.5" />
+          View product
         </span>
       </div>
     </Link>
@@ -201,7 +186,7 @@ export default function WhiteLabelProductGuide({
                   href={sourcingHref}
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600"
                 >
-                  Start sourcing <ArrowRight className="h-4 w-4" />
+                  Start sourcing
                 </Link>
                 <a
                   href="#product-guide"
@@ -478,7 +463,7 @@ export default function WhiteLabelProductGuide({
               href={sourcingHref}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white hover:bg-orange-600"
             >
-              Start sourcing <ArrowRight className="h-4 w-4" />
+              Start sourcing
             </Link>
             <p className="mt-3 text-center text-[11px] leading-5 text-neutral-500">Share your target market, quantity, quality level, and branding requirements.</p>
           </div>
@@ -502,7 +487,7 @@ export default function WhiteLabelProductGuide({
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Turn this guide into a supplier-ready brief with help from the Sure Imports sourcing team.</p>
           </div>
           <Link href={sourcingHref} className="inline-flex shrink-0 items-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white hover:bg-orange-600">
-            Start sourcing <ArrowRight className="h-4 w-4" />
+            Start sourcing
           </Link>
         </div>
       </section>
@@ -515,7 +500,7 @@ export default function WhiteLabelProductGuide({
               <h2 className="mt-3 text-3xl font-black tracking-tight text-neutral-900">Similar products</h2>
             </div>
             <Link href="/white-label" className="inline-flex items-center gap-2 text-sm font-bold text-orange-600">
-              View all products <ArrowRight className="h-4 w-4" />
+              View all products
             </Link>
           </div>
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

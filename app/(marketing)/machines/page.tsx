@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, ShieldCheck, Sparkles, Settings } from "lucide-react";
+import { ShieldCheck, Sparkles, Settings } from "lucide-react";
 import { db } from "@/lib/db";
 import MachinesCatalogClient from "@/components/machines/MachinesCatalogClient";
 import { computeMachineLandedRange, getMachinePricingSettings } from "@/lib/machines";
@@ -252,7 +252,7 @@ export default async function MachinesPage({
                   href="/sourcing-project?route_type=machine_sourcing"
                   className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)] whitespace-nowrap"
                 >
-                  Start sourcing <ArrowRight className="h-4 w-4" />
+                  Start sourcing
                 </Link>
                 <Link
                   href="/sign-in"

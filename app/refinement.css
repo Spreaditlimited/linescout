@@ -1,0 +1,217 @@
+/* Shared Partner/Affiliate visual direction. Deliberately excludes internal and agent workspaces. */
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) {
+  --ls-canvas: var(--ls-theme-canvas);
+  --ls-surface: var(--ls-theme-surface);
+  --ls-soft: var(--ls-theme-soft);
+  --ls-ink: var(--ls-theme-ink);
+  --ls-muted: var(--ls-theme-muted);
+  --ls-border: var(--ls-theme-border);
+  --ls-accent: var(--ls-theme-accent);
+  --ls-primary: var(--ls-theme-primary);
+  --ls-on-primary: var(--ls-theme-on-primary);
+  --ls-shadow: var(--ls-theme-shadow);
+  --agent-blue: var(--ls-accent) !important;
+  background: var(--ls-canvas);
+  color: var(--ls-ink);
+  color-scheme: light;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.dark :is(.public-site.public-site, .app-theme-blue.app-theme-blue) {
+  --ls-canvas: var(--ls-theme-canvas);
+  --ls-surface: var(--ls-theme-surface);
+  --ls-soft: var(--ls-theme-soft);
+  --ls-ink: var(--ls-theme-ink);
+  --ls-muted: var(--ls-theme-muted);
+  --ls-border: var(--ls-theme-border);
+  --ls-accent: var(--ls-theme-accent);
+  --ls-primary: var(--ls-theme-primary);
+  --ls-on-primary: var(--ls-theme-on-primary);
+  --ls-shadow: var(--ls-theme-shadow);
+  color-scheme: dark;
+  background: var(--ls-canvas);
+  color: var(--ls-ink);
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.bg-white,.bg-white\/95,.bg-white\/90,.bg-white\/85,.bg-white\/80,.bg-white\/70) {
+  background-color: var(--ls-surface);
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is([class*="bg-[#F5F6FA]"],.bg-neutral-50,.bg-slate-50,.bg-neutral-100) {
+  background-color: var(--ls-canvas);
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.text-neutral-900,.text-neutral-950,.text-neutral-800,.text-slate-900,.text-slate-950) { color: var(--ls-ink); }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.text-neutral-500,.text-neutral-600,.text-neutral-700,.text-slate-500,.text-slate-600,.text-slate-700) { color: var(--ls-muted); }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.border-neutral-100,.border-neutral-200,.border-neutral-300,.border-slate-200,[class*="border-[rgba(45,52,97"]) { border-color: var(--ls-border); }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(h1,h2,h3) { font-weight: 650; letter-spacing: -.035em; }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(article,.rounded-3xl,.rounded-2xl,[class~="rounded-[28px]"],[class~="rounded-[32px]"]).border.bg-white {
+  border-radius: 16px;
+  border-color: var(--ls-border);
+  box-shadow: var(--ls-shadow);
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(input,select,textarea) {
+  background: var(--ls-surface);
+  color: var(--ls-ink);
+  border-color: var(--ls-border);
+  border-radius: 8px;
+  font-size: 16px;
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(input,select):not([type=checkbox]):not([type=radio]) { min-height: 44px; }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(input,select,textarea):focus { border-color: var(--ls-accent); outline: 2px solid var(--ls-accent); outline-offset: 2px; box-shadow: none; }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(a,button):focus-visible { outline: 2px solid var(--ls-accent); outline-offset: 4px; }
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.btn-primary,[class*="bg-[var(--agent-blue)]"]) {
+  background: var(--ls-primary); color: var(--ls-on-primary); border-color: var(--ls-primary); box-shadow: none;
+}
+:is(.public-site.public-site, .app-theme-blue.app-theme-blue) :is(.btn-primary,[class*="bg-[var(--agent-blue)]"]):hover { background: var(--ls-primary); filter: brightness(.94); }
+.public-site > nav { background: var(--ls-surface) !important; border-bottom: 1px solid var(--ls-border); backdrop-filter: none; box-shadow: var(--ls-shadow); }
+.public-site .si-hero {
+  background: radial-gradient(ellipse at 85% 25%, var(--ls-theme-glow), transparent 65%), var(--ls-canvas);
+  color: var(--ls-ink); box-shadow: none; clip-path: none;
+}
+.dark .public-site .si-hero { background: radial-gradient(ellipse at 85% 25%, var(--ls-theme-glow), transparent 65%), var(--ls-canvas); }
+.public-site .si-hero::before { display: none; }
+.public-site .si-hero h1 { color: var(--ls-ink); font-size: clamp(2.5rem, 4.4vw, 4.5rem); font-weight: 700; letter-spacing: -.055em; line-height: 1.08; }
+.public-site .si-hero > p,
+.public-site .si-hero > div > p,
+.public-site .si-hero > div > div:first-child > p,
+.public-site .si-hero > div > div:first-child > .text-slate-300 { color: var(--ls-muted); }
+.public-site .si-hero > div > div:first-child > .inline-flex { background: var(--ls-soft); color: var(--ls-accent); border-color: var(--ls-border); }
+.public-site .si-hero a[class*="px-"] { border-radius: 10px; min-height: 48px; }
+.public-site .si-hero a.bg-orange-500 { background: var(--ls-primary); color: var(--ls-on-primary); box-shadow: none; }
+.public-site .si-hero a.bg-white\/10 { background: var(--ls-surface); border-color: var(--ls-border); color: var(--ls-ink); backdrop-filter: none; }
+.public-site #site-footer { background: var(--ls-charcoal-deep); }
+.app-theme-blue aside { border-radius: 16px; box-shadow: var(--ls-shadow); }
+.app-theme-blue :is(button,nav a) { min-height: 44px; font-size: 14px; border-radius: 8px; }
+.app-theme-blue nav a[class*="bg-[var(--agent-blue)]"] { background: var(--ls-soft); color: var(--ls-accent); box-shadow: inset 3px 0 var(--ls-accent); }
+.app-theme-blue nav a[class*="bg-[var(--agent-blue)]"] svg { color: var(--ls-accent); }
+.app-theme-blue :is(.text-xs,.text-\[11px\],.text-\[10px\]) { font-size: 13px; }
+.app-theme-blue .bg-gradient-to-r,.app-theme-blue .bg-gradient-to-l { display: none; }
+@media(max-width: 639px) {
+  .public-site .si-hero { padding-top: 8rem; padding-bottom: 3.5rem; }
+  .public-site .si-hero h1 { font-size: clamp(2.25rem, 9vw, 3rem); }
+  .public-site .si-hero .mt-8.flex:has(>a) { display: grid; grid-template-columns: 1fr; }
+}
+
+.app-theme-blue.app-theme-blue nav a[class*="bg-[var(--agent-blue)]"] { background: var(--ls-soft); color: var(--ls-accent); box-shadow: inset 3px 0 var(--ls-accent); }
+.app-theme-blue.app-theme-blue .btn-outline { background: var(--ls-surface); color: var(--ls-ink); border-color: var(--ls-border); }
+
+/* One control silhouette across LineScout, including legacy utility buttons.
+   The important radius deliberately wins over old agent-app and pill rules.
+   Product cards, badges and plain text links are not button targets. */
+:root { --linescout-button-radius: 10px; }
+html body :is(button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"], .btn, .btn-primary, .btn-outline, .btn-secondary, a.inline-flex.items-center.justify-center, a.inline-flex.items-center[class*="px-"], nav a[class*="px-"], a[data-slot="button"]) {
+  border-radius: var(--linescout-button-radius) !important;
+}
+
+/* Marketing accents follow the Partner/Affiliate purple palette.
+   Status colours in operational screens retain their semantic meaning. */
+.public-site.public-site {
+  --color-orange-50: #f5f3fc;
+  --color-brand-orange-50: #f5f3fc;
+  --color-orange-100: #eeebfa;
+  --color-brand-orange-100: #eeebfa;
+  --color-orange-200: #ded8f5;
+  --color-brand-orange-200: #ded8f5;
+  --color-orange-300: #c6bcef;
+  --color-brand-orange-300: #c6bcef;
+  --color-orange-400: var(--ls-accent);
+  --color-brand-orange-400: var(--ls-accent);
+  --color-orange-500: var(--ls-primary);
+  --color-brand-orange-500: var(--ls-primary);
+  --color-orange-600: var(--ls-primary);
+  --color-brand-orange-600: var(--ls-primary);
+  --color-orange-700: var(--ls-accent);
+  --color-brand-orange-700: var(--ls-accent);
+  --color-orange-800: #353071;
+  --color-brand-orange-800: #353071;
+  --color-orange-900: #27234f;
+  --color-brand-orange-900: #27234f;
+  --color-orange-950: #19152d;
+  --color-brand-orange-950: #19152d;
+}
+.public-site.public-site :is(.bg-brand-orange-500,.bg-orange-500,.btn-primary,[class*="bg-[var(--agent-blue)]"]) { color: var(--ls-on-primary); box-shadow: none; }
+.public-site.public-site :is(.bg-brand-orange-500,.bg-orange-500,.btn-primary):hover { filter: brightness(.94); }
+.public-site.public-site .si-hero > :first-child > .inline-flex { color: var(--ls-accent); background: var(--ls-soft); border-color: var(--ls-border); }
+.public-site.public-site .si-hero h1 [class*="text-[var(--agent-blue)]"] { color: var(--ls-accent); }
+
+html .public-site.public-site [class*="text-[var(--agent-blue)]"] { color: var(--ls-accent); }
+
+/* Full-bleed hero canvas with the same content gutters as the navigation. */
+.public-site.public-site .si-hero.grid {
+  max-width: none;
+  padding-inline: max(2rem, calc((100% - var(--public-content-width)) / 2 + 2rem));
+}
+@media (max-width: 639px) {
+  .public-site.public-site .si-hero.grid { padding-inline: 1rem; }
+}
+/* Navigation is portalled on mobile, so trays own their theme tokens. */
+.ls-menu {
+  --menu-surface: var(--ls-theme-raised);
+  --menu-ink: var(--ls-theme-ink);
+  --menu-muted: var(--ls-theme-muted);
+  --menu-border: var(--ls-theme-border);
+  --menu-soft: var(--ls-theme-soft);
+  --menu-accent: var(--ls-theme-accent);
+  --menu-primary: var(--ls-theme-primary);
+  --menu-on-primary: var(--ls-theme-on-primary);
+}
+.dark .ls-menu {
+  --menu-surface: var(--ls-theme-raised);
+  --menu-ink: var(--ls-theme-ink);
+  --menu-muted: var(--ls-theme-muted);
+  --menu-border: var(--ls-theme-border);
+  --menu-soft: var(--ls-theme-soft);
+  --menu-accent: var(--ls-theme-accent);
+  --menu-primary: var(--ls-theme-primary);
+  --menu-on-primary: var(--ls-theme-on-primary);
+}
+html .ls-menu.ls-menu { background: var(--menu-surface); color: var(--menu-ink); border-color: var(--menu-border); box-shadow: 0 16px 48px -16px rgb(0 0 0 / 22%); }
+html .ls-desktop-menu { margin-top: 12px; border-radius: 16px; padding: 12px; gap: 4px; }
+html .ls-menu.ls-menu :is(a,button,h4) { color: var(--menu-ink); }
+html .ls-menu.ls-menu :is(p,.text-slate-300,.text-slate-400) { color: var(--menu-muted); }
+html .ls-menu.ls-menu h4 { font-size: 14px; font-weight: 650; letter-spacing: -.015em; }
+html .ls-menu.ls-menu p { font-size: 13px; line-height: 1.55; }
+html .ls-menu.ls-menu :is(a,button):hover { background-color: var(--menu-soft); color: var(--menu-accent); }
+html .ls-menu.ls-menu :is(a,button):focus-visible { outline: 2px solid var(--menu-accent); outline-offset: 2px; }
+html .ls-desktop-menu a { padding: 14px; gap: 12px; border-radius: 10px; }
+html .ls-desktop-menu .bg-gradient-to-br { background: var(--menu-soft); }
+html .ls-desktop-menu .bg-gradient-to-br svg { color: var(--menu-accent); }
+html .ls-mobile-menu { z-index: 100; width: min(100%, 420px); height: 100dvh; overscroll-behavior: contain; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+html .ls-mobile-menu :is(a,button) { min-height: 44px; font-size: 15px; }
+html .ls-mobile-menu > button { top: 24px; right: 20px; width: 44px; display: grid; place-items: center; opacity: 1; }
+html .ls-mobile-menu .border-t { border-color: var(--menu-border); padding-top: 20px; margin-top: 24px; }
+html .ls-mobile-menu.ls-mobile-menu .bg-brand-orange-500 { background: var(--menu-primary); color: var(--menu-on-primary); }
+html .ls-mobile-menu.ls-mobile-menu .bg-slate-800 { background: var(--menu-soft); color: var(--menu-ink); }
+
+/* Accent text follows its surface, including dark sections in light mode. */
+:is(.public-site, .app-theme-blue) { --readable-accent: var(--ls-purple-readable-light); }
+.dark :is(.public-site, .app-theme-blue) { --readable-accent: var(--ls-purple-readable-dark); }
+:is(.public-site, .app-theme-blue) :is(.bg-slate-900,.bg-slate-950,.bg-neutral-900,.bg-neutral-950,#site-footer) { --readable-accent: var(--ls-purple-readable-dark); }
+:is(.public-site, .app-theme-blue) :is(.bg-white,.bg-white\/95,.bg-white\/90,.bg-white\/80,.bg-white\/70,.bg-orange-50) { --readable-accent: var(--ls-purple-readable-light); }
+.dark :is(.public-site, .app-theme-blue) :is(.bg-white,.bg-white\/95,.bg-white\/90,.bg-white\/80,.bg-white\/70) { --readable-accent: var(--ls-purple-readable-dark); }
+html :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(
+  [class*="text-orange-"],[class*="text-brand-orange-"],
+  [class*="text-indigo-"],[class*="text-purple-"],[class*="text-violet-"],
+  [class*="text-[var(--agent-blue)]"],[class*="text-[#2D3461]"],[class*="text-[#20459B]"]
+) { color: var(--readable-accent); }
+/* Filled primary actions keep a contrasting label, not accent-on-accent text. */
+html :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.btn-primary,.bg-orange-500,.bg-brand-orange-500,[class*="bg-[var(--agent-blue)]"]) { color: var(--ls-on-primary); }
+html .app-theme-blue.app-theme-blue nav a[class*="bg-[var(--agent-blue)]"] { color: var(--ls-accent); }
+
+/* Compatibility bridge for legacy utility markup, scoped to customer-facing UI. */
+.dark :is(.public-site,.app-theme-blue,.ls-menu) {
+  --color-slate-950: var(--ls-charcoal-deep);
+  --color-slate-900: var(--ls-charcoal-surface);
+  --color-slate-800: var(--ls-charcoal-raised);
+  --color-slate-700: var(--ls-theme-border);
+}
+.dark .public-site.public-site > nav,
+.dark .app-theme-blue.app-theme-blue aside { background: var(--ls-theme-chrome) !important; }
+.dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.bg-slate-950,.bg-neutral-950) { background-color: var(--ls-charcoal-deep); }
+.dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.bg-slate-900,.bg-neutral-900) { background-color: var(--ls-theme-surface); }
+.dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.bg-slate-800,.bg-neutral-800) { background-color: var(--ls-theme-raised); }
+.dark .public-site.public-site :is(#lead-capture-popup,#site-footer) input,
+.dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(input,textarea,select) {
+  background: var(--ls-theme-inset); color: var(--ls-theme-ink); border-color: var(--ls-theme-border);
+}
+.dark .public-site.public-site :is(#lead-capture-popup,#site-footer) input:focus { border-color: var(--ls-theme-accent); }
+.dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.hover\:bg-neutral-50,.hover\:bg-neutral-100,.hover\:bg-slate-100):hover { background-color: var(--ls-theme-raised); }
+.dark .public-site.public-site #site-footer { background: var(--ls-charcoal-deep); }

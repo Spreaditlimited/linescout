@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, MessageCircle } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { authFetch } from "@/lib/auth-client";
 
 type RouteType = "machine_sourcing" | "white_label" | "simple_sourcing";

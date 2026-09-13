@@ -1,11 +1,11 @@
+import { authOriginAllowed } from "@/lib/password-security";
+import { limitAuth, AuthError } from "@/lib/customer-auth";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
-import { findReviewerByEmail, normalizeEmail } from "@/lib/reviewer-accounts";
+import { normalizeEmail } from "@/lib/reviewer-accounts";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import {
-  ensureCountryConfig,
-  ensureUserCountryColumns,
   getNigeriaDefaults,
 } from "@/lib/country-config";
 import { attachAffiliateReferral } from "@/lib/affiliates";
@@ -44,7 +44,9 @@ function readCookie(cookieHeader: string | null, name: string) {
 
 export async function POST(req: Request) {
   let conn: PoolConnection | null = null;
+  let transaction = false;
   try {
+    if (req.headers.get("origin") && !authOriginAllowed(req)) return NextResponse.json({ok:false,error:"Invalid origin"},{status:403});
     const body = await req.json().catch(() => ({}));
 
     const emailRaw = String(body?.email || "");
@@ -58,6 +60,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 400 });
     }
 
+    await limitAuth(req, "legacy-otp-verify", email);
     const ip = getClientIp(req);
     const userAgent = req.headers.get("user-agent");
     const cookieHeader = req.headers.get("cookie");
@@ -70,82 +73,11 @@ export async function POST(req: Request) {
     ).trim();
 
     conn = await getDb();
-    await ensureCountryConfig(conn);
-    await ensureUserCountryColumns(conn);
     const defaults = await getNigeriaDefaults(conn);
 
-    // Reviewer bypass
-    const reviewer = await findReviewerByEmail(conn, "mobile", email);
-    if (reviewer) {
-      const fixedOtp = String(reviewer.fixed_otp || "").trim();
-      if (!/^\d{6}$/.test(fixedOtp)) {
-        return NextResponse.json({ ok: false, error: "Reviewer OTP not configured" }, { status: 400 });
-      }
-      if (otpRaw !== fixedOtp) {
-        return NextResponse.json({ ok: false, error: "Invalid OTP" }, { status: 401 });
-      }
-
-      // Ensure user exists
-      const [urows] = await conn.execute<RowDataPacket[]>(
-        "SELECT id FROM users WHERE email_normalized = ? LIMIT 1",
-        [email]
-      );
-      let userId: number;
-      if (urows.length) {
-        userId = Number(urows[0].id);
-      } else {
-        const [ins]: any = await conn.execute(
-          "INSERT INTO users (email, email_normalized, country_id, display_currency_code) VALUES (?, ?, ?, ?)",
-          [emailRaw.trim(), email, defaults.country_id || null, defaults.display_currency_code || null]
-        );
-        userId = Number(ins.insertId);
-      }
-
-      const refreshToken = randomToken(32);
-      const refreshHash = sha256(refreshToken);
-
-      await conn.execute(
-        `
-        INSERT INTO linescout_user_sessions
-          (user_id, refresh_token_hash, expires_at, user_agent, ip_address, last_seen_at)
-        VALUES
-          (?, ?, (NOW() + INTERVAL 30 DAY), ?, ?, NOW())
-        `,
-        [userId, refreshHash, userAgent, ip]
-      );
-
-      const res = NextResponse.json({
-        ok: true,
-        user_id: userId,
-        refresh_token: refreshToken,
-      });
-
-      res.cookies.set({
-        name: "linescout_session",
-        value: refreshToken,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 30,
-      });
-
-      if (affiliateCodeRaw) {
-        try {
-          await attachAffiliateReferral(conn, {
-            affiliate_code: affiliateCodeRaw,
-            referred_user_id: userId,
-            source: body?.source || null,
-          });
-        } catch {
-          // ignore referral attach failures
-        }
-      }
-
-      return res;
-    }
-
     const otpHash = sha256(otpRaw);
+    await conn.beginTransaction();
+    transaction = true;
 
     // 1) Find pending user (OTP is tied to pending_users, not users)
     const [prows] = await conn.execute<RowDataPacket[]>(
@@ -167,7 +99,7 @@ export async function POST(req: Request) {
         AND consumed_at IS NULL
         AND expires_at > NOW()
       ORDER BY id DESC
-      LIMIT 1
+      LIMIT 1 FOR UPDATE
       `,
       [pendingUserId, otpHash]
     );
@@ -244,11 +176,17 @@ export async function POST(req: Request) {
       }
     }
 
+    await conn.commit();
+    transaction = false;
     return res;
   } catch (e: any) {
+    if (e instanceof AuthError) return NextResponse.json({ok:false,error:e.message},{status:e.status});
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   } finally {
-    if (conn) conn.release();
+    if (conn) {
+      if (transaction) await conn.rollback();
+      conn.release();
+    }
   }
 }

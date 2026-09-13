@@ -1,3 +1,4 @@
+import { sureImportsSender } from "@/lib/email-sender";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import type { Transporter } from "nodemailer";
 
@@ -20,7 +21,7 @@ function getSmtpConfig() {
   const port = Number(process.env.SMTP_PORT || 0);
   const user = process.env.SMTP_USER?.trim();
   const pass = process.env.SMTP_PASS?.trim();
-  const from = (process.env.SMTP_FROM || "no-reply@sureimports.com").trim();
+  const from = (process.env.SMTP_FROM || process.env.SMTP_USER || "hello@sureimports.com").trim();
 
   if (!host || !port || !user || !pass) {
     return { ok: false as const, error: "Missing SMTP env vars (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS)." };
@@ -49,10 +50,11 @@ export async function sendNoticeEmail(params: NoticeEmailParams) {
     port: smtp.port,
     secure: smtp.port === 465,
     auth: { user: smtp.user, pass: smtp.pass },
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000,
   });
 
   await transporter.sendMail({
-    from: smtp.from,
+    from: sureImportsSender(smtp.from),
     to: params.to,
     replyTo: params.replyTo || "hello@sureimports.com",
     subject: mail.subject,

@@ -75,6 +75,7 @@ export function buildNoticeEmail(params: {
     params.title,
     "",
     ...params.lines,
+    ...(params.ctaUrl ? [params.ctaUrl] : []),
     "",
     "Help: hello@sureimports.com",
   ].join("\n");

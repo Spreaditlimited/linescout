@@ -1,9 +1,10 @@
+import { sureImportsSender } from "@/lib/email-sender";
+import { limitAuth, AuthError } from "@/lib/customer-auth";
 // app/api/auth/request-otp/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { buildOtpEmail } from "@/lib/otp-email";
-import { findReviewerByEmail } from "@/lib/reviewer-accounts";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import nodemailer, { type Transporter } from "nodemailer";
 
@@ -13,7 +14,7 @@ function normalizeEmail(email: string) {
 
 function generateOtp() {
   // 6 digits, leading zeros preserved
-  return String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
 function getClientIp(req: Request) {
@@ -140,6 +141,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid email" }, { status: 400 });
     }
 
+    await limitAuth(req, "legacy-otp-send", email);
     const userAgent = req.headers.get("user-agent");
     const ip = getClientIp(req);
 
@@ -147,24 +149,6 @@ export async function POST(req: Request) {
 
     // 1) Create or fetch pending user (avoid creating real users before OTP verification)
     const pendingUserId = await getOrCreatePendingUser(conn, emailRaw, email);
-
-    // Reviewer bypass (no email/OTP send)
-    const reviewer = await findReviewerByEmail(conn, "mobile", email);
-    if (reviewer) {
-      const fixedOtp = String(reviewer.fixed_otp || "").trim();
-      if (!/^\d{6}$/.test(fixedOtp)) {
-        return NextResponse.json(
-          { ok: false, error: "Reviewer OTP not configured. Contact support." },
-          { status: 400 }
-        );
-      }
-
-      return NextResponse.json({
-        ok: true,
-        reviewer: true,
-        dev_otp: fixedOtp,
-      });
-    }
 
     // 2) Basic rate limit: max 3 OTPs per 15 minutes per user
     const [recent] = await conn.execute<RowDataPacket[]>(
@@ -219,7 +203,7 @@ export async function POST(req: Request) {
 
     try {
       await transporter.sendMail({
-        from: smtp.from,
+        from: sureImportsSender(smtp.from),
         to: email,
         replyTo: "hello@sureimports.com",
         subject: mail.subject,
@@ -242,6 +226,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
+    if (e instanceof AuthError) return NextResponse.json({ok:false,error:e.message},{status:e.status});
     console.error(e);
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   } finally {

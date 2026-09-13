@@ -26,8 +26,8 @@ export default function ThemeToggle({
       aria-label="Toggle light and dark mode"
       title="Toggle light and dark mode"
     >
-      <Sun className="h-4 w-4 dark:hidden" aria-hidden="true" />
-      <Moon className="hidden h-4 w-4 dark:block" aria-hidden="true" />
+      <Moon className="h-4 w-4 dark:hidden" aria-hidden="true" />
+      <Sun className="hidden h-4 w-4 dark:block" aria-hidden="true" />
     </Button>
   );
 }

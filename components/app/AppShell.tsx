@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ThemeToggle from "@/components/home/ThemeToggle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { authFetch } from "@/lib/auth-client";
@@ -307,6 +308,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </button>
+              <ThemeToggle lightSurface />
             </div>
             {stickyNotice ? (
               <div className="px-4 pt-4 sm:px-6">
