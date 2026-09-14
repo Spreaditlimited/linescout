@@ -1,3 +1,4 @@
+import { verifyRecaptchaToken } from "@/lib/security/recaptcha";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -39,6 +40,7 @@ export async function POST(req: Request, context: { params: Promise<{ action: st
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new AuthError("Invalid request.");
     const { action } = await context.params;
     if (!["sign-in","email-link","set-password","change-password"].includes(action)) return authJson({ok:false,error:"Not found"},404);
+    if(!await verifyRecaptchaToken(body.captchaToken,req,"linescout_"+action.replaceAll("-","_"))) throw new AuthError("Security verification failed. Refresh the page and try again.",403);
     const email = normalizedEmail(body.email);
 
     if (action === "sign-in") {

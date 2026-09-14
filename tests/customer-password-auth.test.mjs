@@ -10,6 +10,7 @@ const root = path.resolve(import.meta.dirname,"..");
 function loader(mocks = {}) {
   const cache = new Map();
   function load(name) {
+    if (name === "@/lib/security/recaptcha") return {verifyRecaptchaToken:async()=>true};
     if (name in mocks) return mocks[name];
     if (!name.startsWith("@/")) return require(name);
     const file=path.join(root,name.slice(2)+".ts");

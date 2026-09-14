@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { paypalCaptureOrder } from "@/lib/paypal";
+import { paypalVerifyPayment } from "@/lib/paypal";
 import { creditAgentCommissionForQuotePayment } from "@/lib/agent-commission";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
 import { ensureQuotePaymentFeeColumns } from "@/lib/quote-payment-fees";
@@ -20,25 +20,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "order_id is required" }, { status: 400 });
   }
 
-  const capture = await paypalCaptureOrder(orderId);
-  const status = String(capture?.status || "").toUpperCase();
-  if (status !== "COMPLETED") {
-    return NextResponse.json({ ok: false, error: "Payment not completed yet." }, { status: 400 });
-  }
-
-  const purchaseUnit = Array.isArray(capture?.purchase_units) ? capture.purchase_units[0] : null;
-  const paymentCapture = purchaseUnit?.payments?.captures?.[0];
-  const amountValue = num(paymentCapture?.amount?.value, 0);
-  const currency = String(paymentCapture?.amount?.currency_code || "GBP");
-
   const conn = await db.getConnection();
   try {
     await ensureAffiliateTables(conn);
     await ensureQuotePaymentFeeColumns(conn);
     const [rows]: any = await conn.query(
-      `SELECT id, quote_id, handoff_id, user_id, purpose, status, COALESCE(base_amount, amount) AS base_amount
+      `SELECT id, quote_id, handoff_id, user_id, purpose, status, amount, currency, processing_fee_amount, COALESCE(base_amount, amount) AS base_amount
        FROM linescout_quote_payments
-       WHERE provider_ref = ?
+       WHERE provider_ref = ? AND method = 'paypal'
        LIMIT 1`,
       [orderId]
     );
@@ -47,12 +36,24 @@ export async function POST(req: Request) {
     }
 
     const row = rows[0];
+    const capture = await paypalVerifyPayment(orderId, {
+      amount: num(row.base_amount) + num(row.processing_fee_amount),
+      currency: String(row.currency), customIdPrefix: 'LSQ_' + row.quote_id + '_',
+    });
+    const currency = String(row.currency);
+    const amountValue = num(capture.purchase_units[0].payments.captures[0].amount.value);
+
+    await conn.beginTransaction();
+    const [locked]: any = await conn.query('SELECT status FROM linescout_quote_payments WHERE id = ? FOR UPDATE', [row.id]);
+    row.status = locked?.[0]?.status;
+    if (!row.status) throw new Error('Payment record is missing.');
     const baseAmount = num(row.base_amount, 0) || amountValue;
     if (String(row.status || "") === "paid") {
       const [qRows]: any = await conn.query(
         `SELECT token FROM linescout_quotes WHERE id = ? LIMIT 1`,
         [row.quote_id]
       );
+      await conn.commit();
       return NextResponse.json({
         ok: true,
         status: "paid",
@@ -62,7 +63,6 @@ export async function POST(req: Request) {
       });
     }
 
-    await conn.beginTransaction();
     await conn.query(
       `UPDATE linescout_quote_payments
        SET status = 'paid',

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { paypalCaptureOrder } from "@/lib/paypal";
+import { paypalVerifyPayment } from "@/lib/paypal";
 import { ensureReordersTable } from "@/lib/reorders";
 import { buildNoticeEmail } from "@/lib/otp-email";
 import { findPaymentAttempt, updatePaymentAttempt } from "@/lib/payment-attempts";
@@ -428,7 +428,19 @@ export async function POST(req: Request) {
       purpose = "sourcing";
     }
 
-    const capture = await paypalCaptureOrder(orderId);
+
+    const guardConn = await db.getConnection();
+    let savedAttempt: any;
+    try { savedAttempt = await findPaymentAttempt(guardConn, 'paypal', orderId); }
+    finally { guardConn.release(); }
+    if (!savedAttempt || (!internal && Number(savedAttempt.user_id) !== userId))
+      return NextResponse.json({ ok: false, error: 'Payment not found.' }, { status: 404 });
+    routeType = savedAttempt.route_type;
+    purpose = savedAttempt.purpose === 'reorder' ? 'reorder' : 'sourcing';
+    const capture = await paypalVerifyPayment(orderId, {
+      amount: Number(savedAttempt.amount), currency: String(savedAttempt.currency),
+      customIdPrefix: 'LS_' + savedAttempt.user_id + '_',
+    });
     const status = String(capture?.status || "").toUpperCase();
     if (status !== "COMPLETED") {
       return NextResponse.json({ ok: false, error: "Payment not completed yet." }, { status: 400 });

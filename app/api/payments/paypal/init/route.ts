@@ -172,7 +172,7 @@ export async function POST(req: Request) {
         saveConn.release();
       }
     } catch {
-      // Non-fatal: payment init should not fail on telemetry.
+      throw new Error("Checkout could not be saved. No payment was collected. Please try again.");
     }
 
     return NextResponse.json({

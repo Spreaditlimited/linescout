@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useRecaptchaV3 } from "@/lib/security/useRecaptchaV3";
 import { Eye, EyeOff } from "lucide-react";
 import { getSafeNextPath } from "@/lib/safe-next-path";
 import styles from "./password-auth.module.css";
@@ -19,6 +20,7 @@ const copy: Record<Mode, { title: string; subtitle: string; button: string }> = 
 
 export default function PasswordAuthForm({ mode = "signin" }: { mode?: Mode }) {
   const router = useRouter();
+  const captcha = useRecaptchaV3();
   const params = useSearchParams();
   const [email,setEmail] = useState("");
   const [password,setPassword] = useState("");
@@ -64,7 +66,8 @@ export default function PasswordAuthForm({ mode = "signin" }: { mode?: Mode }) {
     setBusy(true);
     try {
       const action = mode === "signin" ? "sign-in" : mode === "choose" ? "set-password" : mode === "change" ? "change-password" : "email-link";
-      const res = await fetch(`/api/auth/password/${action}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password,currentPassword,token,next,purpose:mode})});
+      const captchaToken = await captcha("linescout_"+action.replaceAll("-","_"));
+      const res = await fetch(`/api/auth/password/${action}`,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify({captchaToken,email,password,currentPassword,token,next,purpose:mode})});
       const data = await res.json().catch(()=>({}));
       if(!res.ok || !data.ok) throw new Error(data.error || "We could not complete this request. Please try again.");
       if(mode === "signin") { router.replace(getSafeNextPath(data.next) || "/dashboard"); router.refresh(); return; }
@@ -87,6 +90,7 @@ export default function PasswordAuthForm({ mode = "signin" }: { mode?: Mode }) {
       {mode === "signin" ? <Link className={styles.recovery} href={`/forgot-password${suffix}`}>Forgot password?</Link>:null}
       <button className={styles.primary} disabled={busy || !ready || (mode === "choose" && !token)} type="submit">{busy ? "Please wait…":content.button}</button>
     </form> : mode === "choose" ? <Link className={styles.primary} href={`/sign-in${nextPath ? `?next=${encodeURIComponent(nextPath)}`:""}`}>Sign in</Link> : <button type="button" className={styles.secondary} onClick={()=>{setComplete(false);setNotice(null);}}>Use another email or resend</button>}
+    <p className={styles.captchaNotice}>Protected by reCAPTCHA. <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Privacy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer">Terms</a> apply.</p>
     <div className={styles.links}>
       {mode === "signin" ? <><p>New to LineScout? <Link href={`/sign-up${suffix}`}>Create an account</Link></p><p>Previously signed in with a code? <Link href={`/set-up-password${suffix}`}>Set your password</Link></p></>:mode === "change" ? <Link href="/set-up-password">Set your first password by email</Link>:<Link href={`/sign-in${suffix}`}>Back to sign in</Link>}
       {mode === "choose" && !complete ? <Link href="/forgot-password">Request a new password link</Link>:null}

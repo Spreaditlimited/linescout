@@ -28,7 +28,7 @@ test('LineScout footer and popup share the protected Sure Imports proxy', () => 
 });
 
 test('the popup is mounted only with the public LineScout shell', () => {
-  assert.match(shellSource, /isPublicSite \? <LeadCapturePopup \/>/);
+  assert.match(shellSource, /isPublicSite && !isWebinarViewer \? <LeadCapturePopup \/>/);
   assert.match(popupSource, /window\.setTimeout\(showPopup, 7000\)/);
   assert.match(popupSource, /scrollY \/ scrollableHeight >= 0\.35/);
 });

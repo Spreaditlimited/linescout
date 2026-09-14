@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { paypalCaptureOrder } from "@/lib/paypal";
+import { paypalVerifyPayment } from "@/lib/paypal";
 import { ensureShippingQuoteTables } from "@/lib/shipping-quotes";
 import { ensureShipmentTables } from "@/lib/shipments";
 import { creditAffiliateEarning, ensureAffiliateTables } from "@/lib/affiliates";
@@ -21,26 +21,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "order_id is required" }, { status: 400 });
   }
 
-  const capture = await paypalCaptureOrder(orderId);
-  const status = String(capture?.status || "").toUpperCase();
-  if (status !== "COMPLETED") {
-    return NextResponse.json({ ok: false, error: "Payment not completed yet." }, { status: 400 });
-  }
-
-  const purchaseUnit = Array.isArray(capture?.purchase_units) ? capture.purchase_units[0] : null;
-  const paymentCapture = purchaseUnit?.payments?.captures?.[0];
-  const amountValue = num(paymentCapture?.amount?.value, 0);
-  const currency = String(paymentCapture?.amount?.currency_code || "GBP");
-
   const conn = await db.getConnection();
   try {
     await ensureAffiliateTables(conn);
     await ensureShippingQuoteTables(conn);
     await ensureShippingQuotePaymentFeeColumns(conn);
     const [rows]: any = await conn.query(
-      `SELECT id, shipping_quote_id, user_id, status, COALESCE(base_amount, amount) AS base_amount
+      `SELECT id, shipping_quote_id, user_id, status, amount, currency, processing_fee_amount, COALESCE(base_amount, amount) AS base_amount
        FROM linescout_shipping_quote_payments
-       WHERE provider_ref = ?
+       WHERE provider_ref = ? AND method = 'paypal'
        LIMIT 1`,
       [orderId]
     );
@@ -49,12 +38,24 @@ export async function POST(req: Request) {
     }
 
     const row = rows[0];
+    const capture = await paypalVerifyPayment(orderId, {
+      amount: num(row.base_amount) + num(row.processing_fee_amount),
+      currency: String(row.currency), customIdPrefix: 'LSSQ_' + row.shipping_quote_id + '_',
+    });
+    const currency = String(row.currency);
+    const amountValue = num(capture.purchase_units[0].payments.captures[0].amount.value);
+    await ensureShipmentTables(conn);
+    await conn.beginTransaction();
+    const [locked]: any = await conn.query('SELECT status FROM linescout_shipping_quote_payments WHERE id = ? FOR UPDATE', [row.id]);
+    row.status = locked?.[0]?.status;
+    if (!row.status) throw new Error('Payment record is missing.');
     const baseAmount = num(row.base_amount, 0) || amountValue;
     if (String(row.status || "") === "paid") {
       const [qRows]: any = await conn.query(
         `SELECT token FROM linescout_shipping_quotes WHERE id = ? LIMIT 1`,
         [row.shipping_quote_id]
       );
+      await conn.commit();
       return NextResponse.json({
         ok: true,
         status: "paid",
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
     const shipmentId = Number(qRows?.[0]?.shipment_id || 0);
 
     if (shipmentId) {
-      await ensureShipmentTables(conn);
+
       const [sRows]: any = await conn.query(
         `SELECT id, status FROM linescout_shipments WHERE id = ? LIMIT 1`,
         [shipmentId]
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
       }
     }
 
+    await conn.commit();
     return NextResponse.json({
       ok: true,
       status: "paid",
@@ -115,6 +117,9 @@ export async function POST(req: Request) {
       amount: baseAmount,
       currency,
     });
+  } catch (error) {
+    await conn.rollback();
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Payment verification failed." }, { status: 409 });
   } finally {
     conn.release();
   }

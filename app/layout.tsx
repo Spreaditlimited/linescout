@@ -8,7 +8,6 @@ import "./theme-tokens.css";
 import "./refinement.css";
 
 import MetaPixel from "./MetaPixel";
-import InstallPrompt from "@/components/InstallPrompt";
 import Shell from "@/components/Shell";
 import GA4 from "@/components/analytics/GA4";
 import LineScoutThemeProvider from "@/components/theme/LineScoutThemeProvider";
@@ -114,7 +113,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MetaPixel />
         <GA4 />
 
-        <InstallPrompt minSeconds={90} minVisits={2} cooldownDays={7} maxShows={3} />
         {/* Global shell: hides Navbar for /internal routes via Shell */}
         <LineScoutThemeProvider>
           <Shell>{children}</Shell>

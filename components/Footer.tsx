@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import OfficeLocations from '@/components/OfficeLocations';
 import Link from 'next/link';
 import { Facebook, Instagram, Youtube, Mail, MapPin, Phone } from 'lucide-react';
 import TikTokIcon from '@/components/home/icons/TikTokIcon';
@@ -28,13 +29,6 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <Phone className="h-5 w-5 shrink-0 text-indigo-400" />
                 <div><p>0803 764 9956</p><p>0806 458 3664</p></div>
-              </li>
-              <li className="flex items-start gap-3">
-                <MapPin className="h-5 w-5 shrink-0 text-indigo-400" />
-                <div className="space-y-2">
-                  <p>5 Olutosin Ajayi Street, Ajao Estate, Lagos, Nigeria</p>
-                  <p>China: 广州市白云区机场路111号建发广场3FB3-1.</p>
-                </div>
               </li>
             </ul>
           </div>
@@ -74,6 +68,7 @@ export default function Footer() {
             </div>
           </div>
         </div>
+        <OfficeLocations />
       </div>
       <div className="bg-slate-950 py-4 text-center text-xs">
         <p>© {new Date().getFullYear()} Sure Importers Limited. All rights reserved.</p>

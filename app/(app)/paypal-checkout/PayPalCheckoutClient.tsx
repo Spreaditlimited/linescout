@@ -163,7 +163,7 @@ export default function PayPalCheckoutClient() {
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-neutral-900">Complete your payment</h1>
           <p className="mt-2 text-sm text-neutral-600">
-            We’ll open PayPal to complete your payment. Once it’s done, we’ll verify and create your
+            Pay by debit or credit card without a PayPal account, or choose PayPal. We’ll verify and create your
             project automatically.
           </p>
 
@@ -188,7 +188,7 @@ export default function PayPalCheckoutClient() {
                 }}
                 className="btn btn-primary w-full"
               >
-                Continue to PayPal
+                Pay by card or PayPal
               </button>
               <p className="text-xs text-neutral-400">Order ID: {orderId}</p>
             </div>

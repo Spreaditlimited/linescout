@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { paypalVerifyWebhookSignature } from "@/lib/paypal";
+import { paypalVerifyWebhookSignature, paypalGetOrder } from "@/lib/paypal";
 import { db } from "@/lib/db";
 import { ensureWhiteLabelUserColumns } from "@/lib/white-label-access";
 
@@ -12,16 +12,21 @@ function internalSecret() {
 
 async function triggerPayPalVerify(req: Request, orderId: string) {
   const secret = internalSecret();
-  if (!secret || !orderId) return;
+  if (!secret || !orderId) throw new Error("Payment recovery is not configured.");
+  const order = await paypalGetOrder(orderId);
+  const custom = String(order.purchase_units?.[0]?.custom_id || "");
+  const endpoint = custom.startsWith("LSSQ_") ? "/api/shipping-quote/paypal/verify" : custom.startsWith("LSQ_") ? "/api/quote/paypal/verify" : "/api/payments/paypal/verify";
   const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin).replace(/\/$/, "");
-  await fetch(`${baseUrl}/api/payments/paypal/verify`, {
+  const response = await fetch(`${baseUrl}${endpoint}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-cron-secret": secret,
     },
     body: JSON.stringify({ order_id: orderId }),
-  }).catch(() => {});
+    signal: AbortSignal.timeout(55000),
+  });
+  if (!response.ok) throw new Error("Payment confirmation will be retried.");
 }
 
 export async function POST(req: Request) {

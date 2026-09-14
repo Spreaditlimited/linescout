@@ -1,0 +1,135 @@
+.page {
+  min-height: 100vh;
+  padding: 64px 20px;
+  background: var(--si-canvas);
+  color: var(--si-ink);
+}
+.panel {
+  width: min(100%, 560px);
+  margin: 0 auto;
+  padding: 36px;
+  background: var(--si-surface);
+  border: 1px solid var(--si-border);
+  border-radius: 24px;
+  box-shadow: var(--si-shadow);
+}
+.panel h1 {
+  font-size: clamp(26px, 5vw, 34px);
+  line-height: 1.2;
+  margin: 16px 0;
+  font-weight: 700;
+}
+.panel p {
+  line-height: 1.6;
+  color: var(--si-muted);
+}
+.panel .eyebrow {
+  color: var(--si-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.summary {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 0;
+  margin: 12px 0 24px;
+  border-bottom: 1px solid var(--si-border);
+}
+.summary span {
+  font-size: 14px;
+  color: var(--si-muted);
+}
+.summary strong {
+  white-space: nowrap;
+  font-size: 20px;
+}
+.fields {
+  display: grid;
+  gap: 18px;
+}
+.fields label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.field {
+  height: 64px;
+  background: #fff;
+  border: 1px solid var(--si-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.row > div {
+  min-width: 0;
+}
+.address {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  border: 1px solid var(--si-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--si-inset);
+  color: var(--si-ink);
+  font-size: 16px;
+}
+.address:focus-visible {
+  outline: 2px solid var(--si-accent);
+  outline-offset: 2px;
+}
+.pay {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 10px;
+  margin-top: 24px;
+  background: var(--si-primary);
+  color: var(--si-on-primary);
+  font-weight: 600;
+}
+.pay:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel .error {
+  color: #e05252;
+  font-size: 14px;
+  margin-top: 18px;
+}
+.divider {
+  text-align: center;
+  margin: 24px 0 16px;
+  font-size: 14px;
+}
+.note {
+  margin-top: 20px;
+  font-size: 12px;
+}
+.back {
+  display: block;
+  text-align: center;
+  margin-top: 24px;
+  color: var(--si-accent);
+  font-size: 14px;
+}
+@media (max-width: 480px) {
+  .page {
+    padding: 24px 12px;
+  }
+  .panel {
+    padding: 24px 20px;
+  }
+  .summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+}

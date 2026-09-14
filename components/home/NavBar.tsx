@@ -277,7 +277,7 @@ export default function Navbar({ forceLightNavbar = false }: NavbarProps) {
     `rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
       active
         ? useLightNavbar
-          ? 'bg-slate-900/10 text-slate-900'
+          ? 'bg-slate-900/10 text-slate-900 hover:bg-slate-900/10 hover:text-slate-900 dark:bg-white/10 dark:text-white dark:hover:bg-white/10 dark:hover:text-white'
           : 'bg-white/10 text-white'
         : useLightNavbar
           ? 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'

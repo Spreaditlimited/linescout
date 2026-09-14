@@ -1,3 +1,4 @@
+import { signPayPalCheckoutSession } from "./paypalCheckoutSession";
 type PayPalEnv = "live" | "sandbox";
 
 function paypalEnv(): PayPalEnv {
@@ -16,6 +17,8 @@ function paypalAuthHeader() {
   const token = Buffer.from(`${clientId}:${secret}`).toString("base64");
   return `Basic ${token}`;
 }
+
+export function paypalClientId() { return process.env.PAYPAL_CLIENT_ID?.trim() || ""; }
 
 export async function paypalAccessToken() {
   const auth = paypalAuthHeader();
@@ -43,6 +46,10 @@ export async function paypalCreateOrder(params: {
   customId?: string | null;
   description?: string | null;
 }) {
+  const returnUrl = new URL(params.returnUrl);
+  const cancelUrl = new URL(params.cancelUrl);
+  if (returnUrl.origin !== cancelUrl.origin || !['http:', 'https:'].includes(returnUrl.protocol)) throw new Error('Invalid checkout destination.');
+  if (!/^\d+\.\d{2}$/.test(params.amount) || Number(params.amount) <= 0 || params.currency === 'NGN') throw new Error('Invalid PayPal amount or currency.');
   const token = await paypalAccessToken();
   const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders`, {
     method: "POST",
@@ -63,6 +70,7 @@ export async function paypalCreateOrder(params: {
         },
       ],
       application_context: {
+        brand_name: "Sure Imports",
         return_url: params.returnUrl,
         cancel_url: params.cancelUrl,
       },
@@ -72,9 +80,15 @@ export async function paypalCreateOrder(params: {
   if (!res.ok || !json?.id) {
     throw new Error(json?.message || "PayPal create order failed");
   }
-  const approve = Array.isArray(json?.links)
-    ? json.links.find((l: any) => l?.rel === "approve")?.href
-    : null;
+  const checkout = new URL('/checkout/paypal', returnUrl.origin);
+  checkout.searchParams.set('session', signPayPalCheckoutSession({
+    orderId: String(json.id), amount: params.amount, currency: params.currency,
+    description: params.description || 'LineScout payment',
+    returnPath: returnUrl.pathname + returnUrl.search,
+    cancelPath: cancelUrl.pathname + cancelUrl.search,
+    expiresAt: Date.now() + 2 * 60 * 60 * 1000,
+  }));
+  const approve = checkout.toString();
   return {
     id: String(json.id),
     approveUrl: approve ? String(approve) : null,
@@ -210,16 +224,29 @@ export async function paypalGetPlan(planId: string) {
 }
 
 export async function paypalCaptureOrder(orderId: string) {
+  const existing = await paypalGetOrder(orderId);
+  if (existing.status === 'COMPLETED') return existing;
+  if (existing.status !== 'APPROVED') throw new Error('Approve this payment before capture.');
   const token = await paypalAccessToken();
   const res = await fetch(`${paypalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
     method: "POST",
+    signal: AbortSignal.timeout(20000),
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "PayPal-Request-Id": `capture-${orderId}`,
     },
+  }).catch(async () => {
+    const recovered = await paypalGetOrder(orderId).catch(() => null);
+    if (recovered?.status === 'COMPLETED') return Response.json(recovered);
+    throw new Error('Payment confirmation is pending. Check your order before trying again.');
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
+    if (res.status >= 500 || json?.details?.some((item: any) => item.issue === 'ORDER_ALREADY_CAPTURED')) {
+      const recovered = await paypalGetOrder(orderId);
+      if (recovered.status === 'COMPLETED') return recovered;
+    }
     throw new Error(json?.message || "PayPal capture failed");
   }
   return json;
@@ -361,4 +388,30 @@ export async function paypalVerifyWebhookSignature(params: {
     throw new Error(json?.message || "PayPal webhook verify failed");
   }
   return json;
+}
+
+// Use only persisted server prices, including the configured processing fee.
+export async function paypalVerifyPayment(orderId: string, expected: { amount: number; currency: string; customIdPrefix: string }) {
+  const matches = (order: any) => {
+    const units = order?.purchase_units;
+    const amount = Math.round(expected.amount * 100);
+    if (!Number.isSafeInteger(amount) || amount <= 0 || !Array.isArray(units) || units.length !== 1 ||
+        !String(units[0]?.custom_id || '').startsWith(expected.customIdPrefix) ||
+        units[0]?.amount?.currency_code !== expected.currency || Math.round(Number(units[0]?.amount?.value) * 100) !== amount)
+      throw new Error('PayPal payment does not match the saved quotation.');
+  };
+  let order = await paypalGetOrder(orderId);
+  matches(order);
+  if (order.status !== 'COMPLETED') {
+    await paypalCaptureOrder(orderId);
+    order = await paypalGetOrder(orderId);
+  }
+  matches(order);
+  const captures = order.purchase_units[0].payments?.captures;
+  if (order.status !== 'COMPLETED' || !Array.isArray(captures) || captures.length !== 1 ||
+      !captures[0]?.id || captures[0].status !== 'COMPLETED' || captures[0].amount?.currency_code !== expected.currency ||
+      Math.round(Number(captures[0].amount?.value) * 100) !== Math.round(expected.amount * 100))
+    throw new Error('Payment has not been confirmed. Check your order before retrying.');
+  if (paypalEnv() === 'sandbox') throw new Error('Sandbox payment confirmed. No live order or ledger was changed.');
+  return order;
 }

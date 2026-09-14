@@ -215,3 +215,9 @@ html .app-theme-blue.app-theme-blue nav a[class*="bg-[var(--agent-blue)]"] { col
 .dark .public-site.public-site :is(#lead-capture-popup,#site-footer) input:focus { border-color: var(--ls-theme-accent); }
 .dark :is(.public-site.public-site,.app-theme-blue.app-theme-blue) :is(.hover\:bg-neutral-50,.hover\:bg-neutral-100,.hover\:bg-slate-100):hover { background-color: var(--ls-theme-raised); }
 .dark .public-site.public-site #site-footer { background: var(--ls-charcoal-deep); }
+
+/* Preserve the selected navigation surface in every interaction state. */
+.app-theme-blue.app-theme-blue a[aria-current="page"],
+.app-theme-blue.app-theme-blue a[aria-current="page"]:is(:hover,:focus,:active){background:var(--ls-soft);color:var(--ls-accent);filter:none;box-shadow:inset 3px 0 var(--ls-accent)}
+.app-theme-blue.app-theme-blue a[aria-current="page"] svg{color:currentColor}
+.grecaptcha-badge{visibility:hidden}

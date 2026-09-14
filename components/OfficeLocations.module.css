@@ -1,0 +1,18 @@
+.offices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px 40px;
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid rgb(255 255 255 / 12%);
+  color: #b9bac5;
+}
+.offices h3 { margin: 0 0 12px; font-size: 14px; font-weight: 650; color: #f5f5f7; }
+.offices .company { margin: 0 0 6px; font-size: 14px; color: #e0e0e7; }
+.offices address { font-size: 14px; line-height: 1.65; font-style: normal; max-width: 36ch; }
+.offices address span { display: block; margin-top: 5px; }
+.phones { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font-size: 14px; }
+.phones a { color: #d2d2dc; text-decoration: none; }
+.phones a:hover { color: #fff; text-decoration: underline; }
+.phones a:focus-visible { outline: 2px solid #c4b5fd; outline-offset: 4px; }
+@media (max-width: 700px) { .offices { grid-template-columns: 1fr; gap: 24px; } }
