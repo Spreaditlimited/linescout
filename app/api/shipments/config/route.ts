@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -53,7 +54,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      countries: countries || [],
+      countries: visibleMarketCountries(countries || []),
       shipping_rates: rates || [],
       fx_rates: fxRates || [],
       profile: {

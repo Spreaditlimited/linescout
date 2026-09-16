@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { db } from "@/lib/db";
 
 type Queryable = {
@@ -461,7 +462,7 @@ export async function listActiveCountriesAndCurrencies(conn?: Queryable) {
      WHERE is_active = 1`
   );
   return {
-    countries: countries || [],
+    countries: visibleMarketCountries<any>(countries || []),
     currencies: currencies || [],
     country_currencies: countryCurrencies || [],
   };

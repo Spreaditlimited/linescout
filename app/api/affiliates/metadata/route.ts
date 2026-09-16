@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { ensureCountryConfig } from "@/lib/country-config";
@@ -60,7 +61,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
-      countries: countries || [],
+      countries: visibleMarketCountries(countries || []),
       affiliate_min_payouts: minPayouts || {},
       affiliate_promo_videos: promoVideos,
     });

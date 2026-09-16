@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { NextResponse } from "next/server";
 import type mysql from "mysql2/promise";
 import { cookies } from "next/headers";
@@ -457,8 +458,8 @@ export async function GET() {
       ok: true,
       item: row,
       currencies: currencies || [],
-      countries: countries || [],
-      country_currencies: countryCurrencies || [],
+      countries: visibleMarketCountries<any>(countries || []),
+      country_currencies: (countryCurrencies || []).filter((row: any) => visibleMarketCountries([{iso2: row.country_iso2}]).length > 0),
       fx_rates: fxRates || [],
     });
   } finally {

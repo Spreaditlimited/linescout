@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
@@ -72,7 +73,7 @@ export async function GET() {
        FROM linescout_countries
        ORDER BY name ASC`
     );
-    return NextResponse.json({ ok: true, addons, prices, currencies: currencies || [], countries: countries || [] });
+    return NextResponse.json({ ok: true, addons, prices, currencies: currencies || [], countries: visibleMarketCountries(countries || []) });
   } finally {
     conn.release();
   }

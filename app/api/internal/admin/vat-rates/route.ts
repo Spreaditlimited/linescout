@@ -1,3 +1,4 @@
+import { visibleMarketCountries } from "@/lib/market-visibility";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
@@ -69,7 +70,7 @@ export async function GET() {
       `SELECT country_id, rate_percent, is_active
        FROM linescout_vat_rates`
     );
-    return NextResponse.json({ ok: true, countries: countries || [], rates: rates || [] });
+    return NextResponse.json({ ok: true, countries: visibleMarketCountries(countries || []), rates: rates || [] });
   } finally {
     conn.release();
   }
