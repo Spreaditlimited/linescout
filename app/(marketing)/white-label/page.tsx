@@ -1,3 +1,5 @@
+import searchStyles from "./WhiteLabelSearch.module.css";
+import MarketDestinations from "@/components/marketing/MarketDestinations";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -7,7 +9,6 @@ import { db } from "@/lib/db";
 import { computeLandedRange } from "@/lib/white-label-products";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
 import FilterForm from "@/components/filters/FilterForm";
-import WhiteLabelCountrySelector from "@/components/white-label/WhiteLabelCountrySelector";
 import { currencyForCode } from "@/lib/white-label-country";
 import { listActiveCountriesAndCurrencies } from "@/lib/country-config";
 import { normalizeAmazonMarketplace, marketplaceCurrency } from "@/lib/white-label-marketplace";
@@ -559,14 +560,9 @@ export default async function WhiteLabelPage({
         <div className="absolute right-[-120px] top-[140px] h-[460px] w-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgba(45,52,97,0.12),transparent_65%)]" />
       </div>
 
-      {(q || category) && (
-        <div
-          className="relative h-[86px] shrink-0 bg-[linear-gradient(110deg,#11153A_0%,#050817_56%,#2A1115_100%)]"
-          aria-hidden="true"
-        />
-      )}
 
       <div className="relative">
+        <div id="destination-market" className={searchStyles.destinationStart}><MarketDestinations value={countryCode} options={countryOptions} /></div>
         {!category && !q && (
         <section className="si-hero mx-auto grid w-full max-w-[1600px] gap-10 px-4 pb-6 pt-10 sm:px-6 md:grid-cols-[1.1fr_0.9fr] md:pt-16 lg:px-8">
           <div>
@@ -626,8 +622,10 @@ export default async function WhiteLabelPage({
         )}
 
         <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
-          {!(q || category) ? (
+          <div className={searchStyles.panel} id="product-search">
+            <div className={searchStyles.header}><div><h2>Find your next product</h2><p>Search by product, category or use case. Refine the results to fit your business.</p></div><div className={searchStyles.destination}><strong>{countries.find(country => country.iso2 === countryCode)?.name || countryCode} · {currencyCode}</strong><a href="#destination-market">Change destination</a></div></div>
             <FilterForm
+              key={`${q}-${category}-${effectivePrice}-${regulatory}-${sort}-${countryCode}`}
               action="/white-label"
               searchPlaceholder="Search products, categories, or use cases"
               initial={{ q, category, price: effectivePrice, regulatory, sort }}
@@ -635,7 +633,7 @@ export default async function WhiteLabelPage({
               priceOptions={priceOptions}
               regulatoryOptions={regulatoryOptions}
               sortOptions={sortOptions}
-              gridColsClass="sm:grid-cols-2 lg:grid-cols-5"
+              gridColsClass="sm:grid-cols-2 lg:grid-cols-4"
               labels={{
                 category: "Category",
                 price: `Budget (landed per unit in ${currency.symbol})`,
@@ -643,12 +641,8 @@ export default async function WhiteLabelPage({
                 sort: "Sort by",
               }}
               clearHref="/white-label"
-              countrySelector={<WhiteLabelCountrySelector value={countryCode} options={countryOptions} />}
-              countryLabel="Country"
             />
-          ) : (
-            <div className="pt-6" />
-          )}
+          </div>
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-600">
             <div>
@@ -665,49 +659,6 @@ export default async function WhiteLabelPage({
             )}
           </div>
 
-          {!(q || category) && (
-            <div className="mt-5">
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  href={buildPageHref({
-                    q,
-                    category: "",
-                    page: 1,
-                    price: effectivePrice,
-                    regulatory,
-                    sort,
-                  })}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                    !category
-                      ? "bg-[var(--agent-blue)] text-white"
-                      : "border border-neutral-200 bg-white text-neutral-600"
-                  }`}
-                >
-                  All
-                </Link>
-                {categories.map((c) => (
-                  <Link
-                    key={c}
-                    href={buildPageHref({
-                      q,
-                      category: c,
-                      page: 1,
-                      price: effectivePrice,
-                      regulatory,
-                      sort,
-                    })}
-                    className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                      category === c
-                        ? "bg-[var(--agent-blue)] text-white"
-                        : "border border-neutral-200 bg-white text-neutral-600"
-                    }`}
-                  >
-                    {c}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
         </section>
 
         <section className="mx-auto w-full max-w-[1600px] px-4 pb-10 sm:px-6 lg:px-8">

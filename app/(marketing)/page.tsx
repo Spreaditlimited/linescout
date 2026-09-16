@@ -1,3 +1,4 @@
+import MarketDestinations from "@/components/marketing/MarketDestinations";
 import crypto from "crypto";
 import type { Metadata } from "next";
 import Image from "next/image";
@@ -327,6 +328,8 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      <MarketDestinations home />
 
       <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
         <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:gap-16">
