@@ -459,7 +459,7 @@ export async function GET() {
       item: row,
       currencies: currencies || [],
       countries: visibleMarketCountries<any>(countries || []),
-      country_currencies: (countryCurrencies || []).filter((row: any) => visibleMarketCountries([{iso2: row.country_iso2}]).length > 0),
+      country_currencies: (countryCurrencies || []).filter((row: any) => visibleMarketCountries([{iso2: row.country_iso2, name: row.country_name}]).length > 0),
       fx_rates: fxRates || [],
     });
   } finally {
