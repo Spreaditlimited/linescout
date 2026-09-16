@@ -1,4 +1,5 @@
 "use client";
+import InternalEmptyState from "@/app/internal/_components/InternalEmptyState";
 
 import { useEffect, useMemo, useState } from "react";
 import SearchableSelect from "../_components/SearchableSelect";
@@ -161,7 +162,7 @@ export default function InternalWalletsPage() {
         {loading ? (
           <div className="px-4 py-6 text-sm text-neutral-300">Loading…</div>
         ) : filtered.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-neutral-400">No wallets found.</div>
+          <InternalEmptyState title="No wallets to show" description="Wallet balances will appear here when accounts are available. If you searched, try another name or email." />
         ) : (
           filtered.map((w) => (
             <div key={`${w.owner_type}-${w.owner_id}`} className="grid grid-cols-12 gap-3 px-4 py-4 text-sm text-neutral-200 border-b border-neutral-800/70">

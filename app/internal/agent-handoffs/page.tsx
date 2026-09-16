@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import { BriefcaseBusiness, RefreshCw, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 type Handoff = {
@@ -244,9 +245,9 @@ export default function AgentHandoffsPage() {
   }, [filtered, page]);
 
   const btn =
-    "inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700";
+    "inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-200 hover:border-neutral-700";
   const btnSm =
-    "inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700";
+    "inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 hover:border-neutral-700";
   const btnDisabled = "opacity-50 cursor-not-allowed";
   const pill =
     "inline-flex items-center rounded-full border border-neutral-800 bg-neutral-950 px-2.5 py-1 text-[11px] text-neutral-300";
@@ -287,7 +288,7 @@ export default function AgentHandoffsPage() {
               </button>
             ))}
             <button onClick={loadSummary} className={btnSm} disabled={summaryLoading}>
-              {summaryLoading ? "Loading..." : "Refresh"}
+              <RefreshCw size={15} aria-hidden="true" className={summaryLoading ? "animate-spin" : ""} /> {summaryLoading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
@@ -302,7 +303,7 @@ export default function AgentHandoffsPage() {
 
         {!summaryLoading && summary ? (
           <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="li-metrics grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div className={metric}>
                 <div className="text-xs text-neutral-500">Total projects</div>
                 <div className="mt-1 text-lg font-semibold text-neutral-100">
@@ -329,6 +330,9 @@ export default function AgentHandoffsPage() {
               </div>
             </div>
 
+            <details className="li-insights">
+              <summary><span>Operational insights<small>Stage progress, timing, alerts and agent performance</small></span><ChevronDown size={18} /></summary>
+              <div className="space-y-5 pt-5">
             <div>
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
                 Stage Counts
@@ -498,6 +502,8 @@ export default function AgentHandoffsPage() {
                 </table>
               </div>
             </div>
+              </div>
+            </details>
           </div>
         ) : null}
       </div>
@@ -507,7 +513,7 @@ export default function AgentHandoffsPage() {
           <div>
             <h2 className="text-lg font-semibold text-neutral-100">Sourcing Projects</h2>
             <p className="text-sm text-neutral-400">
-              List view only. Use “View” to open the full operational handoff page.
+              Review project progress, find a customer, or open an order to take action.
             </p>
           </div>
 
@@ -538,7 +544,7 @@ export default function AgentHandoffsPage() {
 
             <div className="flex flex-wrap items-center gap-2">
               <button onClick={load} className={btn} disabled={loading}>
-                {loading ? "Loading..." : "Refresh"}
+                <RefreshCw size={15} aria-hidden="true" className={loading ? "animate-spin" : ""} /> {loading ? "Refreshing…" : "Refresh"}
               </button>
 
               <button
@@ -570,10 +576,7 @@ export default function AgentHandoffsPage() {
         {err ? <p className="mt-4 text-sm text-red-300">{err}</p> : null}
 
         {!loading && !err && shownCount === 0 ? (
-          <div className="mt-4 rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
-            <p className="text-sm text-neutral-300">No matches.</p>
-            <p className="mt-1 text-xs text-neutral-500">Try token (SRC-/WL-), email, WhatsApp, or owner.</p>
-          </div>
+          <div className="li-empty-state"><span><BriefcaseBusiness size={26} aria-hidden="true" /></span><h3>{search.trim() ? "No matching projects" : "No sourcing projects yet"}</h3><p>{search.trim() ? "Try a different project reference, customer name or email address." : "Customer sourcing requests will appear here, ready for your team to review and manage."}</p>{search.trim() && <button type="button" onClick={() => setSearch("")}>Clear search</button>}</div>
         ) : null}
 
         {!loading && !err && shownCount > 0 ? (

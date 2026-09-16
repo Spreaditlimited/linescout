@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmModal from "./ConfirmModal";
 
 type PasswordModalProps = {
   open: boolean;
@@ -40,70 +41,7 @@ export default function PasswordModal({
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 shadow-2xl">
-        <h3 className="text-lg font-semibold text-neutral-100">{title}</h3>
-
-        {description ? (
-          <p className="mt-2 text-sm text-neutral-400">{description}</p>
-        ) : null}
-
-        <div className="mt-4">
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-neutral-400">New password</label>
-
-            <button
-              type="button"
-              onClick={() => {
-                const p = genPassword();
-                setPw(p);
-                setErr(null);
-              }}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-200 hover:border-neutral-700"
-            >
-              Generate
-            </button>
-          </div>
-
-          <input
-            value={pw}
-            onChange={(e) => {
-              setPw(e.target.value);
-              setErr(null);
-            }}
-            type="text"
-            className="mt-2 w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-600"
-            placeholder="Minimum 8 characters"
-            autoFocus
-          />
-
-          {err ? <div className="mt-2 text-xs text-red-300">{err}</div> : null}
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-2 text-sm text-neutral-200 hover:border-neutral-700"
-          >
-            {cancelText}
-          </button>
-
-          <button
-            onClick={() => {
-              const v = pw.trim();
-              if (v.length < 8) {
-                setErr("Password must be at least 8 characters.");
-                return;
-              }
-              onConfirm(v);
-            }}
-            className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-neutral-200"
-          >
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <ConfirmModal open={open} title={title} description={description} confirmText={confirmText} cancelText={cancelText} onCancel={onCancel} onConfirm={() => { const value=pw.trim(); if(value.length<8){setErr("Password must be at least 8 characters.");return;} onConfirm(value); }}>
+    <div className="li-password-form"><label htmlFor="new-agent-password">New password</label><div><input id="new-agent-password" value={pw} onChange={event=>{setPw(event.target.value);setErr(null);}} type="text" autoComplete="new-password" placeholder="Minimum 8 characters" /><button type="button" onClick={()=>{setPw(genPassword());setErr(null);}}>Generate</button></div>{err && <p role="alert">{err}</p>}</div>
+  </ConfirmModal>;
 }

@@ -2,6 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  MessageSquare,
+  Mail,
+  Users,
+  UserCheck,
+  Search,
+  RefreshCw,
+} from "lucide-react";
+import styles from "./PaidChat.module.css";
 import ConfirmModal from "../_components/ConfirmModal";
 
 type MeRes =
@@ -76,7 +85,14 @@ type ClaimRes = {
 function formatTime(ts?: string | null) {
   if (!ts) return "";
   const d = new Date(ts);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString();
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString("en-GB", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 }
 
 function normalizeRow(r: InboxItemRaw): InboxItem | null {
@@ -84,8 +100,8 @@ function normalizeRow(r: InboxItemRaw): InboxItem | null {
     typeof r.conversation_id === "number"
       ? r.conversation_id
       : typeof r.id === "number"
-      ? r.id
-      : 0;
+        ? r.id
+        : 0;
 
   if (!convId) return null;
 
@@ -115,12 +131,10 @@ function normalizeRow(r: InboxItemRaw): InboxItem | null {
   };
 }
 
-function badgeBase() {
-  return "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] leading-none";
-}
-
 export default function PaidChatInboxPage() {
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [err, setErr] = useState<string | null>(null);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -131,13 +145,14 @@ export default function PaidChatInboxPage() {
   // per-conversation action loading + error
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [rowNote, setRowNote] = useState<Record<number, string>>({});
-  const [confirmTakeoverId, setConfirmTakeoverId] = useState<number | null>(null);
+  const [confirmTakeoverId, setConfirmTakeoverId] = useState<number | null>(
+    null,
+  );
 
   const canLoadMore = useMemo(() => nextCursor != null, [nextCursor]);
   const authed = !!(me && "ok" in me && me.ok);
-  const myId = authed ? (me as any).user.id : null;
-  const myUsername = authed ? (me as any).user.username : null;
-  const myRole = authed ? ((me as any).user.role as "admin" | "agent") : null;
+  const myId = me?.ok ? me.user.id : null;
+  const myRole = me?.ok ? me.user.role : null;
   const isAdmin = myRole === "admin";
 
   const inboxStats = useMemo(() => {
@@ -145,7 +160,11 @@ export default function PaidChatInboxPage() {
     const unassigned = items.filter((i) => i.assigned_agent_id == null).length;
     const assignedToMe =
       myId != null
-        ? items.filter((i) => i.assigned_agent_id != null && Number(i.assigned_agent_id) === Number(myId)).length
+        ? items.filter(
+            (i) =>
+              i.assigned_agent_id != null &&
+              Number(i.assigned_agent_id) === Number(myId),
+          ).length
         : 0;
     const unread = items.filter((i) => i.is_unread).length;
     return { total, unassigned, assignedToMe, unread };
@@ -164,18 +183,18 @@ export default function PaidChatInboxPage() {
 
   async function load(reset = false) {
     setErr(null);
+    setLoading(true);
 
     if (reset) {
       setLoading(true);
       setCursor(0);
       setNextCursor(null);
-      setItems([]);
     }
 
     try {
       const useCursor = reset ? 0 : cursor;
       const res = await fetch(
-        `/api/internal/paid-chat/inbox?cursor=${useCursor}&limit=25`
+        `/api/internal/paid-chat/inbox?cursor=${useCursor}&limit=25`,
       );
       const data: InboxRes | null = await res.json().catch(() => null);
 
@@ -190,7 +209,7 @@ export default function PaidChatInboxPage() {
 
       setItems((prev) => {
         const map = new Map<number, InboxItem>();
-        for (const p of prev) map.set(p.conversation_id, p);
+        for (const p of reset ? [] : prev) map.set(p.conversation_id, p);
         for (const n of normalized) map.set(n.conversation_id, n);
         return Array.from(map.values());
       });
@@ -232,10 +251,10 @@ export default function PaidChatInboxPage() {
       const note = data.taken_over
         ? "Taken over."
         : data.claimed
-        ? "Assigned to you."
-        : data.already_assigned
-        ? "Already assigned."
-        : "";
+          ? "Assigned to you."
+          : data.already_assigned
+            ? "Already assigned."
+            : "";
 
       if (note) {
         setRowNote((p) => ({ ...p, [conversationId]: note }));
@@ -260,302 +279,251 @@ export default function PaidChatInboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function RowShell({
-    disabled,
-    href,
-    children,
-    title,
-  }: {
-    disabled: boolean;
-    href: string;
-    children: React.ReactNode;
-    title?: string;
-  }) {
-    const base =
-      "block border-b border-neutral-800/80 px-4 py-4 sm:px-5 transition-colors";
-    const enabled =
-      "bg-neutral-950/40 hover:bg-neutral-900/70 active:bg-neutral-900/90";
-    const disabledCls = "opacity-60";
-
-    if (disabled) {
-      return (
-        <div className={`${base} ${disabledCls}`} title={title || ""}>
-          {children}
-        </div>
-      );
-    }
-
-    return (
-      <Link href={href} className={`${base} ${enabled}`}>
-        {children}
-      </Link>
-    );
-  }
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const matches =
+          `${item.customer_name || ""} ${item.customer_email || ""} ${item.customer_whatsapp || ""} ${item.conversation_id} ${item.last_message_text || ""}`
+            .toLowerCase()
+            .includes(query.toLowerCase().trim());
+        return (
+          matches &&
+          (filter === "all" ||
+            (filter === "unread" && item.is_unread) ||
+            (filter === "unassigned" && item.assigned_agent_id == null) ||
+            (filter === "mine" && item.assigned_agent_id === myId))
+        );
+      }),
+    [items, query, filter, myId],
+  );
 
   return (
-    <div className="min-h-[100dvh]">
-      <div className="mx-auto w-full max-w-4xl px-3 py-6 sm:px-6">
-        <div className="mb-6 rounded-2xl border border-neutral-800/80 bg-gradient-to-br from-neutral-950 via-neutral-950 to-neutral-900/70 p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">
-                Admin Console
-              </div>
-              <h1 className="mt-2 text-lg font-semibold text-neutral-100">
-                Paid Chats Inbox
-              </h1>
-              <div className="mt-1 text-xs text-neutral-400">
-                Monitor, assign, and take over premium conversations.
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                loadMe();
-                load(true);
-              }}
-              className="shrink-0 rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-2 text-xs font-semibold text-neutral-100 hover:bg-neutral-900/80 active:scale-[0.99]"
-            >
-              Refresh
-            </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Total</div>
-              <div className="mt-1 text-sm font-semibold text-neutral-100">
-                {inboxStats.total}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Unread</div>
-              <div className="mt-1 text-sm font-semibold text-amber-200">
-                {inboxStats.unread}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Unassigned</div>
-              <div className="mt-1 text-sm font-semibold text-amber-200">
-                {inboxStats.unassigned}
-              </div>
-            </div>
-            <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/60 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-wide text-neutral-500">Assigned to you</div>
-              <div className="mt-1 text-sm font-semibold text-emerald-200">
-                {inboxStats.assignedToMe}
-              </div>
-            </div>
-          </div>
+    <div className={styles.inbox}>
+      <div className={styles.heading}>
+        <div>
+          <h2>Conversation inbox</h2>
+          <p>
+            Keep customer conversations moving, from first question to a clear
+            next step.
+          </p>
         </div>
-
-        {loading ? (
-          <div className="mt-8 text-center text-sm text-neutral-400">Loading…</div>
-        ) : err ? (
-          <div className="rounded-xl border border-red-900/40 bg-red-950/30 p-3 text-sm">
-            {err}
+        <button
+          className={styles.action}
+          disabled={loading}
+          onClick={() => {
+            loadMe();
+            load(true);
+          }}
+        >
+          <RefreshCw size={16} aria-hidden="true" />
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      <div className={styles.metrics}>
+        {(
+          [
+            ["Conversations loaded", inboxStats.total, MessageSquare],
+            ["Unread", inboxStats.unread, Mail],
+            ["Awaiting assignment", inboxStats.unassigned, Users],
+            ["Assigned to you", inboxStats.assignedToMe, UserCheck],
+          ] as const
+        ).map(([label, count, Icon]) => (
+          <div key={label}>
+            <span>
+              <Icon size={18} aria-hidden="true" />
+              {label}
+            </span>
+            <strong>{loading && !items.length ? "—" : count}</strong>
           </div>
-        ) : items.length === 0 ? (
-          <div className="mt-8 text-center text-sm text-neutral-400">
-            No paid chats yet
+        ))}
+      </div>
+      <section
+        className={styles.panel}
+        aria-label="Paid conversations"
+        aria-busy={loading}
+      >
+        <div className={styles.toolbar}>
+          <div className={styles.filters} aria-label="Filter conversations">
+            {(
+              [
+                ["all", "All conversations"],
+                ["unread", "Unread"],
+                ["unassigned", "Unassigned"],
+                ["mine", "Assigned to me"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className={styles.search}>
+            <Search size={17} aria-hidden="true" />
+            <input
+              aria-label="Search loaded conversations"
+              placeholder="Search customer or message…"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className={styles.listCaption}>
+          <span>
+            {filteredItems.length} of {items.length} loaded conversations
+          </span>
+          <span>Search and counts cover loaded conversations</span>
+        </div>
+        {err ? (
+          <div className={styles.notice} role="alert">
+            {err} <button onClick={() => load(true)}>Try again</button>
+          </div>
+        ) : null}
+        {loading && !items.length ? (
+          <div className={styles.empty} role="status">
+            <MessageSquare size={28} />
+            <h3>Loading conversations</h3>
+            <p>Your inbox will appear here shortly.</p>
+          </div>
+        ) : !filteredItems.length ? (
+          <div className={styles.empty}>
+            <MessageSquare size={28} />
+            <h3>
+              {items.length
+                ? "No matching conversations"
+                : "Your inbox is clear"}
+            </h3>
+            <p>
+              {items.length
+                ? "Try another name, message or filter."
+                : "Paid customer conversations will appear here when they begin."}
+            </p>
+            {items.length > 0 && (
+              <button
+                className={styles.action}
+                onClick={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-neutral-800/80 bg-neutral-950/40 shadow-[0_0_0_1px_rgba(0,0,0,0.2)]">
-            {items.map((it) => {
-              const convId = it.conversation_id;
-
+          <div className={styles.list}>
+            {filteredItems.map((item) => {
+              const id = item.conversation_id;
+              const mine = item.assigned_agent_id === myId;
+              const locked =
+                !isAdmin && item.assigned_agent_id != null && !mine;
               const title =
-                it.customer_name ||
-                it.customer_email ||
-                it.customer_whatsapp ||
-                `Conversation #${convId}`;
-
-              const assignedId = it.assigned_agent_id;
-              const assignedName = it.assigned_agent_username;
-
-              const assignedToYou =
-                myId != null &&
-                assignedId != null &&
-                Number(assignedId) === Number(myId);
-
-              const assignedToOther =
-                assignedId != null &&
-                myId != null &&
-                Number(assignedId) !== Number(myId);
-
-              const linkDisabled = !isAdmin && assignedToOther;
-
-              const assignedBadge = assignedId ? (
-                <span
-                  className={[
-                    badgeBase(),
-                    assignedToYou
-                      ? "border-emerald-900/40 bg-emerald-950/30 text-emerald-200"
-                      : "border-sky-900/40 bg-sky-950/30 text-sky-200",
-                  ].join(" ")}
-                >
-                  Assigned to:{" "}
-                  {assignedToYou
-                    ? `${assignedName || myUsername || `ID ${assignedId}`} (you)`
-                    : assignedName || `ID ${assignedId}`}
-                </span>
-              ) : (
-                <span
-                  className={[
-                    badgeBase(),
-                    "border-amber-900/40 bg-amber-950/30 text-amber-200",
-                  ].join(" ")}
-                >
-                  Unassigned
-                </span>
-              );
-
-              const showClaim = assignedId == null;
-              const showTakeover =
-                isAdmin && assignedId != null && !assignedToYou;
-              const showLocked =
-                !isAdmin && assignedId != null && !assignedToYou;
-
-              const note = rowNote[convId];
-              const isBusy = !!busy[convId];
-
-              // ✅ unread indicator only matters if the row is actionable for you/admin
-              const showUnread = it.is_unread && !linkDisabled;
-
+                item.customer_name ||
+                item.customer_email ||
+                item.customer_whatsapp ||
+                `Conversation #${id}`;
               return (
-                <RowShell
-                  key={String(convId)}
-                  disabled={linkDisabled}
-                  href={`/internal/paid-chat/${convId}`}
-                  title={linkDisabled ? "Locked: assigned to another agent" : ""}
+                <article
+                  key={id}
+                  className={styles.row}
+                  data-unread={item.is_unread && !locked}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start gap-3">
-                        <div className="mt-2 shrink-0">
-                          {showUnread ? (
-                            <span className="block h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_0_4px_rgba(251,191,36,0.12)]" />
-                          ) : (
-                            <span className="block h-2.5 w-2.5 rounded-full bg-transparent" />
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="truncate text-sm font-semibold text-neutral-100">
-                              {title}
-                            </div>
-                            <span className="text-[11px] text-neutral-500">
-                              #{convId}
-                            </span>
-                          </div>
-                          <div className="mt-1 truncate text-xs text-neutral-400">
-                            {it.last_message_text || "No messages yet"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span
-                          className={[
-                            badgeBase(),
-                            "border-neutral-800 bg-neutral-900/60 text-neutral-300",
-                          ].join(" ")}
-                        >
-                          {it.route_type || "unknown"}
-                        </span>
-
-                        <span
-                          className={[
-                            badgeBase(),
-                            "border-neutral-800 bg-neutral-900/60 text-neutral-400",
-                          ].join(" ")}
-                        >
-                          {it.status || "active"}
-                        </span>
-
-                        {assignedBadge}
-
-                        {showUnread ? (
-                          <span
-                            className={[
-                              badgeBase(),
-                              "border-amber-900/40 bg-amber-950/30 text-amber-200",
-                            ].join(" ")}
-                          >
-                            Unread
-                          </span>
-                        ) : null}
-
-                        {note ? (
-                          <span
-                            className={[
-                              badgeBase(),
-                              "border-neutral-700 bg-neutral-900/60 text-neutral-200",
-                            ].join(" ")}
-                          >
-                            {note}
-                          </span>
-                        ) : null}
-                      </div>
+                  <div className={styles.avatar} aria-hidden="true">
+                    {title.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className={styles.rowContent}>
+                    <div className={styles.rowTitle}>
+                      {locked ? (
+                        <strong>{title}</strong>
+                      ) : (
+                        <Link href={`/internal/paid-chat/${id}`}>{title}</Link>
+                      )}
+                      {item.is_unread && !locked && (
+                        <span className={styles.unread}>Unread</span>
+                      )}
+                      <small>#{id}</small>
                     </div>
-
-                    <div className="shrink-0 flex flex-col items-end gap-2">
-                      {showClaim ? (
+                    <p className={styles.preview}>
+                      {item.last_message_text || "No messages yet"}
+                    </p>
+                    <div className={styles.meta}>
+                      <span>
+                        {(item.route_type || "General enquiry").replaceAll(
+                          "_",
+                          " ",
+                        )}
+                      </span>
+                      <span>{item.status || "Active"}</span>
+                      <span>
+                        {item.assigned_agent_id == null
+                          ? "Awaiting assignment"
+                          : mine
+                            ? "Assigned to you"
+                            : `Assigned to ${item.assigned_agent_username || "another agent"}`}
+                      </span>
+                    </div>
+                    {rowNote[id] && (
+                      <p role="status" className={styles.rowNote}>
+                        {rowNote[id]}
+                      </p>
+                    )}
+                  </div>
+                  <div className={styles.rowActions}>
+                    <time>
+                      {formatTime(item.last_message_at || item.updated_at)}
+                    </time>
+                    <div>
+                      {item.assigned_agent_id == null ? (
                         <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            claimOrTakeover(convId);
-                          }}
-                          disabled={isBusy || !authed}
-                          className="rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-1.5 text-[12px] font-semibold text-neutral-100 hover:bg-neutral-900 active:scale-[0.99] disabled:opacity-60"
+                          className={styles.primary}
+                          disabled={busy[id] || !authed}
+                          onClick={() => claimOrTakeover(id)}
                         >
-                          {isBusy ? "…" : "Claim"}
+                          {busy[id] ? "Assigning…" : "Assign to me"}
                         </button>
-                      ) : showTakeover ? (
+                      ) : isAdmin && !mine ? (
                         <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setConfirmTakeoverId(convId);
-                          }}
-                          disabled={isBusy || !authed}
-                          className="rounded-lg border border-red-900/40 bg-red-950/30 px-3 py-1.5 text-[12px] font-semibold text-red-200 hover:bg-red-950/50 active:scale-[0.99] disabled:opacity-60"
+                          className={styles.action}
+                          disabled={busy[id]}
+                          onClick={() => setConfirmTakeoverId(id)}
                         >
-                          {isBusy ? "…" : "Take over"}
+                          Take over
                         </button>
-                      ) : showLocked ? (
-                        <span
-                          className={[
-                            badgeBase(),
-                            "border-neutral-700 bg-neutral-900/60 text-neutral-300",
-                          ].join(" ")}
-                        >
-                          Locked
-                        </span>
                       ) : null}
-
-                      <div className="text-[11px] text-neutral-500">
-                        {formatTime(it.last_message_at || it.updated_at)}
-                      </div>
+                      {locked ? (
+                        <span className={styles.locked}>
+                          Assigned to another agent
+                        </span>
+                      ) : (
+                        <Link
+                          className={styles.action}
+                          href={`/internal/paid-chat/${id}`}
+                        >
+                          Open chat
+                        </Link>
+                      )}
                     </div>
                   </div>
-                </RowShell>
+                </article>
               );
             })}
           </div>
         )}
-
         {canLoadMore && (
-          <button
-            onClick={() => load(false)}
-            className="mt-4 w-full rounded-xl border border-neutral-800 py-2 text-sm active:scale-[0.99]"
-          >
-            Load more
-          </button>
+          <div className={styles.loadMore}>
+            <button
+              className={styles.action}
+              disabled={loading}
+              onClick={() => load(false)}
+            >
+              {loading ? "Loading…" : "Load more conversations"}
+            </button>
+          </div>
         )}
-      </div>
-
+      </section>
       <ConfirmModal
         open={confirmTakeoverId != null}
         title="Take over this conversation?"
@@ -563,9 +531,8 @@ export default function PaidChatInboxPage() {
         confirmText="Take over"
         onCancel={() => setConfirmTakeoverId(null)}
         onConfirm={async () => {
-          if (confirmTakeoverId != null) {
+          if (confirmTakeoverId != null)
             await claimOrTakeover(confirmTakeoverId);
-          }
           setConfirmTakeoverId(null);
         }}
       />

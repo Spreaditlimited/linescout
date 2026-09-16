@@ -1,14 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRecaptchaV3 } from "@/lib/security/useRecaptchaV3";
+import Image from "next/image";
+import Link from "next/link";
+import { Eye, EyeOff, CircleAlert } from "lucide-react";
+import styles from "./InternalAuth.module.css";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export default function InternalSignInPage() {
   const router = useRouter();
+  const captcha = useRecaptchaV3();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
-  const defaultNext = "/internal/agent-handoffs";
-  const next = nextParam || defaultNext;
+  const safeNext = nextParam?.startsWith("/internal/") && !nextParam.startsWith("/internal/sign-in") ? nextParam : null;
+  const [showPassword, setShowPassword] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,6 +31,7 @@ export default function InternalSignInPage() {
 
     setBusy(true);
     try {
+      const captchaToken = await captcha("linescout_internal_sign_in");
       const res = await fetch("/api/internal/auth/sign-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32,13 +39,14 @@ export default function InternalSignInPage() {
           email: username.trim(), // API still expects `email`
           password,
           app: "admin",
+          captchaToken,
         }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data?.message || "Sign-in failed.");
+        setError(data?.error || data?.message || "Sign-in failed. Please try again.");
         return;
       }
 
@@ -46,8 +54,8 @@ export default function InternalSignInPage() {
       const meRes = await fetch("/internal/auth/me", { cache: "no-store" });
       const me = await meRes.json().catch(() => null);
 
-      const canLeads = !!me?.user?.permissions?.can_view_leads;
-      const canHandoffs = !!me?.user?.permissions?.can_view_handoffs;
+      const canLeads = me?.user?.role === "admin" || !!me?.user?.permissions?.can_view_leads;
+      const canHandoffs = me?.user?.role === "admin" || !!me?.user?.permissions?.can_view_handoffs;
 
       const target = canHandoffs
         ? "/internal/agent-handoffs"
@@ -55,72 +63,37 @@ export default function InternalSignInPage() {
         ? "/internal/leads"
         : "/internal/sign-in?next=/internal/agent-handoffs";
 
-      router.replace(nextParam || target);
+      router.replace(safeNext || target);
+      router.refresh();
 
     } catch {
-      setError("Network error. Try again.");
+      setError("Sign-in could not be verified. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 shadow-xl">
-          <div className="p-6">
-            <div className="mb-6">
-              <h1 className="text-2xl font-semibold">LineScout Admin</h1>
-              <p className="text-sm text-neutral-400 mt-1">
-                Sign in to manage Leads and Handoffs.
-              </p>
-            </div>
-
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div>
-                <label className="text-sm text-neutral-300">Username</label>
-                <input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  type="text"
-                  autoComplete="username"
-                  className="mt-2 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2 outline-none focus:border-neutral-600"
-                  placeholder="Admin username"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm text-neutral-300">Password</label>
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  type="password"
-                  autoComplete="current-password"
-                  className="mt-2 w-full rounded-xl bg-neutral-950 border border-neutral-800 px-3 py-2 outline-none focus:border-neutral-600"
-                  placeholder="••••••••••"
-                />
-              </div>
-
-              {error ? (
-                <div className="rounded-xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-200">
-                  {error}
-                </div>
-              ) : null}
-
-              <button
-                disabled={busy}
-                className="w-full rounded-xl bg-white text-neutral-950 font-medium py-2.5 hover:bg-neutral-200 disabled:opacity-60"
-              >
-                {busy ? "Signing in..." : "Sign in"}
-              </button>
-            </form>
-          </div>
+    <main className={styles.layout}>
+      <section className={styles.story} aria-label="LineScout operations">
+        <Image src="/images/hero-background-1.png" alt="" fill sizes="50vw" priority className={styles.photo} />
+        <Link href="/" className={styles.storyLogo}><Image src="/images/svg-logo-white.svg" width={180} height={38} alt="Sure Imports" /><span>LINESCOUT</span></Link>
+        <div className={styles.storyCopy}><span>YOUR OPERATIONS WORKSPACE</span><h2>Every project.<br />One clear view.</h2><p>Coordinate sourcing, support your customers, and keep every order moving from enquiry to delivery.</p></div>
+      </section>
+      <section className={styles.workspace}>
+        <div className={styles.inner}>
+          <Link href="/" className={styles.mobileLogo}><Image className={styles.lightLogo} src="/images/svg-logo.svg" width={180} height={38} alt="Sure Imports" /><Image className={styles.darkLogo} src="/images/svg-logo-white.svg" width={180} height={38} alt="Sure Imports" /><span>LINESCOUT</span></Link>
+          <header><span className={styles.eyebrow}>STAFF ACCESS</span><h1>Welcome back.</h1><p>Sign in to your LineScout workspace.</p></header>
+          <form onSubmit={onSubmit} aria-busy={busy}>
+            <div><label htmlFor="internal-username">Username</label><input id="internal-username" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Enter your username" required disabled={busy} /></div>
+            <div><label htmlFor="internal-password">Password</label><div className={styles.password}><input id="internal-password" value={password} onChange={e => setPassword(e.target.value)} type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Enter your password" required disabled={busy} /><button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword}>{showPassword ? <EyeOff size={19} /> : <Eye size={19} />}</button></div></div>
+            {error && <div className={styles.error} role="alert"><CircleAlert size={18} /><span>{error}</span></div>}
+            <button type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
+          </form>
+          <p className={styles.captchaNotice}>Protected by reCAPTCHA. Google’s <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer">Terms of Service</a> apply.</p>
+          <p className={styles.help}>For authorised team members only. Need access? Contact your administrator.</p>
         </div>
-
-        <p className="text-xs text-neutral-500 mt-4 text-center">
-          Internal access only.
-        </p>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

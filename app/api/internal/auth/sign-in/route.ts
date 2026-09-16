@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { db } from "@/lib/db";
+import { verifyRecaptchaToken } from "@/lib/security/recaptcha";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,11 @@ export async function POST(req: Request) {
 
   if (!login || !password) {
     return NextResponse.json({ ok: false, error: "Missing credentials" }, { status: 400 });
+  }
+
+  // Native agents retain their separate role-restricted login flow.
+  if (app !== "agent" && !(await verifyRecaptchaToken(body?.captchaToken, req, "linescout_internal_sign_in"))) {
+    return NextResponse.json({ ok: false, error: "Security verification failed. Please try signing in again." }, { status: 403 });
   }
 
   const adminCookieName = clean(process.env.INTERNAL_AUTH_COOKIE_NAME || "linescout_admin_session");

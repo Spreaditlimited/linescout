@@ -1,5 +1,2 @@
 import { redirect } from "next/navigation";
-
-export default function InternalIndexPage() {
-  redirect("/internal/sign-in");
-}
+export default function InternalIndexPage() { redirect("/internal/agent-handoffs"); }

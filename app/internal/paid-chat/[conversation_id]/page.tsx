@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import * as Dialog from "@radix-ui/react-dialog";
+import styles from "../PaidChat.module.css";
 import { useParams } from "next/navigation";
 import ConfirmModal from "../../_components/ConfirmModal";
 import SearchableSelect from "../../_components/SearchableSelect";
@@ -125,6 +127,7 @@ export default function PaidChatThreadPage() {
   const params = useParams<{ conversation_id: string }>();
   const conversationId = Number(params?.conversation_id || 0);
 
+  const [bootLoading, setBootLoading] = useState(true);
   const [bootErr, setBootErr] = useState<string | null>(null);
 
   const [items, setItems] = useState<Msg[]>([]);
@@ -142,11 +145,15 @@ export default function PaidChatThreadPage() {
   const [claimNote, setClaimNote] = useState<string>("");
 
   const [assignedAgentId, setAssignedAgentId] = useState<number | null>(null);
-  const [assignedAgentUsername, setAssignedAgentUsername] = useState<string | null>(null);
+  const [assignedAgentUsername, setAssignedAgentUsername] = useState<
+    string | null
+  >(null);
   const [customerName, setCustomerName] = useState<string | null>(null);
   const [agentNameMap, setAgentNameMap] = useState<Record<string, string>>({});
   const [adminSenderIds, setAdminSenderIds] = useState<number[]>([]);
-  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<Record<string, Attachment[]>>({});
+  const [attachmentsByMessageId, setAttachmentsByMessageId] = useState<
+    Record<string, Attachment[]>
+  >({});
 
   const [takeoverConfirmOpen, setTakeoverConfirmOpen] = useState(false);
   const [handoverOpen, setHandoverOpen] = useState(false);
@@ -166,9 +173,11 @@ export default function PaidChatThreadPage() {
   const activeAgents = useMemo(
     () =>
       agents.filter(
-        (a) => Number(a.is_active ?? 1) === 1 && String(a.approval_status || "") === "approved"
+        (a) =>
+          Number(a.is_active ?? 1) === 1 &&
+          String(a.approval_status || "") === "approved",
       ),
-    [agents]
+    [agents],
   );
 
   useEffect(() => {
@@ -224,7 +233,7 @@ export default function PaidChatThreadPage() {
   }> {
     const res = await fetch(
       `/api/internal/paid-chat/messages?conversation_id=${conversationId}&after_id=${after}&limit=120`,
-      { method: "GET" }
+      { method: "GET" },
     );
 
     const data: MsgRes | null = await res.json().catch(() => null);
@@ -236,24 +245,33 @@ export default function PaidChatThreadPage() {
     const last = Number(data.last_id || after);
 
     const assigned_agent_id =
-      typeof data.assigned_agent_id === "number" ? data.assigned_agent_id : null;
+      typeof data.assigned_agent_id === "number"
+        ? data.assigned_agent_id
+        : null;
 
     const assigned_agent_username =
-      typeof data.assigned_agent_username === "string" && data.assigned_agent_username.trim()
+      typeof data.assigned_agent_username === "string" &&
+      data.assigned_agent_username.trim()
         ? data.assigned_agent_username.trim()
         : null;
 
     const customer_name =
-      typeof data?.meta?.customer_name === "string" && data.meta.customer_name.trim()
+      typeof data?.meta?.customer_name === "string" &&
+      data.meta.customer_name.trim()
         ? data.meta.customer_name.trim()
         : null;
     const agent_name_map =
-      typeof data?.agent_name_map === "object" && data.agent_name_map ? data.agent_name_map : {};
+      typeof data?.agent_name_map === "object" && data.agent_name_map
+        ? data.agent_name_map
+        : {};
     const admin_sender_ids = Array.isArray(data?.admin_sender_ids)
-      ? data.admin_sender_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      ? data.admin_sender_ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
       : [];
     const attachments_by_message_id =
-      typeof data?.attachments_by_message_id === "object" && data.attachments_by_message_id
+      typeof data?.attachments_by_message_id === "object" &&
+      data.attachments_by_message_id
         ? data.attachments_by_message_id
         : {};
 
@@ -283,16 +301,22 @@ export default function PaidChatThreadPage() {
   async function loadAgents() {
     setAgentsLoading(true);
     try {
-      const res = await fetch("/api/internal/admin/agents?limit=200&cursor=0", { cache: "no-store" });
+      const res = await fetch("/api/internal/admin/agents?limit=200&cursor=0", {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) return;
-      const mapped = (Array.isArray(data.items) ? data.items : []).map((a: any) => ({
-        id: Number(a.internal_user_id),
-        username: String(a.username || ""),
-        email: a?.profile?.email || null,
-        is_active: a.is_active ? 1 : 0,
-        approval_status: a?.checklist?.approved_to_claim ? "approved" : "pending",
-      }));
+      const mapped = (Array.isArray(data.items) ? data.items : []).map(
+        (a: any) => ({
+          id: Number(a.internal_user_id),
+          username: String(a.username || ""),
+          email: a?.profile?.email || null,
+          is_active: a.is_active ? 1 : 0,
+          approval_status: a?.checklist?.approved_to_claim
+            ? "approved"
+            : "pending",
+        }),
+      );
       setAgents(mapped);
     } catch {
       // silent
@@ -314,10 +338,15 @@ export default function PaidChatThreadPage() {
       return;
     }
 
-    setAssignedAgentId(typeof data.assigned_agent_id === "number" ? data.assigned_agent_id : null);
+    setAssignedAgentId(
+      typeof data.assigned_agent_id === "number"
+        ? data.assigned_agent_id
+        : null,
+    );
 
     const uname =
-      typeof data.assigned_agent_username === "string" && data.assigned_agent_username.trim()
+      typeof data.assigned_agent_username === "string" &&
+      data.assigned_agent_username.trim()
         ? data.assigned_agent_username.trim()
         : null;
     if (uname) setAssignedAgentUsername(uname);
@@ -365,7 +394,10 @@ export default function PaidChatThreadPage() {
       const res = await fetch("/api/internal/paid-chat/assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, agent_id: agentId }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          agent_id: agentId,
+        }),
       });
       const data: AssignRes | null = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
@@ -374,10 +406,15 @@ export default function PaidChatThreadPage() {
       }
 
       const picked = activeAgents.find((a) => Number(a.id) === agentId) || null;
-      setAssignedAgentId(typeof data?.assigned_agent_id === "number" ? data.assigned_agent_id : agentId);
+      setAssignedAgentId(
+        typeof data?.assigned_agent_id === "number"
+          ? data.assigned_agent_id
+          : agentId,
+      );
       setAssignedAgentUsername(
-        (typeof data?.assigned_agent_username === "string" && data.assigned_agent_username.trim()) ||
-          (picked?.username ? picked.username : null)
+        (typeof data?.assigned_agent_username === "string" &&
+          data.assigned_agent_username.trim()) ||
+          (picked?.username ? picked.username : null),
       );
       setClaimNote("Assigned by admin.");
       setHandoverOpen(false);
@@ -397,6 +434,7 @@ export default function PaidChatThreadPage() {
     (async () => {
       try {
         setBootErr(null);
+        setBootLoading(true);
 
         const initial = await fetchNew(0);
         if (cancelled) return;
@@ -413,6 +451,8 @@ export default function PaidChatThreadPage() {
         setTimeout(scrollToBottom, 50);
       } catch (e: any) {
         if (!cancelled) setBootErr(e?.message || "Failed to load.");
+      } finally {
+        if (!cancelled) setBootLoading(false);
       }
     })();
 
@@ -429,8 +469,7 @@ export default function PaidChatThreadPage() {
           agent_name_map,
           admin_sender_ids,
           attachments_by_message_id,
-        } =
-          await fetchNew(after);
+        } = await fetchNew(after);
 
         // always keep assignment fresh
         setAssignedAgentId(assigned_agent_id);
@@ -446,7 +485,10 @@ export default function PaidChatThreadPage() {
           });
         }
         if (Object.keys(attachments_by_message_id).length) {
-          setAttachmentsByMessageId((prev) => ({ ...prev, ...attachments_by_message_id }));
+          setAttachmentsByMessageId((prev) => ({
+            ...prev,
+            ...attachments_by_message_id,
+          }));
         }
 
         if (!rows.length) return;
@@ -455,14 +497,15 @@ export default function PaidChatThreadPage() {
           const incoming = rows || [];
           const incomingKeys = new Set(
             incoming.map(
-              (r) => `${r.sender_type}|${String(r.message_text || "").trim()}|${Number(r.reply_to_message_id || 0)}`
-            )
+              (r) =>
+                `${r.sender_type}|${String(r.message_text || "").trim()}|${Number(r.reply_to_message_id || 0)}`,
+            ),
           );
           const cleanedPrev = prev.filter((m) => {
             const isOptimistic = m.id > 1000000000000;
             if (!isOptimistic) return true;
             const key = `${m.sender_type}|${String(m.message_text || "").trim()}|${Number(
-              m.reply_to_message_id || 0
+              m.reply_to_message_id || 0,
             )}`;
             return !incomingKeys.has(key);
           });
@@ -524,7 +567,10 @@ export default function PaidChatThreadPage() {
       const res = await fetch("/api/internal/paid-chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, message_text: text }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_text: text,
+        }),
       });
 
       const data: SendRes | null = await res.json().catch(() => null);
@@ -534,8 +580,8 @@ export default function PaidChatThreadPage() {
           prev.map((m) =>
             m.id === optimisticId
               ? { ...m, message_text: m.message_text + "\n\n(Delivery failed)" }
-              : m
-          )
+              : m,
+          ),
         );
         return;
       }
@@ -562,8 +608,8 @@ export default function PaidChatThreadPage() {
         prev.map((m) =>
           m.id === optimisticId
             ? { ...m, message_text: m.message_text + "\n\n(Network error)" }
-            : m
-        )
+            : m,
+        ),
       );
     } finally {
       setSending(false);
@@ -583,8 +629,8 @@ export default function PaidChatThreadPage() {
     Number(assignedAgentId) !== Number(myId);
 
   return (
-    <div className="min-h-[100dvh] bg-[#0B0B0E] text-neutral-100 flex flex-col">
-      <div className="sticky top-0 z-20 border-b border-white/10 bg-black/60 backdrop-blur px-3 sm:px-4 py-3 flex items-center gap-3">
+    <div className={styles.thread}>
+      <div className={styles.threadHeader}>
         <Link
           href="/internal/paid-chat"
           className="shrink-0 text-sm font-semibold text-white/80 hover:text-white"
@@ -594,7 +640,9 @@ export default function PaidChatThreadPage() {
 
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold">
-            {customerName ? `${customerName} • #${conversationId}` : `Conversation #${conversationId}`}
+            {customerName
+              ? `${customerName} • #${conversationId}`
+              : `Conversation #${conversationId}`}
           </div>
           <div className="mt-0.5 text-[11px] text-white/50 truncate">
             {assignmentLine}
@@ -625,11 +673,18 @@ export default function PaidChatThreadPage() {
             <div className="text-[11px] text-white/50">Admin view</div>
           </div>
         ) : (
-          <div className="ml-auto shrink-0 text-[11px] text-white/50">Agent view</div>
+          <div className="ml-auto shrink-0 text-[11px] text-white/50">
+            Agent view
+          </div>
         )}
       </div>
 
-      {bootErr ? (
+      {bootLoading ? (
+        <div className={styles.empty} role="status">
+          <h3>Loading conversation</h3>
+          <p>Retrieving messages and assignment details…</p>
+        </div>
+      ) : bootErr ? (
         <div className="p-4">
           <div className="rounded-2xl border border-red-900/40 bg-red-950/30 p-4 text-sm text-red-200">
             {bootErr}
@@ -639,82 +694,94 @@ export default function PaidChatThreadPage() {
         <>
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto px-3 sm:px-4 py-4"
+            className={styles.messages}
             style={{ WebkitOverflowScrolling: "touch" }}
           >
             <div className="mx-auto w-full max-w-3xl space-y-3">
-              {items.slice(Math.max(items.length - visibleCount, 0)).map((m) => {
-                const isAgent = m.sender_type === "agent";
-                const senderIdNum = Number(m.sender_id || 0);
-                const isAdminSender = isAgent && senderIdNum > 0 && adminSenderIds.includes(senderIdNum);
-                const bubble = isAgent
-                  ? isAdminSender
-                    ? "ml-auto border border-amber-300/70 bg-amber-100 text-amber-950"
-                    : "ml-auto bg-white text-neutral-950"
-                  : "mr-auto bg-white/[0.06] border border-white/10 text-white";
+              {!items.length && (
+                <div className={styles.empty}>
+                  <h3>No messages yet</h3>
+                  <p>Customer messages and your replies will appear here.</p>
+                </div>
+              )}
+              {items
+                .slice(Math.max(items.length - visibleCount, 0))
+                .map((m) => {
+                  const isAgent = m.sender_type === "agent";
+                  const senderIdNum = Number(m.sender_id || 0);
+                  const isAdminSender =
+                    isAgent &&
+                    senderIdNum > 0 &&
+                    adminSenderIds.includes(senderIdNum);
+                  const senderIdKey =
+                    senderIdNum > 0 ? String(senderIdNum) : "";
+                  const agentLabel =
+                    senderIdKey && agentNameMap[senderIdKey]
+                      ? agentNameMap[senderIdKey]
+                      : "Agent";
+                  const label =
+                    m.sender_type === "ai"
+                      ? "AI"
+                      : m.sender_type === "user"
+                        ? customerName || "Customer"
+                        : isAdminSender
+                          ? "Admin"
+                          : agentLabel;
+                  const attachments =
+                    attachmentsByMessageId[String(m.id)] || [];
 
-                const metaColor = isAgent
-                  ? isAdminSender
-                    ? "text-amber-900/70"
-                    : "text-black/50"
-                  : "text-white/50";
-                const senderIdKey = senderIdNum > 0 ? String(senderIdNum) : "";
-                const agentLabel = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : "Agent";
-                const label =
-                  m.sender_type === "ai"
-                    ? "AI"
-                    : m.sender_type === "user"
-                      ? customerName || "Customer"
-                      : isAdminSender
-                        ? "Admin"
-                        : agentLabel;
-                const attachments = attachmentsByMessageId[String(m.id)] || [];
-
-                return (
-                  <div
-                    key={String(m.id)}
-                    className={`w-fit max-w-[92%] sm:max-w-[86%] rounded-2xl px-3 py-2 ${bubble}`}
-                  >
-                    <div className={`text-[11px] ${metaColor} mb-1`}>
-                      {label} • {fmtTime(m.created_at)}
-                    </div>
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
-                      {renderMessageWithLinks(m.message_text)}
-                    </div>
-                    {attachments.length ? (
-                      <div className="mt-2 grid gap-2">
-                        {attachments.map((a) =>
-                          a.kind === "image" ? (
-                            <a key={a.id} href={a.secure_url || "#"} target="_blank" rel="noreferrer">
-                              <img
-                                src={a.secure_url || ""}
-                                alt={a.original_filename || "Attachment"}
-                                className="max-h-48 rounded-xl object-cover"
-                              />
-                            </a>
-                          ) : (
-                            <a
-                              key={a.id}
-                              href={a.secure_url || "#"}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="rounded-xl border border-neutral-200 bg-white/80 px-3 py-2 text-xs font-semibold text-neutral-900"
-                            >
-                              {a.original_filename || "Attachment"}
-                            </a>
-                          )
-                        )}
+                  return (
+                    <div
+                      key={String(m.id)}
+                      className={styles.bubble}
+                      data-agent={isAgent}
+                    >
+                      <div className={styles.messageMeta}>
+                        {label} • {fmtTime(m.created_at)}
                       </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+                      <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
+                        {renderMessageWithLinks(m.message_text)}
+                      </div>
+                      {attachments.length ? (
+                        <div className="mt-2 grid gap-2">
+                          {attachments.map((a) =>
+                            a.kind === "image" ? (
+                              <a
+                                key={a.id}
+                                href={a.secure_url || "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <img
+                                  src={a.secure_url || ""}
+                                  alt={a.original_filename || "Attachment"}
+                                  className="max-h-48 rounded-xl object-cover"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={a.id}
+                                href={a.secure_url || "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-xl border border-neutral-200 bg-white/80 px-3 py-2 text-xs font-semibold text-neutral-900"
+                              >
+                                {a.original_filename || "Attachment"}
+                              </a>
+                            ),
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-20 border-t border-white/10 bg-black/60 backdrop-blur p-2 sm:p-3">
+          <div className={styles.composer}>
             <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
               <textarea
+                aria-label="Message to customer"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type a message…"
@@ -726,7 +793,7 @@ export default function PaidChatThreadPage() {
                 disabled={!canSend}
                 className="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-neutral-950 disabled:opacity-60"
               >
-                Send
+                {sending ? "Sending…" : "Send message"}
               </button>
             </div>
           </div>
@@ -745,13 +812,19 @@ export default function PaidChatThreadPage() {
         }}
       />
 
-      {handoverOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0B0B0E] p-4">
-            <div className="text-sm font-semibold text-white">Hand over conversation</div>
-            <div className="mt-1 text-xs text-white/60">
+      <Dialog.Root
+        open={handoverOpen}
+        onOpenChange={(open) => {
+          if (!handoverBusy) setHandoverOpen(open);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="li-dialog-overlay" />
+          <Dialog.Content className="li-dialog">
+            <Dialog.Title>Hand over conversation</Dialog.Title>
+            <Dialog.Description>
               Assign to a specific agent or return this chat to the pool.
-            </div>
+            </Dialog.Description>
 
             <div className="mt-4 space-y-2">
               <SearchableSelect
@@ -773,12 +846,15 @@ export default function PaidChatThreadPage() {
               ) : null}
 
               {handoverNote ? (
-                <div className="text-xs text-red-200">{handoverNote}</div>
+                <div role="alert" style={{ color: "var(--li-danger)" }}>
+                  {handoverNote}
+                </div>
               ) : null}
             </div>
 
-            <div className="mt-4 flex items-center justify-end gap-2">
+            <div className="li-dialog-actions">
               <button
+                disabled={handoverBusy}
                 onClick={() => setHandoverOpen(false)}
                 className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70"
               >
@@ -786,15 +862,15 @@ export default function PaidChatThreadPage() {
               </button>
               <button
                 onClick={handoverConversation}
-                disabled={handoverBusy}
+                disabled={handoverBusy || !handoverTarget}
                 className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-neutral-950 disabled:opacity-60"
               >
                 {handoverBusy ? "Saving..." : "Confirm"}
               </button>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

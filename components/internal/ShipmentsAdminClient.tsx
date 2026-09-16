@@ -1,4 +1,5 @@
 "use client";
+import InternalEmptyState from "@/app/internal/_components/InternalEmptyState";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -102,7 +103,7 @@ export default function ShipmentsAdminClient() {
             ))}
           </div>
         ) : (
-          <div className="text-sm text-neutral-400">No shipments found.</div>
+          <InternalEmptyState title="No shipments to show" description="Track customer deliveries here once shipments are created. You can also try a different search." />
         )}
       </div>
     </div>

@@ -130,7 +130,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       )}
       {isPublicSite ? <Footer /> : null}
       {isPublicSite && !isWebinarViewer ? <LeadCapturePopup /> : null}
-      {!isAuth ? <><CookieNotice /><FloatingWhatsAppButton /></> : null}
+      {!isAuth && !isInternal ? <><CookieNotice /><FloatingWhatsAppButton /></> : null}
     </div>
   );
 }
