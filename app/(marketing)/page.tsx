@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import heroStyles from "./HomeHero.module.css";
 import { cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
@@ -288,81 +289,24 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
 
-      <section className="si-hero relative overflow-hidden">
-        <div className="mx-auto grid w-full min-w-0 max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.04fr_0.96fr] lg:px-8">
-          <div className="min-w-0 max-w-full">
-            <div className="inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.12em] sm:px-4 sm:text-xs sm:tracking-[0.16em]">
-              <Sparkles className="h-4 w-4" /> A Sure Imports sourcing workspace
-            </div>
-            <h1 className="mt-6 max-w-full break-words text-4xl font-black leading-[1.06] tracking-[-0.045em] text-white sm:text-5xl lg:text-6xl">
-              From product idea to delivered goods, manage sourcing in one place.
-            </h1>
-            <p className="mt-6 max-w-2xl break-words text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
-              Discover opportunities, define exactly what you need, work with sourcing specialists in China, review
-              quotes, make payments, and follow every project through shipping.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href="/sign-in?next=/projects/new"
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-950/20 transition hover:bg-orange-600"
-              >
-                Start Sourcing
-              </Link>
-              <Link
-                href="/white-label"
-                className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/15"
-              >
-                View Products
-              </Link>
-            </div>
-            <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm text-slate-300">
-              {[
-                "No subscription required to browse",
-                "AI and human sourcing support",
-                "Powered by Sure Imports",
-              ].map((item) => (
-                <span key={item} className="inline-flex items-center gap-2">
-                  <Check className="h-4 w-4 text-orange-400" /> {item}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative mx-auto hidden w-full max-w-xl md:block lg:mx-0">
-            <div className="absolute -inset-8 rounded-full bg-orange-500/10 blur-3xl" />
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-slate-900 p-3 shadow-2xl shadow-black/40">
-              <div className="flex items-center justify-between border-b border-white/10 px-3 pb-3">
-                <div className="flex gap-1.5" aria-hidden="true">
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                </div>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Sourcing workspace
-                </span>
-              </div>
-              <Image
-                src="/hero.png"
-                alt="LineScout sourcing dashboard showing a managed project"
-                width={520}
-                height={980}
-                sizes="(min-width: 1024px) 520px, 90vw"
-                className="mt-3 max-h-[34rem] w-full rounded-[1.4rem] object-cover object-top"
-              />
-            </div>
-            <div className="absolute -bottom-5 -left-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl sm:-left-8">
-              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-neutral-500">Project stage</p>
-              <p className="mt-1 flex items-center gap-2 text-sm font-bold text-neutral-900">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Supplier sourcing
-              </p>
-            </div>
-            <div className="absolute -right-2 top-16 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl sm:-right-8">
-              <p className="flex items-center gap-2 text-sm font-bold text-neutral-900">
-                <MessageCircle className="h-4 w-4 text-orange-500" /> Specialist connected
-              </p>
-            </div>
-          </div>
+      <section className={heroStyles.hero} aria-labelledby="home-hero-title">
+        <div className={heroStyles.art} aria-hidden="true">
+          <Image src="/images/hero-background-1.png" alt="" fill priority sizes="100vw" className={heroStyles.backgroundImage} />
+          <div className={heroStyles.overlay} />
         </div>
+        <div className={heroStyles.content}>
+          <span className={heroStyles.pill}><Sparkles aria-hidden="true" /> A Sure Imports sourcing workspace</span>
+          <h1 id="home-hero-title">China sourcing,<br />from idea to delivery.</h1>
+          <p>Discover opportunities, define exactly what you need, work with sourcing specialists in China, review quotes, make payments, and follow every project through shipping.</p>
+          <div className={heroStyles.actions}>
+            <Link href="/sign-in?next=/projects/new" className={heroStyles.primary}>Start Sourcing</Link>
+            <Link href="/white-label" className={heroStyles.secondary}>View Products</Link>
+          </div>
+          <ul className={heroStyles.trust}>
+            {["No subscription required to browse", "AI and human sourcing support", "Powered by Sure Imports"].map(item => <li key={item}><Check aria-hidden="true" />{item}</li>)}
+          </ul>
+        </div>
+        <div className={heroStyles.fade} aria-hidden="true" />
       </section>
 
       <section className="relative z-10 mx-auto -mt-6 w-full max-w-7xl px-4 sm:px-6 lg:px-8">

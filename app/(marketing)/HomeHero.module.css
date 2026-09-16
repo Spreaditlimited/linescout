@@ -1,0 +1,31 @@
+/* Homepage follows Sure Imports' centred hero; other service pages are untouched. */
+.hero { position: relative; display: flex; flex-direction: column; align-items: center; width: 100%; min-height: 85vh; padding: 129px 0 80px; overflow: hidden; background: var(--ls-theme-hero); }
+.art { position: absolute; inset: 0; opacity: .07; pointer-events: none; }
+.backgroundImage { object-fit: cover; opacity: .4; mix-blend-mode: luminosity; }
+.overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, rgb(2 6 23 / 80%), rgb(15 23 42 / 60%), rgb(2 6 23 / 90%)); }
+.content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 1200px; padding-inline: 24px; text-align: center; }
+.hero.hero h1 { margin: 0; max-width: 1152px; color: var(--ls-theme-ink); font-size: 72px; line-height: 1.1; font-weight: 650; letter-spacing: -.055em; text-wrap: balance; }
+.hero.hero p { margin: 24px 0 0; max-width: 880px; color: var(--ls-theme-muted); font-size: 20px; line-height: 1.625; font-weight: 400; text-wrap: balance; }
+.pill { display: flex; width: fit-content; max-width: 100%; align-items: center; justify-content: center; gap: 8px; min-height: 34px; margin-bottom: 24px; padding: 7px 14px; border: 1px solid transparent; border-radius: 999px; background: var(--ls-theme-hero-pill); color: var(--ls-theme-accent); font-size: 11px; font-weight: 600; line-height: 1.5; letter-spacing: .1em; text-transform: uppercase; }
+.pill svg { width: 14px; height: 14px; flex-shrink: 0; }
+.actions { display: flex; justify-content: center; gap: 16px; margin-top: 40px; }
+.hero.hero .actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; padding: 12px 32px; border-radius: 10px; border: 1px solid transparent; font-size: 16px; font-weight: 700; text-decoration: none; transition: filter .15s; }
+.hero.hero .primary { background: var(--ls-theme-primary); color: var(--ls-theme-on-primary); }
+.hero.hero .secondary { background: var(--ls-theme-surface); color: var(--ls-theme-ink); border-color: var(--ls-theme-border); }
+.actions a:hover { filter: brightness(.94); }
+.actions a:focus-visible { outline: 2px solid var(--ls-theme-accent); outline-offset: 4px; }
+.trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 24px; margin: 28px 0 0; padding: 0; list-style: none; color: var(--ls-theme-muted); font-size: 14px; }
+.trust li { display: flex; align-items: center; gap: 8px; }
+.trust svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--ls-theme-accent); }
+.fade { position: absolute; bottom: 0; inset-inline: 0; height: 100px; pointer-events: none; background: linear-gradient(transparent,var(--ls-theme-canvas)); }
+:global(.dark) .art { opacity: .24; }
+@media (min-width: 1024px) { .hero { padding-top: 155px; } }
+@media (min-width: 640px) and (max-width: 767px) { .hero.hero h1 { font-size: 60px; } }
+@media (max-width: 639px) {
+  .hero { min-height: 720px; }
+  .content { padding-inline: 16px; }
+  .hero.hero h1 { width: 100%; font-size: clamp(2rem,9.25vw,2.5rem); line-height: 1.12; }
+  .hero.hero p { font-size: 18px; }
+  .actions { flex-direction: column; width: 100%; }
+  .trust { flex-direction: column; align-items: center; }
+}

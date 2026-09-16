@@ -1,5 +1,7 @@
 /* LineScout visual source of truth. Tokens do not style unrelated apps until consumed. */
 :root {
+  --ls-theme-hero: #eeedf6;
+  --ls-theme-hero-pill: #f8f7ff;
   --ls-theme-canvas: #f6f8fc;
   --ls-theme-surface: #ffffff;
   --ls-theme-chrome: #ffffff;
@@ -22,6 +24,8 @@
   --ls-purple-readable-light: #48439b;
 }
 html.dark {
+  --ls-theme-hero: #15151d;
+  --ls-theme-hero-pill: #292539;
   --ls-theme-canvas: #101114;
   --ls-theme-surface: var(--ls-charcoal-surface);
   --ls-theme-chrome: var(--ls-charcoal-chrome);
