@@ -673,7 +673,7 @@ const ListItem = ({ title, href, desc, icon: Icon, color }: ListItemProps) => {
           <Icon className="h-5 w-5 text-white" />
         </div>
         <div>
-          <h4 className="mb-1 text-sm font-bold text-white transition-colors group-hover:text-orange-400">
+          <h4 className="mb-1 text-sm font-bold transition-colors">
             {title}
           </h4>
           <p className="line-clamp-2 text-xs text-slate-400">{desc}</p>

@@ -170,6 +170,8 @@ html .ls-menu.ls-menu :is(p,.text-slate-300,.text-slate-400) { color: var(--menu
 html .ls-menu.ls-menu h4 { font-size: 14px; font-weight: 650; letter-spacing: -.015em; }
 html .ls-menu.ls-menu p { font-size: 13px; line-height: 1.55; }
 html .ls-menu.ls-menu :is(a,button):hover { background-color: var(--menu-soft); color: var(--menu-accent); }
+/* Menu headings follow the tray surface, not legacy orange accent utilities. */
+html .ls-menu.ls-menu a:is(:hover,:focus-visible) h4 { color: var(--menu-accent); }
 html .ls-menu.ls-menu :is(a,button):focus-visible { outline: 2px solid var(--menu-accent); outline-offset: 2px; }
 html .ls-desktop-menu a { padding: 14px; gap: 12px; border-radius: 10px; }
 html .ls-desktop-menu .bg-gradient-to-br { background: var(--menu-soft); }
