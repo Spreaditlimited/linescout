@@ -76,6 +76,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     (pathname.startsWith("/white-label/") &&
       !privateWhiteLabelSections.some((route) => pathname.startsWith(route)));
   const isPublicSite =
+    pathname === "/sell-on-amazon" || pathname === "/sell-on-tiktok-shop" || pathname === "/amazon-profit-calculator" ||
     pathname === "/" ||
     pathname === "/account-deletion" ||
     pathname === "/agents" ||
@@ -90,6 +91,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/white-label-webinar") ||
     pathname.startsWith("/track");
   const hasDarkPublicHero =
+    pathname === "/sell-on-amazon" || pathname === "/sell-on-tiktok-shop" || pathname === "/amazon-profit-calculator" ||
     pathname === "/" ||
     pathname === "/affiliates" ||
     pathname === "/agent-app" ||

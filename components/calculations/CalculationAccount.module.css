@@ -1,0 +1,37 @@
+.saveArea { margin-top:18px; }
+.actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+.actions button,.actions a,.page button,.page .button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:10px 16px; border-radius:10px; border:1px solid var(--ls-theme-border); background:var(--ls-theme-surface); color:var(--ls-theme-ink); text-decoration:none; font-size:14px; font-weight:600; cursor:pointer; }
+.actions .primary,.page .primary { background:var(--ls-theme-primary); color:var(--ls-theme-on-primary); border-color:transparent; }
+.actions button:disabled,.page button:disabled { cursor:wait; opacity:.6; }
+.success { color:var(--ls-theme-ink); border-left:3px solid #29986b; padding:12px; font-size:14px; }
+.error { color:#b42338; background:var(--ls-theme-soft); padding:14px; border-radius:10px; font-size:14px; }
+:global(.dark) .error { color:#ffadb5; }
+.warning { border-left:3px solid var(--ls-theme-accent); padding:12px; font-size:14px; color:var(--ls-theme-ink); }
+.overlay { position:fixed; inset:0; z-index:100; background:rgb(0 0 0 / .55); }
+.dialog { position:fixed; z-index:101; top:50%; left:50%; transform:translate(-50%,-50%); width:calc(100% - 32px); max-width:520px; max-height:85dvh; overflow:auto; padding:32px; border:1px solid var(--ls-theme-border); border-radius:20px; background:var(--ls-theme-surface); color:var(--ls-theme-ink); box-shadow:0 24px 70px rgb(0 0 0 / .25); }
+.dialog h2 { font-size:24px; line-height:1.25; letter-spacing:-.025em; margin:8px 28px 16px 0; font-weight:650; }
+.dialog p { color:var(--ls-theme-muted); font-size:15px; line-height:1.7; margin:14px 0; }
+.dialog .close { position:absolute; top:12px; right:12px; display:grid; place-items:center; width:36px; height:36px; border:0; background:transparent; color:var(--ls-theme-muted); cursor:pointer; }
+.page { color:var(--ls-theme-ink); padding:24px; }
+.page h1 { font-size:clamp(28px,3vw,40px); line-height:1.15; font-weight:700; letter-spacing:-.035em; }
+.page h2 { font-size:20px; font-weight:650; }
+.page p { color:var(--ls-theme-muted); font-size:15px; line-height:1.65; }
+.heading { display:flex; justify-content:space-between; align-items:center; gap:24px; flex-wrap:wrap; margin-bottom:28px; }
+.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:24px 0; }
+.filters input { min-height:46px; flex:1; min-width:200px; padding:12px 16px; border:1px solid var(--ls-theme-border); border-radius:10px; color:var(--ls-theme-ink); background:var(--ls-theme-inset); font-size:16px; }
+.filters button[aria-pressed=true] { background:var(--ls-theme-soft); border-color:var(--ls-theme-accent); color:var(--ls-theme-accent); }
+.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.card { background:var(--ls-theme-surface); border:1px solid var(--ls-theme-border); border-radius:16px; padding:24px; overflow-wrap:anywhere; }
+.card h2 { margin:12px 0; }
+.card small { color:var(--ls-theme-muted); font-size:13px; }
+.card strong { display:block; font-size:30px; margin:6px 0; font-variant-numeric:tabular-nums; }
+.card .actions { margin-top:20px; }
+.empty { text-align:center; border:1px solid var(--ls-theme-border); border-radius:18px; background:var(--ls-theme-surface); padding:56px 24px; }
+.empty svg { margin:0 auto 20px; color:var(--ls-theme-accent); }
+.empty p { max-width:450px; margin:14px auto 24px; }
+.import { border:1px solid var(--ls-theme-border); background:var(--ls-theme-surface); border-radius:14px; padding:20px; margin:24px 0; }
+.import summary { cursor:pointer; font-size:16px; font-weight:600; }
+.import label { display:flex; align-items:flex-start; gap:12px; margin:14px 0; font-size:14px; }
+.pagination { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:24px; }
+.page :is(button,a,input,summary):focus-visible,.dialog :is(button,a):focus-visible { outline:2px solid var(--ls-theme-accent); outline-offset:3px; }
+@media(max-width:760px) { .grid { grid-template-columns:1fr; } .dialog { padding:24px; } .heading { align-items:flex-start; } .page { padding:20px 16px; } .filters input { flex-basis:100%; min-width:0; width:100%; } }

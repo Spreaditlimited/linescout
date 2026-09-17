@@ -1,10 +1,9 @@
+import WhiteLabelIntro from "@/components/marketing/WhiteLabelIntro";
 import searchStyles from "./WhiteLabelSearch.module.css";
 import MarketDestinations from "@/components/marketing/MarketDestinations";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { BadgeCheck, ShieldCheck, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { computeLandedRange } from "@/lib/white-label-products";
 import WhiteLabelCatalogClient from "@/components/white-label/WhiteLabelCatalogClient";
@@ -562,66 +561,10 @@ export default async function WhiteLabelPage({
 
 
       <div className="relative">
-        <div id="destination-market" className={searchStyles.destinationStart}><MarketDestinations value={countryCode} options={countryOptions} /></div>
-        {!category && !q && (
-        <section className="si-hero mx-auto grid w-full max-w-[1600px] gap-10 px-4 pb-6 pt-10 sm:px-6 md:grid-cols-[1.1fr_0.9fr] md:pt-16 lg:px-8">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(45,52,97,0.15)] bg-[rgba(45,52,97,0.06)] px-4 py-1 text-xs font-semibold text-[var(--agent-blue)]">
-              <Sparkles className="h-4 w-4" />
-              White label product ideas
-            </div>
-            <h1 className="mt-6 text-4xl font-semibold tracking-tight text-neutral-900 md:text-5xl">
-              Market-ready products you can brand and sell.
-            </h1>
-            <p className="mt-4 max-w-xl text-base leading-relaxed text-neutral-600">
-              Explore white label ideas with pricing signals, categories, and demand notes. When you find a winner,
-              start sourcing with verified China partners.
-            </p>
-            <div className="mt-6 flex flex-nowrap gap-3">
-              <Link
-                href="/sign-in"
-                className="inline-flex items-center gap-2 rounded-2xl bg-[var(--agent-blue)] px-5 py-3 text-xs font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.35)] whitespace-nowrap"
-              >
-                Start sourcing
-              </Link>
-              <Link
-                href="/white-label/start"
-                className="inline-flex items-center gap-2 rounded-2xl border border-[rgba(45,52,97,0.2)] bg-white px-5 py-3 text-xs font-semibold text-[var(--agent-blue)] whitespace-nowrap"
-              >
-                Build a project brief
-              </Link>
-            </div>
-            <div className="mt-8 flex flex-wrap gap-3 text-xs text-neutral-600">
-              <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
-                <ShieldCheck className="h-3.5 w-3.5 text-[var(--agent-blue)]" />
-                Verified factories
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
-                <BadgeCheck className="h-3.5 w-3.5 text-[var(--agent-blue)]" />
-                Clear pricing signals
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1">
-                ~1,000 ideas coming
-              </span>
-            </div>
-          </div>
-          <div className="relative hidden md:block">
-            <div className="hero-float rounded-[26px] border border-neutral-200 bg-white p-2.5 shadow-[0_25px_60px_rgba(15,23,42,0.12)] sm:rounded-[32px] sm:p-4">
-              <div className="rounded-[20px] border border-neutral-200 bg-neutral-50 p-2 sm:rounded-[28px] sm:p-3">
-                <Image
-                  src="/white-label-hero.PNG"
-                  alt="White label ideas preview"
-                  width={520}
-                  height={720}
-                  className="h-auto w-full rounded-[16px] sm:rounded-[22px]"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-        )}
+        {!category && !q && <WhiteLabelIntro />}
+        <div id="destination-market" className={!category && !q ? searchStyles.destinationAfterIntro : searchStyles.destinationStart}><MarketDestinations value={countryCode} options={countryOptions} /></div>
 
-        <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
+        <section className={searchStyles.contentSection}>
           <div className={searchStyles.panel} id="product-search">
             <div className={searchStyles.header}><div><h2>Find your next product</h2><p>Search by product, category or use case. Refine the results to fit your business.</p></div><div className={searchStyles.destination}><strong>{countries.find(country => country.iso2 === countryCode)?.name || countryCode} · {currencyCode}</strong><a href="#destination-market">Change destination</a></div></div>
             <FilterForm
@@ -661,7 +604,7 @@ export default async function WhiteLabelPage({
 
         </section>
 
-        <section className="mx-auto w-full max-w-[1600px] px-4 pb-10 sm:px-6 lg:px-8">
+        <section className={searchStyles.catalogueSection}>
           <WhiteLabelCatalogClient
             items={items}
             detailBase="/white-label"
@@ -720,7 +663,7 @@ export default async function WhiteLabelPage({
         </section>
 
         {mostViewed.length ? (
-          <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
+          <section className={searchStyles.contentSection}>
             <div className="rounded-[26px] border border-neutral-200 bg-white p-6 shadow-[0_16px_40px_rgba(15,23,42,0.08)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -731,7 +674,7 @@ export default async function WhiteLabelPage({
                   Explore all
                 </Link>
               </div>
-              <div className="mt-6 grid gap-4 md:grid-cols-4">
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {mostViewed.slice(0, 4).map((item) => (
                   <Link
                     key={item.id}
@@ -755,7 +698,7 @@ export default async function WhiteLabelPage({
         ) : null}
 
         {categorySpotlights.length ? (
-          <section className="mx-auto w-full max-w-[1600px] px-4 pb-6 sm:px-6 lg:px-8">
+          <section className={searchStyles.contentSection}>
             <div className="space-y-6">
               {categorySpotlights.map((spot) => (
                 <div
@@ -783,7 +726,7 @@ export default async function WhiteLabelPage({
                       View category
                     </Link>
                   </div>
-                  <div className="mt-5 grid gap-4 md:grid-cols-4">
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {spot.items.map((item) => (
                       <Link
                         key={item.id}

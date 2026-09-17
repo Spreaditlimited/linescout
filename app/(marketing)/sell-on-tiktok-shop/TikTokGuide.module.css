@@ -1,0 +1,3 @@
+.sourceLink { color:var(--ls-theme-accent); font-size:14px; line-height:1.6; text-decoration:underline; text-underline-offset:4px; }
+.twoColumns { grid-template-columns:repeat(2,minmax(0,1fr)); }
+@media(max-width:760px) { .twoColumns { grid-template-columns:1fr; } }

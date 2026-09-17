@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import CalculatorLink from "./CalculatorLink";
 import { ArrowLeft, BadgeCheck, Check, ChevronDown, CircleDollarSign, ClipboardCheck, Eye, PackageCheck, ShieldAlert, Sparkles, Target, Truck, Users } from "lucide-react";
 
 import DeferredSection from "@/components/white-label/DeferredSection";
@@ -181,6 +182,7 @@ export default function WhiteLabelProductGuide({
                 </div>
               </div>
 
+              <CalculatorLink name={product.product_name} currency={currencyCode} low={product.landed_per_unit_low} high={product.landed_per_unit_high} />
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
                   href={sourcingHref}

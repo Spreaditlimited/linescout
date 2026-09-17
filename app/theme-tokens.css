@@ -41,3 +41,7 @@ html.dark {
   --ls-theme-glow: #201e2b;
   --ls-theme-shadow: 0 8px 24px -16px rgb(0 0 0 / 45%);
 }
+
+/* Shared editorial/catalogue layout: White Label and Amazon guide. */
+:root { --ls-content-max:1232px; --ls-content-gutter:24px; --ls-content-gap:24px; --ls-content-card-padding:28px; }
+@media(max-width:760px) { :root { --ls-content-gutter:16px; --ls-content-gap:20px; --ls-content-card-padding:20px; } }

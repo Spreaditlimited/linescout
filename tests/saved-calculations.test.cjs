@@ -1,0 +1,13 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript');
+require.extensions['.ts']=(m,p)=>m._compile(ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,p);
+const {validateCalculation,calculationResult,validCalculationId,CALCULATION_VERSION}=require('../lib/calculation-records.ts');
+const {blankDraft}=require('../lib/amazon-calculator.ts');
+const {blankTikTok}=require('../lib/tiktok-calculator.ts');
+const amazon=()=>({name:'Bags',platform:'amazon',market:'GB',modelVersion:CALCULATION_VERSION,draft:{...blankDraft(),price:'25',landed:'9',fulfilment:'3.25',referral:'15',advertising:'12',returns:'4'}});
+test('server calculates results from canonical inputs, not client results',()=>{const i=validateCalculation({...amazon(),user_id:99,result:{profit:100000},currency:'USD'});assert.equal(i.user_id,undefined);assert.equal(i.currency,undefined);assert.equal(calculationResult(i).profit,5);});
+test('invalid market, platform, model, missing values and oversized name rejected',()=>{for(const x of [{platform:'other'},{market:'NG'},{modelVersion:0},{draft:{}},{name:'x'.repeat(161)}])assert.throws(()=>validateCalculation({...amazon(),...x}));});
+test('rejects malformed inactive fields and percentages above 100',()=>{assert.throws(()=>validateCalculation({...amazon(),draft:{...amazon().draft,product:{bad:true}}}));assert.throws(()=>validateCalculation({...amazon(),draft:{...amazon().draft,referral:'100.5'}}));});
+test('canonical names are trimmed and empty names get a useful default',()=>{assert.equal(validateCalculation({...amazon(),name:'  Bags  '}).name,'Bags');assert.equal(validateCalculation({...amazon(),name:' '}).name,'Untitled calculation');});
+test('TikTok Canada rejected but US and UK allowed',()=>{const input={name:'Idea',platform:'tiktok',market:'US',modelVersion:1,draft:{...blankTikTok('US'),price:'25',landed:'8',fulfilment:'3'}};assert.ok(validateCalculation(input));assert.throws(()=>validateCalculation({...input,market:'CA'}));});
+test('UUID validation excludes injection and malformed identifiers',()=>{assert.ok(validCalculationId('00000000-0000-4000-8000-000000000001'));for(const id of ['1',null,'../private',"x' OR 1=1"])assert.equal(validCalculationId(id),false);});
+test('all calculation routes use ownership predicates and no runtime DDL',()=>{const source=fs.readFileSync('app/api/calculations/route.ts','utf8');assert.doesNotMatch(source,/CREATE TABLE|ALTER TABLE/);assert.match(source,/WHERE id=\? AND user_id=\? AND revision=\?/);assert.match(source,/DELETE FROM linescout_saved_calculations WHERE id=\? AND user_id=\?/);assert.match(source,/authOriginAllowed/);});

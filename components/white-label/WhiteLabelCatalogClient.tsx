@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import CalculatorLink from "./CalculatorLink";
 import { MessageCircle, SearchX } from "lucide-react";
 import {
   currencyForCode,
@@ -266,7 +267,7 @@ export default function WhiteLabelCatalogClient({
 
   return (
     <>
-      <div className="grid gap-6 md:grid-cols-4">
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
         {itemLinks.length ? (
           itemLinks.map((item) => (
             <div
@@ -481,6 +482,7 @@ export default function WhiteLabelCatalogClient({
               </div>
 
               <div className="mt-auto px-5 pb-6">
+                <CalculatorLink name={item.product_name} currency={currencyCode} low={strictLanded ? item.landed_per_unit_low : pickLandedFieldsByCurrency(item, currencyCode).perUnitLow} high={strictLanded ? item.landed_per_unit_high : pickLandedFieldsByCurrency(item, currencyCode).perUnitHigh} />
                 <Link
                   href={item.detailHref}
                   className="inline-flex w-full items-center justify-center rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-700"

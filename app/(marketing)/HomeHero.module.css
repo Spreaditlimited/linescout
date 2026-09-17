@@ -3,7 +3,7 @@
 .art { position: absolute; inset: 0; opacity: .07; pointer-events: none; }
 .backgroundImage { object-fit: cover; opacity: .4; mix-blend-mode: luminosity; }
 .overlay { position: absolute; inset: 0; background: linear-gradient(to bottom, rgb(2 6 23 / 80%), rgb(15 23 42 / 60%), rgb(2 6 23 / 90%)); }
-.content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 1200px; padding-inline: 24px; text-align: center; }
+.content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: calc(100% - var(--ls-content-gutter) * 2); max-width: var(--ls-content-max); padding-inline: 0; text-align: center; }
 .hero.hero h1 { margin: 0; max-width: 1152px; color: var(--ls-theme-ink); font-size: 72px; line-height: 1.1; font-weight: 650; letter-spacing: -.055em; text-wrap: balance; }
 .hero.hero p { margin: 24px 0 0; max-width: 880px; color: var(--ls-theme-muted); font-size: 20px; line-height: 1.625; font-weight: 400; text-wrap: balance; }
 .pill { display: flex; width: fit-content; max-width: 100%; align-items: center; justify-content: center; gap: 8px; min-height: 34px; margin-bottom: 24px; padding: 7px 14px; border: 1px solid transparent; border-radius: 999px; background: var(--ls-theme-hero-pill); color: var(--ls-theme-accent); font-size: 11px; font-weight: 600; line-height: 1.5; letter-spacing: .1em; text-transform: uppercase; }
@@ -23,9 +23,16 @@
 @media (min-width: 640px) and (max-width: 767px) { .hero.hero h1 { font-size: 60px; } }
 @media (max-width: 639px) {
   .hero { min-height: 720px; }
-  .content { padding-inline: 16px; }
+  .content { padding-inline: 0; }
   .hero.hero h1 { width: 100%; font-size: clamp(2rem,9.25vw,2.5rem); line-height: 1.12; }
   .hero.hero p { font-size: 18px; }
   .actions { flex-direction: column; width: 100%; }
   .trust { flex-direction: column; align-items: center; }
 }
+
+/* Align the homepage with the white-label catalogue and Amazon guide. */
+.layout .container { width:calc(100% - var(--ls-content-gutter) * 2); max-width:var(--ls-content-max); margin-inline:auto; padding-inline:0; }
+.layout .reading { width:calc(100% - var(--ls-content-gutter) * 2); max-width:896px; margin-inline:auto; }
+.layout .sectionSpacing { padding-block:64px; }
+.layout .closing { padding-bottom:64px; }
+@media(max-width:760px) { .layout .sectionSpacing { padding-block:44px; } .layout .closing { padding-bottom:44px; } }

@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { blankDraft,parseDraft,evaluate,priceForMargin,calculatorHref,csvCell } from '../lib/amazon-calculator.ts';
+const input=(overrides={})=>{const d={...blankDraft(),price:'25',landed:'9',fulfilment:'3.25',referral:'15',advertising:'12',returns:'4',...overrides};const p=parseDraft(d);assert.deepEqual(p.errors,{});return p.values;};
+test('illustrative £25 model yields £5 contribution',()=>{const r=evaluate(input());assert.equal(r.contribution,5);assert.equal(r.margin,20);assert.equal(r.monthly,500);});
+test('included tax and net fee basis are separate',()=>{const r=evaluate(input({price:'120',outputTax:'20',feeBasis:'net',referral:'10',landed:'30',fulfilment:'0',advertising:'0',returns:'0'}));assert.equal(r.revenue,100);assert.equal(r.referral,10);assert.equal(r.contribution,60);});
+test('minimum referral fee dominates low prices',()=>{const r=evaluate(input({price:'1',minimumReferral:'0.3'}));assert.equal(r.referral,.3);});
+test('itemised mode ignores prefilled landed amount',()=>{const r=evaluate(input({costMode:'itemised',landed:'9000',product:'6',freight:'2',importCosts:'1'}));assert.equal(r.landed,9);assert.equal(r.contribution,5);});
+test('fee tax applies only to the documented Amazon fee base',()=>{const a=evaluate(input({feeTax:'20',storage:'1'}));const b=evaluate(input({feeTax:'20',storage:'1',fulfilmentMode:'self'}));assert.equal(a.feeTax,1.6);assert.equal(b.feeTax,.95);});
+test('overhead affects monthly result, not contribution',()=>{const r=evaluate(input({overhead:'600'}));assert.equal(r.contribution,5);assert.equal(r.monthly,-100);});
+test('target solver rounds upward and reaches requested margin',()=>{const i=input();assert.equal(priceForMargin(i,20),25);const p=priceForMargin(i);assert.ok(evaluate(i,p).contribution>=0);assert.ok(evaluate(i,p-.01).contribution<0);});
+test('solver handles minimum fee and included tax',()=>{const i=input({minimumReferral:'8',outputTax:'20',feeBasis:'net'});const p=priceForMargin(i,25);assert.ok(p!==null);assert.ok(evaluate(i,p).margin>=25);assert.ok(evaluate(i,p-.01).margin<25);});
+test('unachievable variable-cost combination returns null',()=>{assert.equal(priceForMargin(input({advertising:'90',referral:'15'})),null);});
+test('reject incomplete, negative, nonfinite and fractional quantity inputs',()=>{for(const [key,value]of [['price',''],['price','Infinity'],['price','-1'],['units','1.5'],['targetMargin','100'],['referral','101']])assert.equal(parseDraft({...blankDraft(),[key]:value}).values,null);});
+test('product prefill maps currencies without conversion or zero coercion',()=>{assert.equal(calculatorHref('Item','NGN',1000,2000),'/amazon-profit-calculator');const url=new URL(calculatorHref('Item','GBP',null,14),'http://localhost');assert.equal(url.searchParams.get('market'),'GB');assert.equal(url.searchParams.get('low'),null);assert.equal(url.searchParams.get('high'),'14');});
+test('CSV escapes spreadsheet formula injection and quotes',()=>{assert.equal(csvCell('=SUM(1)'),`"'=SUM(1)"`);assert.equal(csvCell('A"B'),'"A""B"');});

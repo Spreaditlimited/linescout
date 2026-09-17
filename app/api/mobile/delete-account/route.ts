@@ -60,6 +60,9 @@ export async function POST(req: Request) {
         [userId]
       );
 
+      // Personal planning records are removed with the account.
+      await conn.execute("DELETE FROM linescout_saved_calculations WHERE user_id=?", [userId]);
+
       // 2) Delete associated leads (PII)
       if (currentEmail) {
         await conn.execute(

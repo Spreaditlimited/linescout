@@ -23,6 +23,9 @@ export const revalidate = 3600;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const currentDate = new Date();
   const staticPages: MetadataRoute.Sitemap = [
+    { url: `${BASE_URL}/sell-on-tiktok-shop`, lastModified: new Date("2026-09-17"), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE_URL}/amazon-profit-calculator`, lastModified: new Date("2026-09-17"), changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE_URL}/sell-on-amazon`, lastModified: new Date("2026-09-17"), changeFrequency: "monthly", priority: 0.8 },
     {
       url: `${BASE_URL}/`,
       lastModified: currentDate,

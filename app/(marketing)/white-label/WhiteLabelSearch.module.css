@@ -1,12 +1,7 @@
+.destinationAfterIntro { padding-top:0; scroll-margin-top:110px; }
 .destinationStart { padding-top:104px; scroll-margin-top:100px; }
-/* The country chooser already clears the fixed navbar; the following hero
-   does not need the global service-hero navigation offset again. */
-.destinationStart + section:global(.si-hero.si-hero) { padding-top:40px; }
-@media(max-width:640px) {
-  .destinationStart { padding-top:96px; }
-  .destinationStart + section:global(.si-hero.si-hero) { padding-top:28px; }
-}
-.panel { margin:32px 0 20px; padding:28px; border:1px solid var(--ls-theme-border); border-radius:16px; background:var(--ls-theme-surface); box-shadow:var(--ls-theme-shadow); scroll-margin-top:110px; }
+@media(max-width:760px) { .destinationStart { padding-top:96px; } }
+.panel { margin:32px 0 20px; padding:var(--ls-content-card-padding); border:1px solid var(--ls-theme-border); border-radius:16px; background:var(--ls-theme-surface); box-shadow:var(--ls-theme-shadow); scroll-margin-top:110px; }
 .header { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:24px; }
 .panel h2 { margin:0; color:var(--ls-theme-ink); font-size:25px; font-weight:650; letter-spacing:-.03em; }
 .panel p { margin-top:7px; font-size:14px; color:var(--ls-theme-muted); line-height:1.6; }
@@ -21,4 +16,8 @@
 .panel form > div:nth-child(2) { margin-top:24px; padding-top:24px; border-top:1px solid var(--ls-theme-border); gap:16px; }
 .panel form label { color:var(--ls-theme-muted); font-size:12px; font-weight:600; }
 .panel form :is(input,button,a):focus-visible { outline:2px solid var(--ls-theme-accent); outline-offset:4px; }
-@media(max-width:640px) { .panel { padding:20px 16px; } .header { gap:12px; } .destination { text-align:left; } .panel form > div:first-child > div { min-width:0; flex-basis:100%; } .panel form button[type=submit] { width:100%; } }
+@media(max-width:760px) { .panel { padding:var(--ls-content-card-padding); } .header { gap:12px; } .destination { text-align:left; } .panel form > div:first-child > div { min-width:0; flex-basis:100%; } .panel form button[type=submit] { width:100%; } }
+
+.contentSection,.catalogueSection { width:calc(100% - var(--ls-content-gutter) * 2); max-width:var(--ls-content-max); margin-inline:auto; padding:0 0 24px; }
+.catalogueSection { padding-bottom:40px; }
+.contentSection > div:not(.panel) { border-radius:16px; }

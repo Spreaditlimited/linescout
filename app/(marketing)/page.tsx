@@ -284,7 +284,7 @@ export default async function HomePage() {
   };
 
   return (
-    <main className="relative overflow-hidden bg-[#F5F6FA] text-neutral-900">
+    <main className={`${heroStyles.layout} relative overflow-hidden bg-[#F5F6FA] text-neutral-900`}>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
@@ -310,7 +310,7 @@ export default async function HomePage() {
         <div className={heroStyles.fade} aria-hidden="true" />
       </section>
 
-      <section className="relative z-10 mx-auto -mt-6 w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className={`${heroStyles.container} relative z-10 -mt-6`}>
         <div className="grid overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-xl shadow-slate-900/10 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["1,000+", "white-label ideas"],
@@ -331,7 +331,7 @@ export default async function HomePage() {
 
       <MarketDestinations home />
 
-      <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+      <section className={`${heroStyles.container} ${heroStyles.sectionSpacing}`}>
         <div className="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:gap-16">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">One connected system</p>
@@ -364,8 +364,8 @@ export default async function HomePage() {
       </section>
 
       {popularProducts.length ? (
-        <section className="border-y border-slate-200 bg-white py-20 lg:py-24">
-          <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+        <section className={`border-y border-slate-200 bg-white ${heroStyles.sectionSpacing}`}>
+          <div className={`${heroStyles.container} `}>
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">What people are exploring</p>
@@ -426,7 +426,7 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      <section className="mx-auto w-full max-w-7xl px-4 py-20 sm:px-6 lg:px-8 lg:py-28">
+      <section className={`${heroStyles.container} ${heroStyles.sectionSpacing}`}>
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">How LineScout works</p>
           <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
@@ -451,8 +451,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="bg-slate-950 py-20 text-white lg:py-24">
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className={`bg-slate-950 text-white ${heroStyles.sectionSpacing}`}>
+        <div className={`${heroStyles.container} `}>
           <div className="grid gap-6 lg:grid-cols-3">
             {sourcingRoutes.map((route) => (
               <article key={route.title} className="rounded-[1.75rem] border border-white/10 bg-white/[0.06] p-7">
@@ -471,7 +471,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto grid w-full max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.95fr_1.05fr] lg:px-8 lg:py-28">
+      <section className={`${heroStyles.container} grid gap-12 lg:grid-cols-[0.95fr_1.05fr] ${heroStyles.sectionSpacing}`}>
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Built for continuity</p>
           <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
@@ -534,8 +534,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="border-y border-slate-200 bg-white py-20 lg:py-24">
-        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section className={`border-y border-slate-200 bg-white ${heroStyles.sectionSpacing}`}>
+        <div className={`${heroStyles.container} `}>
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Proven sourcing experience</p>
@@ -571,7 +571,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-4xl px-4 py-20 sm:px-6 lg:py-28">
+      <section className={`${heroStyles.reading} ${heroStyles.sectionSpacing}`}>
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-600">Frequently asked questions</p>
           <h2 className="mt-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">
@@ -595,8 +595,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="px-4 pb-20 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-12 text-center text-white sm:px-10 lg:py-16">
+      <section className={`${heroStyles.container} ${heroStyles.closing}`}>
+        <div className="w-full overflow-hidden rounded-[2rem] bg-slate-950 px-6 py-12 text-center text-white sm:px-10 lg:py-16">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-400">Ready when you are</p>
           <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-black tracking-tight sm:text-4xl">
             Bring the idea. LineScout and Sure Imports will help you move it forward.
