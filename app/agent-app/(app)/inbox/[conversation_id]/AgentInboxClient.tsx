@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import AgentAppShell from "../../_components/AgentAppShell";
 import { ImagePlus, Send, X } from "lucide-react";
+import chatStyles from "./AgentChat.module.css";
 
 type Msg = {
   id: number;
@@ -701,17 +702,6 @@ function AgentChatThreadInner() {
                       </div>
                     );
                   }
-                  const bubble = isAgent
-                    ? isAdminSender
-                      ? "ml-auto border border-amber-200 bg-amber-50 text-amber-900"
-                      : "ml-auto bg-[#2D3461] text-white"
-                    : "mr-auto bg-[#F4F7FB] text-neutral-800 border border-[rgba(45,52,97,0.12)]";
-
-                  const metaColor = isAgent
-                    ? isAdminSender
-                      ? "text-amber-700"
-                      : "text-white/70"
-                    : "text-neutral-500";
                   const senderIdKey = m.sender_id != null ? String(m.sender_id) : "";
                   const agentLabel = senderIdKey && agentNameMap[senderIdKey] ? agentNameMap[senderIdKey] : agentName || "Agent";
                   const label =
@@ -755,24 +745,21 @@ function AgentChatThreadInner() {
                   return (
                     <div
                       key={`${m.id}-${idx}`}
-                      className={`w-fit max-w-[92%] sm:max-w-[86%] rounded-2xl px-3 py-2 ${bubble}`}
+                      className={chatStyles.bubble}
+                      data-sender={isAdminSender ? "admin" : isAgent ? "agent" : "customer"}
                     >
-                      <div className={`text-[11px] ${metaColor} mb-1`}>
+                      <div className={chatStyles.meta}>
                         {label} • {timeLabel}
                       </div>
                       {m.reply_to_message_id ? (
                         <div
-                          className={`mb-2 rounded-xl border px-3 py-2 text-[11px] ${
-                            isAgent
-                              ? "border-white/30 bg-white/10 text-white/80"
-                              : "border-[rgba(45,52,97,0.2)] bg-white text-neutral-600"
-                          }`}
+                          className={chatStyles.reply}
                         >
                           <p className="font-semibold">{replyLabel}</p>
                           <p className="mt-1 line-clamp-2">{replyText}</p>
                         </div>
                       ) : null}
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed break-words">
+                      <div className={chatStyles.body}>
                         {isDeleted ? (
                           <span className="italic opacity-80">Message deleted</span>
                         ) : (
@@ -796,7 +783,7 @@ function AgentChatThreadInner() {
                                 href={a.secure_url || "#"}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="rounded-xl border border-[rgba(45,52,97,0.12)] bg-white/70 px-3 py-2 text-xs font-semibold text-[#2D3461]"
+                                className={chatStyles.attachment}
                               >
                                 {a.original_filename || "Attachment"}
                               </a>
@@ -805,7 +792,7 @@ function AgentChatThreadInner() {
                         </div>
                       ) : null}
                       {canReply || canEdit || canDelete ? (
-                        <div className={`mt-2 flex flex-wrap items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] ${metaColor}`}>
+                        <div className={chatStyles.actions}>
                           {canReply ? (
                             <button
                               type="button"

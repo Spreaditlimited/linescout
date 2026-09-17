@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import ThemeToggle from "@/components/home/ThemeToggle";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -179,9 +180,12 @@ export default function AgentAppShell({
                 <ArrowLeft className="h-4 w-4" />
                 Back
               </button>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
-                Agent app
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--agent-blue)]">
+                  Agent app
+                </span>
+                <ThemeToggle lightSurface />
+              </div>
             </div>
             <div className="px-4 py-4 sm:px-6">
               <h1 className="text-xl font-semibold text-neutral-900 sm:text-2xl lg:text-3xl">

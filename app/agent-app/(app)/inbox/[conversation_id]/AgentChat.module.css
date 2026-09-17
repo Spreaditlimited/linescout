@@ -1,0 +1,14 @@
+.bubble { width:fit-content; max-width:92%; padding:14px 18px; border-radius:14px; border:1px solid var(--ls-theme-border); background:var(--ls-theme-inset); color:var(--ls-theme-ink); margin-right:auto; }
+.bubble[data-sender=agent] { margin-left:auto; margin-right:0; background:var(--ls-theme-primary); color:var(--ls-theme-on-primary); border-color:transparent; }
+.bubble[data-sender=admin] { margin-left:auto; margin-right:0; background:#fff8e8; color:#75450e; border-color:#e5c88a; }
+:global(.dark) .bubble[data-sender=admin] { background:#302619; color:#f5dfb3; border-color:#735b32; }
+.bubble .meta { margin-bottom:8px; font-size:12px; line-height:1.6; color:inherit; opacity:.85; }
+.bubble .body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.7; color:inherit; }
+.bubble .reply { margin-bottom:10px; border:1px solid color-mix(in srgb,currentColor 25%,transparent); border-left:3px solid currentColor; border-radius:8px; padding:10px 12px; font-size:12px; color:inherit; background:color-mix(in srgb,currentColor 6%,transparent); }
+.bubble .reply p { color:inherit; }
+.bubble .actions { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:12px; color:inherit; }
+.bubble .actions button { padding:4px 0; min-height:32px; color:inherit; font-size:12px; font-weight:600; letter-spacing:normal; text-transform:none; background:transparent; }
+.bubble .actions button:hover { text-decoration:underline; text-underline-offset:4px; }
+.bubble .actions button:focus-visible { outline:2px solid currentColor; outline-offset:3px; border-radius:3px; }
+.bubble .attachment { display:block; border:1px solid color-mix(in srgb,currentColor 25%,transparent); border-radius:8px; padding:10px 12px; color:inherit; background:color-mix(in srgb,currentColor 6%,transparent); font-size:13px; overflow-wrap:anywhere; }
+@media(min-width:640px) { .bubble { max-width:86%; } }
