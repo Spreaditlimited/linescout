@@ -43,5 +43,8 @@ html.dark {
 }
 
 /* Shared editorial/catalogue layout: White Label and Amazon guide. */
-:root { --ls-content-max:1232px; --ls-content-gutter:24px; --ls-content-gap:24px; --ls-content-card-padding:28px; }
-@media(max-width:760px) { :root { --ls-content-gutter:16px; --ls-content-gap:20px; --ls-content-card-padding:20px; } }
+/* Inner width matches the 1440px navbar/footer outer box minus its gutters. */
+:root { --ls-content-outer:1440px; --ls-content-gutter:32px; --ls-content-max:calc(var(--ls-content-outer) - var(--ls-content-gutter) * 2); --ls-content-gap:24px; --ls-content-card-padding:28px; }
+@media(max-width:1023px) { :root { --ls-content-gutter:24px; } }
+@media(max-width:639px) { :root { --ls-content-gutter:16px; } }
+@media(max-width:760px) { :root { --ls-content-gap:20px; --ls-content-card-padding:20px; } }
