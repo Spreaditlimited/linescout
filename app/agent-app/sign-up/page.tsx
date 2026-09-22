@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AuthShell from "../_components/AuthShell";
+import styles from "../_components/AgentAuth.module.css";
 
 function clean(v: unknown) {
   return String(v ?? "").trim();
@@ -119,72 +120,72 @@ export default function AgentAppSignUpPage() {
       title="Create account"
       subtitle="Join the LineScout agent workspace. Approval is required to access live handoffs."
       topSlot={
-        <Link href="/agent-app" className="btn btn-ghost text-xs">
-          ← Back to agent app
+        <Link href="/agent-app" >
+          Back to agent app
         </Link>
       }
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">First name</label>
-            <input
+            <label  htmlFor="agent-sign-up-1">First name</label>
+          <input id="agent-sign-up-1"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               placeholder="John"
               autoComplete="given-name"
-              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
             />
           </div>
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Last name</label>
-            <input
+            <label  htmlFor="agent-sign-up-2">Last name</label>
+          <input id="agent-sign-up-2"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               placeholder="Okafor"
               autoComplete="family-name"
-              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
             />
           </div>
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Email</label>
-          <input
+          <label  htmlFor="agent-sign-up-3">Email</label>
+          <input id="agent-sign-up-3"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="agent@email.com"
             autoComplete="email"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Username</label>
-          <input
+          <label  htmlFor="agent-sign-up-4">Username</label>
+          <input id="agent-sign-up-4"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="agent.okafor"
             autoComplete="username"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
           <p className="mt-2 text-xs text-neutral-500">Allowed: letters, numbers, dot, underscore, hyphen. 3 to 30 characters.</p>
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Password</label>
-          <input
+          <label  htmlFor="agent-sign-up-5">Password</label>
+          <input id="agent-sign-up-5"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
             placeholder="Minimum 8 characters"
             autoComplete="new-password"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          <div role="alert" className={styles.error}>
             {error}
           </div>
         ) : null}
@@ -192,14 +193,14 @@ export default function AgentAppSignUpPage() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full rounded-2xl bg-[#2D3461] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)] disabled:opacity-60"
+          className="w-full"
         >
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>
 
       <p className="text-xs text-neutral-500">
-        Already have an account? <Link className="text-[#2D3461] font-semibold" href="/agent-app/sign-in">Sign in</Link>.
+        Already have an account? <Link  href="/agent-app/sign-in">Sign in</Link>.
       </p>
     </AuthShell>
   );

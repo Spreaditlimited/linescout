@@ -1,40 +1,43 @@
 "use client";
 
 import type { ReactNode } from "react";
-export default function AuthShell({
-  title,
-  subtitle,
-  topSlot,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  topSlot?: ReactNode;
-  children: ReactNode;
+import Image from "next/image";
+import Link from "next/link";
+import styles from "./AgentAuth.module.css";
+
+export default function AuthShell({title, subtitle, topSlot, children}: {
+  title: string; subtitle?: string; topSlot?: ReactNode; children: ReactNode;
 }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-white text-neutral-900">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-24 top-[-180px] h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle_at_center,rgba(45,52,97,0.22),transparent_65%)]" />
-        <div className="absolute right-[-120px] top-[140px] h-[460px] w-[460px] rounded-full bg-[radial-gradient(circle_at_center,rgba(45,52,97,0.16),transparent_65%)]" />
-        <div className="absolute bottom-[-220px] left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(45,52,97,0.18),transparent_70%)]" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10">
-        <section className="grid flex-1 items-center">
-          <div className="mx-auto w-full max-w-md">
-            {topSlot ? <div className="mb-4">{topSlot}</div> : null}
-            <div className="rounded-[28px] border border-[rgba(45,52,97,0.14)] bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.08)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#2D3461]">
-                LineScout Agent
-              </p>
-              <h1 className="mt-3 text-2xl font-semibold text-neutral-900">{title}</h1>
-              {subtitle ? <p className="mt-2 text-sm text-neutral-600">{subtitle}</p> : null}
-              <div className="mt-6 space-y-4">{children}</div>
-            </div>
-          </div>
-        </section>
-      </div>
+    <main className={styles.layout}>
+      <section className={styles.story} aria-label="Your LineScout workspace">
+        <Image src="/images/hero-background-1.png" alt="" fill sizes="50vw" className={styles.photo} />
+        <Link href="/agent-app" className={styles.storyLogo} aria-label="LineScout agent home">
+          <Image src="/images/svg-logo-white.svg" width={180} height={38} alt="Sure Imports" />
+          <span>LINESCOUT AGENTS</span>
+        </Link>
+        <div className={styles.storyCopy}>
+          <span>YOUR SOURCING WORKSPACE</span>
+          <h2>Good sourcing.<br />Great partnerships.</h2>
+          <p>Connect with customers, manage your projects, and keep every order moving from enquiry to delivery.</p>
+        </div>
+      </section>
+      <section className={styles.workspace} aria-labelledby="agent-auth-title">
+        <div className={styles.inner}>
+          <Link href="/agent-app" className={styles.mobileLogo} aria-label="LineScout agent home">
+            <Image className={styles.lightLogo} src="/images/svg-logo.svg" width={180} height={38} alt="Sure Imports" />
+            <Image className={styles.darkLogo} src="/images/svg-logo-white.svg" width={180} height={38} alt="Sure Imports" />
+            <span>LINESCOUT AGENTS</span>
+          </Link>
+          {topSlot ? <div className={styles.back}>{topSlot}</div> : null}
+          <header className={styles.heading}>
+            <span className={styles.eyebrow}>AGENT WORKSPACE</span>
+            <h1 id="agent-auth-title">{title}</h1>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </header>
+          <div className={styles.content}>{children}</div>
+        </div>
+      </section>
     </main>
   );
 }

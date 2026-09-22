@@ -1,0 +1,48 @@
+/* Agent auth uses the same tokens and split layout as the family auth pages. */
+.layout { min-height:100svh; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); background:var(--ls-theme-canvas); color:var(--ls-theme-ink); }
+.story { position:relative; min-height:100svh; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:120px 56px 72px; background:#15171c; color:#fff; }
+.photo { object-fit:cover; filter:grayscale(1); opacity:.3; }
+.story::after { content:''; position:absolute; inset:0; background:linear-gradient(160deg,#19152d66,#101114dd); }
+.storyLogo { position:absolute; z-index:1; top:40px; left:40px; }
+.storyLogo img,.mobileLogo img { width:180px; height:auto; object-fit:contain; }
+.storyLogo span,.mobileLogo span { display:block; font-size:10px; letter-spacing:.24em; margin-top:10px; }
+.storyCopy { position:relative; z-index:1; max-width:520px; text-align:center; }
+.storyCopy > span,.eyebrow { font-size:11px; font-weight:700; letter-spacing:.14em; }
+.storyCopy > span { color:#c5bfff; }
+.storyCopy h2 { margin:24px 0; font-size:clamp(36px,3.6vw,52px); line-height:1.08; letter-spacing:-.045em; font-weight:650; color:#fff; }
+.storyCopy p { color:#d5d7e0; font-size:17px; line-height:1.7; }
+.workspace { display:flex; align-items:center; justify-content:center; padding:56px 40px; min-width:0; }
+.inner { width:100%; max-width:440px; }
+.heading { margin-bottom:28px; }
+.eyebrow { color:var(--ls-theme-accent); }
+.heading h1 { font-size:36px; line-height:1.15; letter-spacing:-.04em; font-weight:650; margin:12px 0; color:var(--ls-theme-ink); }
+.heading p { color:var(--ls-theme-muted); font-size:15px; line-height:1.65; }
+.content { display:grid; gap:24px; }
+.content form { display:grid; gap:20px; }
+.content form > * { margin-top:0; margin-bottom:0; }
+.content label { display:block; font-size:14px; font-weight:550; letter-spacing:normal; text-transform:none; color:var(--ls-theme-ink); }
+.content input { width:100%; min-width:0; height:50px; border:1px solid var(--ls-theme-border); border-radius:8px; background:var(--ls-theme-surface); color:var(--ls-theme-ink); padding:0 14px; font-size:16px; margin-top:8px; }
+.content input::placeholder { color:var(--ls-theme-muted); opacity:.8; }
+.content input:focus { border-color:var(--ls-theme-accent); }
+.content button { min-height:50px; border-radius:8px; padding:12px 18px; font-size:15px; font-weight:600; box-shadow:none; }
+.content button[type='submit'] { background:var(--ls-theme-primary); color:var(--ls-theme-on-primary); border:1px solid transparent; }
+.content button[type='button'] { background:var(--ls-theme-surface); color:var(--ls-theme-ink); border:1px solid var(--ls-theme-border); }
+.content button:disabled { opacity:.5; cursor:not-allowed; }
+.content p { color:var(--ls-theme-muted); font-size:14px; line-height:1.65; }
+.content a { color:var(--ls-theme-accent); font-size:14px; text-underline-offset:4px; }
+.content a:hover { text-decoration:underline; }
+.back { margin-bottom:28px; }
+.back a { color:var(--ls-theme-muted); font-size:14px; padding:0; background:none; border:0; box-shadow:none; }
+.layout :is(input,button,a):focus-visible { outline:2px solid var(--ls-theme-accent); outline-offset:3px; }
+.error,.notice,.success { border:1px solid; border-radius:8px; padding:14px 16px; font-size:14px; line-height:1.6; overflow-wrap:anywhere; }
+.error { color:#a42632; background:#fff1f2; border-color:#fecdd3; }
+.notice { color:var(--ls-theme-ink); background:var(--ls-theme-surface); border-color:var(--ls-theme-border); }
+.success { color:#166534; background:#f0fdf4; border-color:#bbf7d0; }
+:global(.dark) .error { color:#fecdd3; background:#321d24; border-color:#65313e; }
+:global(.dark) .success { color:#bbf7d0; background:#172b23; border-color:#28543e; }
+.mobileLogo { display:none; }
+.darkLogo { display:none; }
+:global(.dark) .darkLogo { display:block; }
+:global(.dark) .lightLogo { display:none; }
+@media(max-width:1023px) { .layout { display:block; } .story { display:none; } .workspace { min-height:100svh; padding:36px 24px; } .mobileLogo { display:block; margin-bottom:40px; width:max-content; color:var(--ls-theme-ink); } .heading h1 { font-size:32px; } }
+@media(prefers-reduced-motion:no-preference) { .content :is(input,button,a) { transition:background-color .15s,color .15s,border-color .15s; } }

@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AuthShell from "../_components/AuthShell";
+import styles from "../_components/AgentAuth.module.css";
 import { getSafeNextPath } from "@/lib/safe-next-path";
 
 function clean(v: unknown) {
@@ -99,43 +100,43 @@ export default function AgentAppPhoneVerifyClient() {
     >
       <div className="space-y-4">
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+          <label  htmlFor="agent-phone-verify-1">
             Phone number
           </label>
-          <input
+          <input id="agent-phone-verify-1"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+86"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
         </div>
         <button
           type="button"
           onClick={requestOtp}
           disabled={!canSend || sending}
-          className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-900 disabled:opacity-60"
+          className="w-full"
         >
           {sending ? "Sending OTP…" : "Send OTP"}
         </button>
 
         <form onSubmit={verifyOtp} className="space-y-4">
           <div>
-            <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">OTP</label>
-            <input
+            <label  htmlFor="agent-phone-verify-2">OTP</label>
+          <input id="agent-phone-verify-2"
               value={otp}
               onChange={(e) => setOtp(e.target.value)}
               placeholder="123456"
-              className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
             />
           </div>
 
           {info ? (
-            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+            <div role="status" className={styles.notice}>
               {info}
             </div>
           ) : null}
           {error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+            <div role="alert" className={styles.error}>
               {error}
             </div>
           ) : null}
@@ -143,7 +144,7 @@ export default function AgentAppPhoneVerifyClient() {
           <button
             type="submit"
             disabled={!canVerify || verifying}
-            className="w-full rounded-2xl bg-[#2D3461] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)] disabled:opacity-60"
+            className="w-full"
           >
             {verifying ? "Verifying…" : "Verify phone"}
           </button>

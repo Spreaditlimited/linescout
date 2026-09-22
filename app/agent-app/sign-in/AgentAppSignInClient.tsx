@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AuthShell from "../_components/AuthShell";
+import styles from "../_components/AgentAuth.module.css";
 import { fetchAgentOtpMode } from "../lib/otp";
 import { getSafeNextPath } from "@/lib/safe-next-path";
 
@@ -106,47 +107,47 @@ export default function AgentAppSignInClient() {
       title="Sign in"
       subtitle="Use your LineScout agent credentials to access the workspace."
       topSlot={
-        <Link href="/agent-app" className="btn btn-ghost text-xs">
-          ← Back to agent app
+        <Link href="/agent-app" >
+          Back to agent app
         </Link>
       }
     >
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+          <label  htmlFor="agent-sign-in-1">
             Username or email
           </label>
-          <input
+          <input id="agent-sign-in-1"
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             placeholder="agent.okafor or agent@email.com"
             autoComplete="username"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
         </div>
         <div>
-          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Password</label>
-          <input
+          <label  htmlFor="agent-sign-in-2">Password</label>
+          <input id="agent-sign-in-2"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
             placeholder="••••••••"
             autoComplete="current-password"
-            className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-neutral-900 outline-none focus:border-[#2D3461]"
+
           />
         </div>
 
         <div className="flex items-center justify-between text-xs">
-          <Link href="/agent-app/forgot-password" className="font-semibold text-neutral-500 hover:text-neutral-900">
+          <Link href="/agent-app/forgot-password" >
             Forgot password?
           </Link>
-          <Link href="/agent-app/sign-up" className="font-semibold text-[#2D3461] hover:text-[#1f2548]">
+          <Link href="/agent-app/sign-up" >
             Create account
           </Link>
         </div>
 
         {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+          <div role="alert" className={styles.error}>
             {error}
           </div>
         ) : null}
@@ -154,14 +155,14 @@ export default function AgentAppSignInClient() {
         <button
           type="submit"
           disabled={!canSubmit}
-          className="w-full rounded-2xl bg-[#2D3461] px-4 py-3 text-sm font-semibold text-white shadow-[0_10px_30px_rgba(45,52,97,0.3)] disabled:opacity-60"
+          className="w-full"
         >
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
 
       <p className="text-xs text-neutral-500">
-        Not approved yet? Review the <Link className="text-[#2D3461] font-semibold" href="/agents">agent agreement</Link>.
+        Not approved yet? Review the <Link  href="/agents">agent agreement</Link>.
       </p>
     </AuthShell>
   );
