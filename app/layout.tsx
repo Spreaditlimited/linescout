@@ -112,6 +112,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Tracks PageView on route changes */}
         <MetaPixel />
         <GA4 />
+        <Script src="https://www.sureimports.com/whatsapp-tracking.js" strategy="afterInteractive" />
 
         {/* Global shell: hides Navbar for /internal routes via Shell */}
         <LineScoutThemeProvider>

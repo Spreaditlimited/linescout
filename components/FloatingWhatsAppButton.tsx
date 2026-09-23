@@ -96,6 +96,7 @@ export default function FloatingWhatsAppButton() {
 
   return (
     <div
+      data-whatsapp-placement="floating"
       className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 z-[70]"
       onMouseEnter={cancelClose}
       onMouseLeave={closeWithDelay}
@@ -124,6 +125,7 @@ export default function FloatingWhatsAppButton() {
             {contacts.map((contact) => (
               <a
                 key={contact.id}
+                data-whatsapp-contact="managed"
                 href={buildWhatsAppUrl(contact)}
                 target="_blank"
                 rel="noopener noreferrer"
