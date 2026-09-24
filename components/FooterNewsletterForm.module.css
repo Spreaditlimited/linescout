@@ -1,0 +1,56 @@
+.form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  min-width: 0;
+}
+footer .form input.input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  min-height: 40px !important;
+  border: 1px solid #1e293b;
+  border-radius: 6px !important;
+  /* The footer remains dark in both themes; override broad public-form rules. */
+  background: #0f172a !important;
+  color: #fff !important;
+  padding: 0 12px;
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+footer .form input.input::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+footer .form input.input:focus {
+  background: #0f172a;
+  color: #fff;
+  border-color: #a99cec;
+  box-shadow: 0 0 0 3px rgb(100 88 180 / 20%);
+}
+footer .form button.button {
+  flex-shrink: 0;
+  height: 40px;
+  min-height: 40px !important;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 6px !important;
+  background: #5146a0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+}
+.form .button:hover:not(:disabled) {
+  background: #443986;
+}
+.form .button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.form .button:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 3px;
+}
