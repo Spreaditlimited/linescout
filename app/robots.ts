@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        allow: ["/", "/machine-sourcing-webinar$", "/machine-sourcing-webinar?"],
         disallow: [
           "/machine-sourcing",
           "/white-label/wizard",
